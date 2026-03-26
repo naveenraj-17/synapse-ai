@@ -5,10 +5,12 @@ interface GeneralTabProps {
     setVaultEnabled: (v: boolean) => void;
     vaultThreshold: number;
     setVaultThreshold: (v: number) => void;
+    allowDbWrite: boolean;
+    setAllowDbWrite: (v: boolean) => void;
     onSave: () => void;
 }
 
-export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnabled, vaultThreshold, setVaultThreshold, onSave }: GeneralTabProps) => (
+export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnabled, vaultThreshold, setVaultThreshold, allowDbWrite, setAllowDbWrite, onSave }: GeneralTabProps) => (
     <div className="space-y-8">
         <div className="space-y-2">
             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Global Agent Name</label>
@@ -49,6 +51,32 @@ export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnab
                         min={1}
                     />
                     <p className="text-xs text-zinc-600">Responses longer than this many characters will be saved to a file.</p>
+                </div>
+            )}
+        </div>
+
+        <div className="space-y-4">
+            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Database Write Access</label>
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm text-white font-medium">Allow agents to modify database</p>
+                    <p className="text-xs text-zinc-600 mt-0.5">
+                        When <strong className="text-zinc-400">disabled</strong> (default), agents are strictly limited to SELECT/SHOW/DESCRIBE queries.
+                        When <strong className="text-zinc-400">enabled</strong>, INSERT/UPDATE/DELETE and other write queries are allowed — but agents must always ask for confirmation before executing them.
+                    </p>
+                </div>
+                <button
+                    onClick={() => setAllowDbWrite(!allowDbWrite)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${allowDbWrite ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                >
+                    <span
+                        className={`inline-block h-4 w-4 transform rounded-full transition-transform ${allowDbWrite ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                    />
+                </button>
+            </div>
+            {allowDbWrite && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                    <strong>Write mode active.</strong> Agents MUST ask for explicit user confirmation before running any INSERT, UPDATE, DELETE, DROP, or CREATE queries. This is enforced in the system prompt.
                 </div>
             )}
         </div>

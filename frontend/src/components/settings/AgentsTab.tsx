@@ -25,6 +25,7 @@ export const AgentsTab = ({
     onSaveAgent, onDeleteAgent, providers, defaultModel
 }: AgentsTabProps) => {
     const [repos, setRepos] = useState<any[]>([]);
+    const [dbConfigs, setDbConfigs] = useState<any[]>([]);
     const [expandedCaps, setExpandedCaps] = useState<Set<string>>(new Set());
     const [promptDescription, setPromptDescription] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -35,6 +36,10 @@ export const AgentsTab = ({
             .then(res => res.json())
             .then(data => setRepos(data))
             .catch(err => console.error("Failed to fetch repos", err));
+        fetch('/api/db-configs')
+            .then(res => res.json())
+            .then(data => setDbConfigs(data))
+            .catch(err => console.error("Failed to fetch DB configs", err));
     }, []);
 
     const toggleExpand = (capId: string) => {
@@ -312,6 +317,39 @@ export const AgentsTab = ({
                                 })}
                             </div>
                             <p className="text-[9px] text-zinc-500 mt-1">Select indexed repositories for semantic code search access.</p>
+                        </div>
+                    )}
+
+                    {draftAgent.type === 'code' && (
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Databases</label>
+                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
+                                {dbConfigs.length === 0 && <span className="text-xs text-zinc-500">No databases configured yet.</span>}
+                                {dbConfigs.map((db: any) => {
+                                    const isLinked = draftAgent.db_configs?.includes(db.id);
+                                    return (
+                                        <button
+                                            key={db.id}
+                                            onClick={() => {
+                                                const currentDbs = draftAgent.db_configs || [];
+                                                if (isLinked) {
+                                                    setDraftAgent({ ...draftAgent, db_configs: currentDbs.filter((id: string) => id !== db.id) });
+                                                } else {
+                                                    setDraftAgent({ ...draftAgent, db_configs: [...currentDbs, db.id] });
+                                                }
+                                            }}
+                                            className={`px-3 py-1.5 text-xs font-bold border transition-colors ${
+                                                isLinked
+                                                    ? 'bg-white text-black border-white'
+                                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
+                                            }`}
+                                        >
+                                            {db.name} <span className="opacity-50">{db.db_type}</span> {isLinked && '✓'}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[9px] text-zinc-500 mt-1">Select databases to inject schema context into the agent's system prompt.</p>
                         </div>
                     )}
 

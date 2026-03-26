@@ -9,7 +9,6 @@ import type { SettingsModalProps, Tab } from './settings/types';
 import { GeneralTab } from './settings/GeneralTab';
 import { PersonalDetailsTab } from './settings/PersonalDetailsTab';
 import { MemoryTab } from './settings/MemoryTab';
-import { DatabaseTab } from './settings/DatabaseTab';
 import { AgentsTab } from './settings/AgentsTab';
 import { CustomToolsTab } from './settings/CustomToolsTab';
 import { DataLabTab } from './settings/DataLabTab';
@@ -20,6 +19,7 @@ import { ConfirmationModal } from './settings/ConfirmationModal';
 import { ToastNotification } from './settings/ToastNotification';
 import { N8nFullscreenOverlay } from './settings/N8nFullscreenOverlay';
 import { ReposTab } from './settings/ReposTab';
+import { DBsTab } from './settings/DBsTab';
 import { OrchestrationTab } from './settings/OrchestrationTab';
 import { LogsTab } from './settings/LogsTab';
 
@@ -37,6 +37,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
     // Vault settings
     const [vaultEnabled, setVaultEnabled] = useState(true);
     const [vaultThreshold, setVaultThreshold] = useState(15000);
+    const [allowDbWrite, setAllowDbWrite] = useState(false);
 
     // Keys
     const [openaiKey, setOpenaiKey] = useState('');
@@ -145,6 +146,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
             }, {} as Record<string, string>),
             vault_enabled: vaultEnabled,
             vault_threshold: vaultThreshold,
+            allow_db_write: allowDbWrite,
         }));
 
         if (mode === 'bedrock') {
@@ -313,6 +315,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                     setN8nApiKey(data.n8n_api_key || '');
                     setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
                     setVaultThreshold(data.vault_threshold || 15000);
+                    setAllowDbWrite(data.allow_db_write || false);
                     if (data.global_config) {
                          const configArray = Object.entries(data.global_config).map(([k, v]) => ({
                              id: Math.random().toString(36).substr(2, 9),
@@ -687,7 +690,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
         { id: 'mcp_servers', label: 'MCP Servers', icon: Server },
         { id: 'custom_tools', label: 'Tool Builder', icon: Wrench },
         { id: 'repos', label: 'Repos', icon: FolderGit2 },
-        { id: 'database', label: 'Databases', icon: Database },
+        { id: 'db_configs', label: 'DB Configs', icon: Database },
         { id: 'models', label: 'Models', icon: Cpu },
         { id: 'workspace', label: 'Integrations', icon: Cloud },
         { id: 'memory', label: 'Memory', icon: Trash },
@@ -780,6 +783,8 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                                         setVaultEnabled={setVaultEnabled}
                                         vaultThreshold={vaultThreshold}
                                         setVaultThreshold={setVaultThreshold}
+                                        allowDbWrite={allowDbWrite}
+                                        setAllowDbWrite={setAllowDbWrite}
                                         onSave={handleSaveSection}
                                     />
                                 )}
@@ -892,15 +897,6 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                                     />
                                 )}
 
-                                {/* DATABASE TAB */}
-                                {activeTab === 'database' && (
-                                    <DatabaseTab
-                                        sqlConnectionString={sqlConnectionString}
-                                        setSqlConnectionString={setSqlConnectionString}
-                                        onSave={handleSaveSection}
-                                    />
-                                )}
-
                                 {/* MCP SERVERS TAB */}
                                 {activeTab === 'mcp_servers' && (
                                     <McpServersTab
@@ -921,6 +917,11 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                                 {/* REPOS TAB */}
                                 {activeTab === 'repos' && (
                                     <ReposTab />
+                                )}
+
+                                {/* DB CONFIGS TAB */}
+                                {activeTab === 'db_configs' && (
+                                    <DBsTab />
                                 )}
                             </div>
                         </div>

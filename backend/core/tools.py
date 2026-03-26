@@ -27,6 +27,8 @@ DEFAULT_TOOLS_BY_TYPE = {
     },
     "code": {
         "search_codebase",
+        "grep",
+        "glob"
     },
     "orchestrator": set(),  # orchestrator agents delegate to sub-agents; no extra tools needed
 }

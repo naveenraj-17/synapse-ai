@@ -21,6 +21,7 @@ backend/data/available_tools.json
 backend/data/credentials.json
 backend/data/custom_tools.json
 backend/data/repos.json
+backend/data/db_configs.json
 
 # Javascript / Frontend
 frontend/node_modules/

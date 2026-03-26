@@ -142,6 +142,59 @@ def _resolve_agent_by_id(agent_id):
     return get_active_agent_data()
 
 
+def _inject_db_context(agent_data, system_template):
+    """Inject linked DB schema context into system prompt for code agents. Returns updated template."""
+    if agent_data.get("type") != "code":
+        return system_template
+    db_configs_list = agent_data.get("db_configs", [])
+    if not db_configs_list:
+        return system_template
+    try:
+        from core.routes.db_configs import load_db_configs
+        all_configs = load_db_configs()
+        linked_configs = [c for c in all_configs if c.get("id") in db_configs_list]
+        if not linked_configs:
+            return system_template
+
+        allow_db_write = load_settings().get("allow_db_write", False)
+
+        db_context = (
+            "\n\n### LINKED DATABASES ###\n"
+            "The following databases are associated with this codebase. "
+            "When calling `list_tables`, `get_table_schema`, or `run_sql_query`, "
+            "you MUST pass the `db_id` field matching the database you want to query.\n\n"
+        )
+        for c in linked_configs:
+            db_context += f"**DB Name:** {c.get('name')}\n"
+            db_context += f"**DB ID:** `{c.get('id')}`  ← pass this as db_id in SQL tool calls\n"
+            db_context += f"**Type:** {c.get('db_type')}\n"
+            if c.get("description"):
+                db_context += f"**Description:** {c.get('description')}\n"
+            if c.get("schema_info"):
+                db_context += f"**Schema:**\n{c.get('schema_info')}\n"
+            db_context += "---\n"
+
+        if allow_db_write:
+            db_context += (
+                "\n**DB WRITE RULES (MANDATORY):**\n"
+                "- Write queries (INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, etc.) ARE permitted.\n"
+                "- You MUST explicitly state the exact query you intend to run and ask the user for confirmation BEFORE calling `run_sql_query` with any write query.\n"
+                "- Never assume consent. Even for seemingly safe updates, always confirm first.\n"
+            )
+        else:
+            db_context += (
+                "\n**DB READ-ONLY MODE (MANDATORY):**\n"
+                "- You are STRICTLY limited to SELECT, SHOW, and DESCRIBE queries.\n"
+                "- NEVER attempt INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, or any other write operation.\n"
+                "- If the user asks you to modify data, inform them that DB write access is disabled in General Settings.\n"
+            )
+
+        return system_template + db_context
+    except Exception as e:
+        print(f"DEBUG: Failed to load db context: {e}")
+        return system_template
+
+
 def _inject_repo_context(agent_data, system_template):
     """Inject repo context into system prompt for code agents. Returns updated template."""
     if agent_data.get("type") != "code":
@@ -194,9 +247,10 @@ async def run_agent_step(
     active_agent = _resolve_agent_by_id(agent_id)
     agent_id_for_session = active_agent.get("id", agent_id or "default")
 
-    # Build system prompt with repo injection
+    # Build system prompt with repo and DB context injection
     agent_system_template = active_agent.get("system_prompt", NATIVE_TOOL_SYSTEM_PROMPT)
     agent_system_template = _inject_repo_context(active_agent, agent_system_template)
+    agent_system_template = _inject_db_context(active_agent, agent_system_template)
 
     # Aggregate tools & build system prompt
     custom_tools = load_custom_tools()

@@ -24,6 +24,18 @@ class ChatResponse(BaseModel):
     tool_name: str | None = None
 
 
+class DBConfig(BaseModel):
+    id: str
+    name: str
+    db_type: str  # postgres, mysql, sqlite, mssql
+    connection_string: str
+    description: str = ""
+    schema_info: str = ""  # Cached schema summary (populated via refresh)
+    last_tested: str | None = None
+    status: str = "untested"  # untested | connected | error
+    error_message: str | None = None
+
+
 class Agent(BaseModel):
     id: str
     name: str
@@ -32,6 +44,7 @@ class Agent(BaseModel):
     type: str = "conversational"  # conversational | analysis | workflow | code | orchestrator
     tools: list[str] # ["all"] or ["search_codebase", "get_map_details"]
     repos: list[str] = [] # list of repo IDs for code agents
+    db_configs: list[str] = [] # list of db config IDs for code agents
     system_prompt: str
     orchestration_id: str | None = None  # for orchestrator type agents
     model: str | None = None  # per-agent model override (None = use default)
@@ -79,6 +92,7 @@ class Settings(BaseModel):
     global_config: dict[str, str] = {}
     vault_enabled: bool = True
     vault_threshold: int = 15000
+    allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
 
 
 class PersonalAddress(BaseModel):

@@ -107,6 +107,114 @@ def _search(query: str, repo_ids: list[str], top_k: int = 10) -> list[dict]:
     return all_results[:top_k]
 
 
+def _grep_file(
+    file_path: str,
+    pattern: str,
+    ignore_case: bool = False,
+    fixed: bool = False,
+    context: int = 0,
+    max_matches: int = 1000,
+) -> list[dict]:
+    """Search for a pattern inside a single file (grep-like behavior).
+
+    - `pattern` is treated as a regular expression unless `fixed` is True (literal match).
+    - `ignore_case` enables case-insensitive matching.
+    - `context` returns that many lines before/after each match.
+    """
+    resolved = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
+
+    if not os.path.exists(resolved):
+        return [{"error": f"File not found: {file_path}"}]
+    if not os.path.isfile(resolved):
+        return [{"error": f"Not a file: {file_path}"}]
+
+    # Detect binary files (simple heuristic)
+    try:
+        with open(resolved, "rb") as f:
+            sample = f.read(1024)
+            if b"\x00" in sample:
+                return [{"error": f"Binary file: {file_path}"}]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+    flags = re.MULTILINE
+    if ignore_case:
+        flags |= re.IGNORECASE
+
+    pat = re.escape(pattern) if fixed else pattern
+    try:
+        regex = re.compile(pat, flags)
+    except re.error as e:
+        return [{"error": f"Invalid regular expression: {e}"}]
+
+    try:
+        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except Exception as e:
+        return [{"error": str(e)}]
+
+    results: list[dict] = []
+    for i, line in enumerate(lines):
+        for m in regex.finditer(line):
+            item: dict = {
+                "filename": file_path,
+                "line_number": i + 1,
+                "line": line.rstrip("\n"),
+                "match": m.group(0),
+                "start": m.start(),
+                "end": m.end(),
+            }
+            if context > 0:
+                start_ctx = max(0, i - context)
+                end_ctx = min(len(lines), i + context + 1)
+                item["pre_context"] = [l.rstrip("\n") for l in lines[start_ctx:i]]
+                item["post_context"] = [l.rstrip("\n") for l in lines[i+1:end_ctx]]
+
+            results.append(item)
+            if len(results) >= max_matches:
+                return results
+
+    return results
+
+
+def _glob_files(
+    folder_path: str,
+    pattern: str = "**/*",
+    recursive: bool = True,
+    include_dirs: bool = False,
+    include_hidden: bool = True,
+    max_results: int = 1000,
+) -> list[dict] | list[str]:
+    """List files under `folder_path` matching `pattern` using Python glob rules.
+
+    Returns relative paths from `folder_path`. Uses `glob` and supports `**` for recursion.
+    """
+    resolved = folder_path if os.path.isabs(folder_path) else os.path.join(os.getcwd(), folder_path)
+
+    if not os.path.exists(resolved):
+        return [{"error": f"Folder not found: {folder_path}"}]
+    if not os.path.isdir(resolved):
+        return [{"error": f"Not a directory: {folder_path}"}]
+
+    import glob as _glob
+
+    search_pattern = os.path.join(resolved, pattern)
+    iterator = _glob.iglob(search_pattern, recursive=recursive)
+
+    results: list[str] = []
+    for p in iterator:
+        name = os.path.basename(p)
+        if not include_hidden and name.startswith("."):
+            continue
+        if include_dirs or os.path.isfile(p):
+            results.append(os.path.relpath(p, resolved))
+            if len(results) >= max_results:
+                break
+
+    results.sort()
+    return results
+
+
 @app.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
@@ -137,7 +245,44 @@ async def list_tools() -> list[types.Tool]:
                 },
                 "required": ["query", "repo_ids"]
             },
-        )
+        ),
+        types.Tool(
+            name="grep",
+            description=(
+                "Search inside a single file for a pattern (grep-like). Pattern is a regex by default; "
+                "set `fixed` to true for literal matching. Returns matches with line numbers."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the file to search"},
+                    "pattern": {"type": "string", "description": "Regex or literal pattern to search for"},
+                    "ignore_case": {"type": "boolean", "default": False},
+                    "fixed": {"type": "boolean", "description": "Treat pattern as literal substring (like grep -F)", "default": False},
+                    "context": {"type": "integer", "description": "Number of context lines before/after each match", "default": 0},
+                    "max_matches": {"type": "integer", "default": 1000}
+                },
+                "required": ["file_path", "pattern"]
+            },
+        ),
+        types.Tool(
+            name="glob",
+            description=(
+                "List files under a folder matching a glob pattern. Returns paths relative to the provided folder."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "folder_path": {"type": "string", "description": "Folder to search in"},
+                    "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.py')", "default": "**/*"},
+                    "recursive": {"type": "boolean", "default": True},
+                    "include_dirs": {"type": "boolean", "default": False},
+                    "include_hidden": {"type": "boolean", "default": True},
+                    "max_results": {"type": "integer", "default": 1000}
+                },
+                "required": ["folder_path"]
+            },
+        ),
     ]
 
 
@@ -145,21 +290,49 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(
     name: str, arguments: dict
 ) -> list[types.TextContent]:
-    if name != "search_codebase":
-        return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
-
     try:
-        query = arguments.get("query", "")
-        repo_ids = arguments.get("repo_ids", [])
-        top_k = arguments.get("top_k", 10)
+        if name == "search_codebase":
+            query = arguments.get("query", "")
+            repo_ids = arguments.get("repo_ids", [])
+            top_k = arguments.get("top_k", 10)
 
-        if not query or not repo_ids:
-            return [types.TextContent(type="text", text=json.dumps({"error": "Both 'query' and 'repo_ids' are required."}))]
+            if not query or not repo_ids:
+                return [types.TextContent(type="text", text=json.dumps({"error": "Both 'query' and 'repo_ids' are required."}))]
 
-        results = _search(query, repo_ids, top_k)
-        return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
+            results = _search(query, repo_ids, top_k)
+            return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
+
+        if name == "grep":
+            file_path = arguments.get("file_path")
+            pattern = arguments.get("pattern", "")
+            if not file_path or pattern == "":
+                return [types.TextContent(type="text", text=json.dumps({"error": "Both 'file_path' and 'pattern' are required."}))]
+
+            ignore_case = bool(arguments.get("ignore_case", False))
+            fixed = bool(arguments.get("fixed", False))
+            context = int(arguments.get("context", 0))
+            max_matches = int(arguments.get("max_matches", 1000))
+
+            results = _grep_file(file_path, pattern, ignore_case=ignore_case, fixed=fixed, context=context, max_matches=max_matches)
+            return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
+
+        if name == "glob":
+            folder_path = arguments.get("folder_path")
+            if not folder_path:
+                return [types.TextContent(type="text", text=json.dumps({"error": "'folder_path' is required."}))]
+
+            pattern = arguments.get("pattern", "**/*")
+            recursive = bool(arguments.get("recursive", True))
+            include_dirs = bool(arguments.get("include_dirs", False))
+            include_hidden = bool(arguments.get("include_hidden", True))
+            max_results = int(arguments.get("max_results", 1000))
+
+            results = _glob_files(folder_path, pattern=pattern, recursive=recursive, include_dirs=include_dirs, include_hidden=include_hidden, max_results=max_results)
+            return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
+
+        return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
     except Exception as e:
-        sys.stderr.write(f"ERROR: search_codebase error: {e}\n")
+        sys.stderr.write(f"ERROR: call_tool error: {e}\n")
         return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 

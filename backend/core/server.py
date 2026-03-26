@@ -34,6 +34,7 @@ from core.routes.n8n import router as n8n_router
 from core.routes.data import router as data_router
 from core.routes.chat import router as chat_router
 from core.routes.repos import router as repos_router
+from core.routes.db_configs import router as db_configs_router
 from core.routes.orchestrations import router as orchestrations_router
 from core.routes.logs import router as logs_router
 
@@ -46,7 +47,7 @@ TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
 
-AGENTS = {
+TOOLS_LIST = {
     "time": str(TOOLS_DIR / "time.py"),
     "sql": str(TOOLS_DIR / "sql_agent.py"),
     "maps": str(TOOLS_DIR / "map_details.py"),
@@ -157,7 +158,7 @@ async def lifespan(app: FastAPI):
         print(f"Failed to init cocoindex: {e}")
 
     try:
-        for agent_name, script_path in AGENTS.items():
+        for agent_name, script_path in TOOLS_LIST.items():
             print(f"Connecting to {agent_name} agent at {script_path}...")
             
             # Prepare environment with PYTHONPATH specifically pointing to backend root
@@ -285,6 +286,7 @@ app.include_router(n8n_router)
 app.include_router(data_router)
 app.include_router(chat_router)
 app.include_router(repos_router)
+app.include_router(db_configs_router)
 app.include_router(orchestrations_router)
 app.include_router(logs_router)
 

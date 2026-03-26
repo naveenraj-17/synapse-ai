@@ -7,14 +7,14 @@ export interface SettingsModalProps {
     credentials?: any;
 }
 
-export type Tab = 'general' | 'models' | 'workspace' | 'database' | 'memory' | 'agents' | 'orchestrations' | 'datalab' | 'custom_tools' | 'personal_details' | 'mcp_servers' | 'repos' | 'logs';
+export type Tab = 'general' | 'models' | 'workspace' | 'memory' | 'agents' | 'orchestrations' | 'datalab' | 'custom_tools' | 'personal_details' | 'mcp_servers' | 'repos' | 'db_configs' | 'logs';
 
 // Tools auto-injected by the backend per agent type.
 // Shown as "DEFAULT" in the UI and not editable.
 export const AUTO_TOOLS_BY_TYPE: Record<string, string[]> = {
     all_types: ['query_past_conversations'],
     analysis: ['decide_search_or_analyze', 'search_embedded_report', 'embed_report_for_exploration'],
-    code: ['search_codebase'],
+    code: ['search_codebase', 'grep', 'glob'],
     orchestrator: [],
 };
 

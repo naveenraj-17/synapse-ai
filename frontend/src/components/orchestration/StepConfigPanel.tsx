@@ -409,10 +409,10 @@ function RouteEntry({
     const [localDesc, setLocalDesc] = useState(description);
 
     return (
-        <div className="bg-zinc-900 rounded p-2 space-y-1.5">
-            <div className="flex items-center gap-2">
+        <div className="bg-zinc-900 rounded p-2 space-y-2">
+            <div className="space-y-2">
                 <input
-                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
                     value={localLabel}
                     onChange={(e) => setLocalLabel(e.target.value)}
                     onBlur={() => onRename(localLabel)}
@@ -420,25 +420,32 @@ function RouteEntry({
                     placeholder="Label"
                 />
                 <select
-                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
                     value={targetId ?? '__end__'}
                     onChange={(e) => onChangeTarget(e.target.value === '__end__' ? null : e.target.value)}
                 >
                     <option value="__end__">End Orchestration</option>
                     {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                <button onClick={onDelete} className="text-red-400 hover:text-red-300">
-                    <Trash2 size={12} />
-                </button>
+                <input
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-400 outline-none"
+                    value={localDesc}
+                    onChange={(e) => setLocalDesc(e.target.value)}
+                    onBlur={() => onChangeDescription(localDesc)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onChangeDescription(localDesc); }}
+                    placeholder="When should this route be chosen? (helps LLM decide)"
+                />
+                <div className="text-right">
+                    <button
+                        onClick={onDelete}
+                        className="w-full py-1 text-xs font-semibold text-red-400 bg-red-900/5 border border-red-700 rounded hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                        title="Delete this route"
+                    >
+                        <Trash2 size={12} className="inline-block mr-1" /> Delete Route
+                    </button>
+                </div>
             </div>
-            <input
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-400 outline-none"
-                value={localDesc}
-                onChange={(e) => setLocalDesc(e.target.value)}
-                onBlur={() => onChangeDescription(localDesc)}
-                onKeyDown={(e) => { if (e.key === 'Enter') onChangeDescription(localDesc); }}
-                placeholder="When should this route be chosen? (helps LLM decide)"
-            />
+            
         </div>
     );
 }
