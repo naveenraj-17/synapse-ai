@@ -1,0 +1,444 @@
+'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState } from 'react';
+import { X, Plus, Trash2 } from 'lucide-react';
+import type { StepConfig, StepType } from '@/types/orchestration';
+import { STEP_TYPE_META } from '@/types/orchestration';
+
+interface StepConfigPanelProps {
+    step: StepConfig;
+    agents: any[];
+    allStepIds: { id: string; name: string }[];
+    onUpdate: (step: StepConfig) => void;
+    onDelete: () => void;
+    onClose: () => void;
+    isEntry: boolean;
+    onSetEntry: () => void;
+    availableModels?: string[];
+}
+
+const STEP_TYPES: StepType[] = ['agent', 'evaluator', 'parallel', 'merge', 'loop', 'human', 'transform', 'end'];
+
+export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, onClose, isEntry, onSetEntry, availableModels }: StepConfigPanelProps) {
+    const update = (patch: Partial<StepConfig>) => onUpdate({ ...step, ...patch });
+    const otherSteps = allStepIds.filter((s) => s.id !== step.id);
+
+    const inputCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
+    const inputSmCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none";
+    const textareaCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none resize-y min-h-[80px]";
+    const selectCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
+
+    return (
+        <div className="w-80 bg-zinc-800 border-l border-zinc-700 overflow-y-auto flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700">
+                <h3 className="text-sm font-semibold text-zinc-200">Step Config</h3>
+                <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200"><X size={16} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Name */}
+                <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Name</label>
+                    <input className={inputCls} value={step.name} onChange={(e) => update({ name: e.target.value })} />
+                </div>
+
+                {/* Type */}
+                <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Type</label>
+                    <select className={selectCls} value={step.type} onChange={(e) => update({ type: e.target.value as StepType })}>
+                        {STEP_TYPES.map((t) => (
+                            <option key={t} value={t}>{STEP_TYPE_META[t].label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Entry point */}
+                {!isEntry && (
+                    <button onClick={onSetEntry} className="text-xs text-green-400 hover:text-green-300 underline">
+                        Set as entry point
+                    </button>
+                )}
+                {isEntry && <div className="text-xs text-green-400">This is the entry point</div>}
+
+                {/* ===== AGENT config ===== */}
+                {step.type === 'agent' && (
+                    <>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Agent</label>
+                            <select className={selectCls} value={step.agent_id || ''} onChange={(e) => update({ agent_id: e.target.value || undefined })}>
+                                <option value="">Select agent...</option>
+                                {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
+                            <textarea className={textareaCls} rows={4} value={step.prompt_template || ''} onChange={(e) => update({ prompt_template: e.target.value })} placeholder="Use {state.key} to reference shared state..." />
+                        </div>
+                    </>
+                )}
+
+                {/* ===== EVALUATOR config ===== */}
+                {step.type === 'evaluator' && (
+                    <>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Evaluator Prompt <span className="text-zinc-600 normal-case">(routing decision)</span></label>
+                            <textarea className={textareaCls} rows={3} value={step.evaluator_prompt || ''} onChange={(e) => update({ evaluator_prompt: e.target.value })} placeholder="Instructions for the routing decision (e.g. If login is needed, route to human...)" />
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Model <span className="text-zinc-600 normal-case">(override for evaluator)</span></label>
+                            <select className={selectCls} value={step.model || ''} onChange={(e) => update({ model: e.target.value || undefined })}>
+                                <option value="">(Default)</option>
+                                {(availableModels || []).map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Routes <span className="text-zinc-600 normal-case">(LLM picks one based on context)</span></label>
+                            <div className="space-y-2">
+                                {Object.entries(step.route_map || {}).map(([label, targetId]) => (
+                                    <RouteEntry
+                                        key={label}
+                                        label={label}
+                                        targetId={targetId}
+                                        description={(step.route_descriptions || {})[label] || ''}
+                                        otherSteps={otherSteps}
+                                        onRename={(newLabel) => {
+                                            if (newLabel === label || !newLabel.trim()) return;
+                                            const entries = Object.entries(step.route_map || {});
+                                            const newMap: Record<string, string | null> = {};
+                                            for (const [k, v] of entries) {
+                                                newMap[k === label ? newLabel : k] = v;
+                                            }
+                                            // Also rename in route_descriptions
+                                            const descEntries = Object.entries(step.route_descriptions || {});
+                                            const newDescs: Record<string, string> = {};
+                                            for (const [k, v] of descEntries) {
+                                                newDescs[k === label ? newLabel : k] = v;
+                                            }
+                                            update({ route_map: newMap, route_descriptions: newDescs });
+                                        }}
+                                        onChangeTarget={(val) => {
+                                            update({ route_map: { ...(step.route_map || {}), [label]: val } });
+                                        }}
+                                        onChangeDescription={(desc) => {
+                                            update({ route_descriptions: { ...(step.route_descriptions || {}), [label]: desc } });
+                                        }}
+                                        onDelete={() => {
+                                            const newMap = { ...(step.route_map || {}) };
+                                            delete newMap[label];
+                                            const newDescs = { ...(step.route_descriptions || {}) };
+                                            delete newDescs[label];
+                                            update({ route_map: newMap, route_descriptions: newDescs });
+                                        }}
+                                    />
+                                ))}
+                                <button
+                                    onClick={() => {
+                                        const existing = Object.keys(step.route_map || {});
+                                        const newLabel = `route_${existing.length + 1}`;
+                                        update({ route_map: { ...(step.route_map || {}), [newLabel]: null } });
+                                    }}
+                                    className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                                >
+                                    <Plus size={12} /> Add Route
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* ===== PARALLEL config ===== */}
+                {step.type === 'parallel' && (
+                    <div>
+                        <label className="text-xs text-zinc-400 block mb-1">Branches (pick entry step per branch)</label>
+                        <div className="space-y-2">
+                            {(step.parallel_branches || []).map((branch, branchIdx) => (
+                                <div key={branchIdx} className="flex items-center gap-2">
+                                    <span className="text-[10px] text-purple-400 font-semibold w-5">B{branchIdx + 1}</span>
+                                    <select
+                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                                        value={branch[0] || ''}
+                                        onChange={(e) => {
+                                            const newBranches = [...(step.parallel_branches || [])];
+                                            newBranches[branchIdx] = e.target.value ? [e.target.value] : [];
+                                            update({ parallel_branches: newBranches });
+                                        }}
+                                    >
+                                        <option value="">Select entry step...</option>
+                                        {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                    <button
+                                        onClick={() => {
+                                            const newBranches = (step.parallel_branches || []).filter((_, i) => i !== branchIdx);
+                                            update({ parallel_branches: newBranches });
+                                        }}
+                                        className="text-red-400 hover:text-red-300"
+                                    >
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => update({ parallel_branches: [...(step.parallel_branches || []), []] })}
+                                className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
+                            >
+                                <Plus size={12} /> Add Branch
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-zinc-500 mt-1">Each branch auto-follows the entry step&apos;s Next Step chain. Connect steps with edges on the canvas.</p>
+                    </div>
+                )}
+
+                {/* ===== MERGE config ===== */}
+                {step.type === 'merge' && (
+                    <>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Merge Strategy</label>
+                            <select className={selectCls} value={step.merge_strategy || 'list'} onChange={(e) => update({ merge_strategy: e.target.value as any })}>
+                                <option value="list">List (array of sources)</option>
+                                <option value="concat">Concat (text join)</option>
+                                <option value="dict">Dict (keyed by source)</option>
+                            </select>
+                        </div>
+                    </>
+                )}
+
+                {/* ===== LOOP config ===== */}
+                {step.type === 'loop' && (
+                    <>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Loop Count</label>
+                            <input
+                                type="number"
+                                className={inputCls}
+                                value={step.loop_count ?? 3}
+                                onChange={(e) => update({ loop_count: parseInt(e.target.value) || 3 })}
+                                min={1}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Body Steps (executed in order each iteration)</label>
+                            <div className="space-y-1">
+                                {(step.loop_step_ids || []).map((sid, idx) => (
+                                    <div key={idx} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-amber-400 w-4">{idx + 1}.</span>
+                                        <select
+                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-200 outline-none"
+                                            value={sid}
+                                            onChange={(e) => {
+                                                const newIds = [...(step.loop_step_ids || [])];
+                                                newIds[idx] = e.target.value;
+                                                update({ loop_step_ids: newIds });
+                                            }}
+                                        >
+                                            <option value="">Select step...</option>
+                                            {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                        <button
+                                            onClick={() => {
+                                                const newIds = (step.loop_step_ids || []).filter((_, i) => i !== idx);
+                                                update({ loop_step_ids: newIds });
+                                            }}
+                                            className="text-red-400 hover:text-red-300"
+                                        >
+                                            <Trash2 size={10} />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => update({ loop_step_ids: [...(step.loop_step_ids || []), ''] })}
+                                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                                >
+                                    <Plus size={12} /> Add Body Step
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-zinc-500 mt-1">The &quot;done&quot; path is configured via the green output handle or Next Step below.</p>
+                        </div>
+                    </>
+                )}
+
+                {/* ===== HUMAN config ===== */}
+                {step.type === 'human' && (
+                    <div>
+                        <label className="text-xs text-zinc-400 block mb-1">Prompt for Human</label>
+                        <textarea
+                            className={textareaCls}
+                            rows={3}
+                            value={step.human_prompt || ''}
+                            onChange={(e) => update({ human_prompt: e.target.value })}
+                            placeholder="What should the user decide?"
+                        />
+                    </div>
+                )}
+
+                {/* ===== TRANSFORM config ===== */}
+                {step.type === 'transform' && (
+                    <div>
+                        <label className="text-xs text-zinc-400 block mb-1">Python Code</label>
+                        <textarea
+                            className={textareaCls}
+                            rows={6}
+                            value={step.transform_code || ''}
+                            onChange={(e) => update({ transform_code: e.target.value })}
+                            placeholder="# state dict is available&#10;result = state['a'] + state['b']"
+                        />
+                    </div>
+                )}
+
+                {/* ===== END config ===== */}
+                {step.type === 'end' && (
+                    <div className="text-xs text-zinc-500">This node terminates the orchestration. No configuration needed.</div>
+                )}
+
+                <hr className="border-zinc-700" />
+
+                {/* I/O mapping — not for end nodes */}
+                {step.type !== 'end' && (
+                    <>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Input Keys (comma-separated)</label>
+                            <input
+                                className={inputSmCls}
+                                value={(step.input_keys || []).join(', ')}
+                                onChange={(e) => update({ input_keys: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                                placeholder="portfolio_status, news_data"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Output Key</label>
+                            <input
+                                className={inputSmCls}
+                                value={step.output_key || ''}
+                                onChange={(e) => update({ output_key: e.target.value || undefined })}
+                                placeholder="analysis_result"
+                            />
+                        </div>
+                    </>
+                )}
+
+                {/* Next step — only for types that use linear routing (not evaluator with routes, not end, not loop via done handle) */}
+                {step.type !== 'end' && step.type !== 'evaluator' && step.type !== 'loop' && (
+                    <div>
+                        <label className="text-xs text-zinc-400 block mb-1">Next Step</label>
+                        <select className={selectCls} value={step.next_step_id || ''} onChange={(e) => update({ next_step_id: e.target.value || undefined })}>
+                            <option value="">None (end)</option>
+                            {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                    </div>
+                )}
+
+                {/* Loop "done" path shown as Next Step */}
+                {step.type === 'loop' && (
+                    <div>
+                        <label className="text-xs text-zinc-400 block mb-1">Done Path (after all iterations)</label>
+                        <select className={selectCls} value={step.next_step_id || ''} onChange={(e) => update({ next_step_id: e.target.value || undefined })}>
+                            <option value="">None (end)</option>
+                            {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                    </div>
+                )}
+
+                <hr className="border-zinc-700" />
+
+                {/* Guardrails — not for end nodes */}
+                {step.type !== 'end' && (
+                    <>
+                        <div className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Guardrails</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-xs text-zinc-400 block mb-1">Max Turns</label>
+                                <input
+                                    type="number"
+                                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                    value={step.max_turns ?? 15}
+                                    onChange={(e) => update({ max_turns: parseInt(e.target.value) || 15 })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-zinc-400 block mb-1">Timeout (s)</label>
+                                <input
+                                    type="number"
+                                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                    value={step.timeout_seconds ?? 300}
+                                    onChange={(e) => update({ timeout_seconds: parseInt(e.target.value) || 300 })}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Max Iterations (loop guard)</label>
+                            <input
+                                type="number"
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                value={step.max_iterations ?? 3}
+                                onChange={(e) => update({ max_iterations: parseInt(e.target.value) || 3 })}
+                            />
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-zinc-700 p-3">
+                <button
+                    onClick={onDelete}
+                    className="w-full py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                >
+                    Delete Step
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/** Route label editor — uses local state so typing doesn't cause focus loss. */
+function RouteEntry({
+    label, targetId, description, otherSteps, onRename, onChangeTarget, onChangeDescription, onDelete,
+}: {
+    label: string;
+    targetId: string | null;
+    description: string;
+    otherSteps: { id: string; name: string }[];
+    onRename: (newLabel: string) => void;
+    onChangeTarget: (val: string | null) => void;
+    onChangeDescription: (desc: string) => void;
+    onDelete: () => void;
+}) {
+    const [localLabel, setLocalLabel] = useState(label);
+    const [localDesc, setLocalDesc] = useState(description);
+
+    return (
+        <div className="bg-zinc-900 rounded p-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+                <input
+                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    value={localLabel}
+                    onChange={(e) => setLocalLabel(e.target.value)}
+                    onBlur={() => onRename(localLabel)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onRename(localLabel); }}
+                    placeholder="Label"
+                />
+                <select
+                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    value={targetId ?? '__end__'}
+                    onChange={(e) => onChangeTarget(e.target.value === '__end__' ? null : e.target.value)}
+                >
+                    <option value="__end__">End Orchestration</option>
+                    {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <button onClick={onDelete} className="text-red-400 hover:text-red-300">
+                    <Trash2 size={12} />
+                </button>
+            </div>
+            <input
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-400 outline-none"
+                value={localDesc}
+                onChange={(e) => setLocalDesc(e.target.value)}
+                onBlur={() => onChangeDescription(localDesc)}
+                onKeyDown={(e) => { if (e.key === 'Enter') onChangeDescription(localDesc); }}
+                placeholder="When should this route be chosen? (helps LLM decide)"
+            />
+        </div>
+    );
+}

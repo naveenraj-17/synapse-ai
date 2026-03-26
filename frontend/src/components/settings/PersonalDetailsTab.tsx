@@ -1,0 +1,146 @@
+import { Shield } from 'lucide-react';
+
+interface PersonalDetailsTabProps {
+    pdFirstName: string; setPdFirstName: (v: string) => void;
+    pdLastName: string; setPdLastName: (v: string) => void;
+    pdEmail: string; setPdEmail: (v: string) => void;
+    pdPhone: string; setPdPhone: (v: string) => void;
+    pdAddress1: string; setPdAddress1: (v: string) => void;
+    pdAddress2: string; setPdAddress2: (v: string) => void;
+    pdCity: string; setPdCity: (v: string) => void;
+    pdState: string; setPdState: (v: string) => void;
+    pdZipcode: string; setPdZipcode: (v: string) => void;
+    onSave: () => void;
+}
+
+export const PersonalDetailsTab = ({
+    pdFirstName, setPdFirstName, pdLastName, setPdLastName,
+    pdEmail, setPdEmail, pdPhone, setPdPhone,
+    pdAddress1, setPdAddress1, pdAddress2, setPdAddress2,
+    pdCity, setPdCity, pdState, setPdState,
+    pdZipcode, setPdZipcode, onSave
+}: PersonalDetailsTabProps) => (
+    <div className="space-y-8">
+        <div className="mb-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Personal Details
+            </h3>
+            <p className="text-zinc-500 text-sm mt-1">
+                Saved details the agent can use when completing workflows.
+            </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">First Name</label>
+                <input
+                    type="text"
+                    value={pdFirstName}
+                    onChange={(e) => setPdFirstName(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                    placeholder="First name"
+                />
+            </div>
+            <div className="space-y-2">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Last Name</label>
+                <input
+                    type="text"
+                    value={pdLastName}
+                    onChange={(e) => setPdLastName(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                    placeholder="Last name"
+                />
+            </div>
+            <div className="space-y-2">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Email</label>
+                <input
+                    type="email"
+                    value={pdEmail}
+                    onChange={(e) => setPdEmail(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                    placeholder="name@company.com"
+                />
+            </div>
+            <div className="space-y-2">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Phone Number</label>
+                <input
+                    type="tel"
+                    value={pdPhone}
+                    onChange={(e) => setPdPhone(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                    placeholder="+1 555 555 5555"
+                />
+            </div>
+        </div>
+
+        <div className="border border-zinc-800 bg-zinc-900/20 p-6 space-y-6">
+            <div>
+                <div className="text-sm font-bold text-white">Address</div>
+                <div className="text-xs text-zinc-500">Used when a workflow needs a billing or mailing address.</div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Address 1</label>
+                    <input
+                        type="text"
+                        value={pdAddress1}
+                        onChange={(e) => setPdAddress1(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        placeholder="Street address"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Address 2</label>
+                    <input
+                        type="text"
+                        value={pdAddress2}
+                        onChange={(e) => setPdAddress2(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        placeholder="Apt, suite, unit"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">City</label>
+                    <input
+                        type="text"
+                        value={pdCity}
+                        onChange={(e) => setPdCity(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        placeholder="City"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">State</label>
+                    <input
+                        type="text"
+                        value={pdState}
+                        onChange={(e) => setPdState(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        placeholder="State"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Zipcode</label>
+                    <input
+                        type="text"
+                        value={pdZipcode}
+                        onChange={(e) => setPdZipcode(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                        placeholder="Zipcode"
+                    />
+                </div>
+            </div>
+        </div>
+
+        <div className="pt-2 flex justify-end">
+            <button
+                onClick={onSave}
+                className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+            >
+                Save Changes
+            </button>
+        </div>
+    </div>
+);

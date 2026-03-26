@@ -1,0 +1,46 @@
+import os
+import json
+from pathlib import Path
+
+DATA_DIR = str(Path(os.getenv("SYNAPSE_DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))))
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
+TOKEN_FILE = os.path.join(DATA_DIR, "token.json")
+
+def load_settings():
+    default_settings = {
+        "agent_name": "System Agent", 
+        "model": "mistral",
+        "mode": "local",
+        "openai_key": "",
+        "anthropic_key": "",
+        "gemini_key": "",
+        "google_maps_api_key": "",
+        "bedrock_api_key": "",
+        "bedrock_inference_profile": "",
+        "embedding_model": "",
+        "aws_access_key_id": "",
+        "aws_secret_access_key": "",
+        "aws_session_token": "",
+        "aws_region": "us-east-1",
+        "sql_connection_string": "",
+        "n8n_url": "http://localhost:5678",
+        "n8n_api_key": "",
+        "vault_enabled": True,
+        "vault_threshold": 15000,
+    }
+    
+    if not os.path.exists(SETTINGS_FILE):
+        return default_settings
+    
+    try:
+        with open(SETTINGS_FILE, 'r') as f:
+            data = json.load(f)
+            # Merge defaults
+            return {**default_settings, **data}
+    except Exception as e:
+        print(f"DEBUG: Error loading settings: {e}")
+        return default_settings

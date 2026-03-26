@@ -1,0 +1,265 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Check, X as XIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState } from 'react';
+
+type BrandIconProps = { className?: string; style?: React.CSSProperties };
+
+const OllamaIcon = ({ className }: BrandIconProps) => (
+    <img src="/ollama-icon.svg" className={`${className} dark:invert`} alt="Ollama" />
+);
+
+const GeminiIcon = ({ className }: BrandIconProps) => (
+    <img src="/google-gemini-icon.svg" className={className} alt="Google Gemini" />
+);
+
+const AnthropicIcon = ({ className }: BrandIconProps) => (
+    <img src="/claude-ai-icon.svg" className={className} alt="Anthropic Claude" />
+);
+
+const OpenAIIcon = ({ className }: BrandIconProps) => (
+    <img src="/chatgpt-icon.svg" className={className} alt="OpenAI" />
+);
+
+const AWSIcon = ({ className }: BrandIconProps) => (
+    <img src="/aws-bedrock-icon.svg" className={className} alt="AWS Bedrock" />
+);
+
+interface ProviderInfo {
+    available: boolean;
+    models: string[];
+}
+
+interface ModelsTabProps {
+    providers: Record<string, ProviderInfo>;
+    selectedModel: string; setSelectedModel: (v: string) => void;
+    openaiKey: string; setOpenaiKey: (v: string) => void;
+    anthropicKey: string; setAnthropicKey: (v: string) => void;
+    geminiKey: string; setGeminiKey: (v: string) => void;
+    bedrockApiKey: string; setBedrockApiKey: (v: string) => void;
+    awsRegion: string; setAwsRegion: (v: string) => void;
+    bedrockInferenceProfile: string; setBedrockInferenceProfile: (v: string) => void;
+    bedrockInferenceProfiles: any[];
+    loadingInferenceProfiles: boolean;
+    loadingModels: boolean;
+    onSave: () => void;
+    // Backward compat
+    mode: string; setMode: (v: string) => void;
+    localModels: string[]; cloudModels: string[];
+    filteredModels: string[];
+}
+
+const PROVIDER_META: Record<string, { label: string; icon: React.FC<BrandIconProps>; color: string; description: string; keyPlaceholder?: string }> = {
+    ollama: { label: 'Ollama (Local)', icon: OllamaIcon, color: '#22c55e', description: 'Runs locally on your machine. Private, free, no API key needed.' },
+    gemini: { label: 'Google Gemini', icon: GeminiIcon, color: '#4285f4', description: 'Google AI models. Fast and capable.', keyPlaceholder: 'AIza...' },
+    anthropic: { label: 'Anthropic Claude', icon: AnthropicIcon, color: '#d97706', description: 'Advanced reasoning and analysis.', keyPlaceholder: 'sk-ant-...' },
+    openai: { label: 'OpenAI', icon: OpenAIIcon, color: '#10b981', description: 'GPT-4o and latest OpenAI models.', keyPlaceholder: 'sk-...' },
+    bedrock: { label: 'AWS Bedrock', icon: AWSIcon, color: '#f59e0b', description: 'Enterprise-grade models via AWS.', keyPlaceholder: 'ABSK...' },
+};
+
+export const ModelsTab = ({
+    providers, selectedModel, setSelectedModel,
+    openaiKey, setOpenaiKey, anthropicKey, setAnthropicKey,
+    geminiKey, setGeminiKey, bedrockApiKey, setBedrockApiKey,
+    awsRegion, setAwsRegion, bedrockInferenceProfile, setBedrockInferenceProfile,
+    bedrockInferenceProfiles, loadingInferenceProfiles, loadingModels,
+    onSave, mode, setMode, localModels, cloudModels, filteredModels
+}: ModelsTabProps) => {
+    const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+
+    // Build all available models list for default selector
+    const allAvailable: string[] = [];
+    Object.entries(providers).forEach(([, info]) => {
+        if (info.available) allAvailable.push(...info.models);
+    });
+
+    const getKeyValue = (provider: string) => {
+        switch (provider) {
+            case 'openai': return openaiKey;
+            case 'anthropic': return anthropicKey;
+            case 'gemini': return geminiKey;
+            case 'bedrock': return bedrockApiKey;
+            default: return '';
+        }
+    };
+
+    const setKeyValue = (provider: string, value: string) => {
+        switch (provider) {
+            case 'openai': setOpenaiKey(value); break;
+            case 'anthropic': setAnthropicKey(value); break;
+            case 'gemini': setGeminiKey(value); break;
+            case 'bedrock': setBedrockApiKey(value); break;
+        }
+    };
+
+    return (
+        <div className="space-y-8">
+            {/* Provider Cards */}
+            <div className="space-y-4">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Providers</label>
+                <div className="space-y-3">
+                    {Object.entries(PROVIDER_META).map(([key, meta]) => {
+                        const providerData = providers[key] || { available: false, models: [] };
+                        const isExpanded = expandedProvider === key;
+                        const Icon = meta.icon;
+                        const modelCount = providerData.models.length;
+
+                        return (
+                            <div key={key} className={`border transition-all duration-200 ${providerData.available
+                                ? 'border-zinc-700 bg-zinc-900/50'
+                                : 'border-zinc-800/50 bg-zinc-950'
+                                }`}>
+                                {/* Card Header */}
+                                <button
+                                    onClick={() => setExpandedProvider(isExpanded ? null : key)}
+                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-900/30 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`h-2 w-2 rounded-full ${providerData.available ? 'bg-green-500 shadow-[0_0_6px_#22c55e]' : 'bg-zinc-600'}`} />
+                                        <Icon className={`h-4 w-4 ${!providerData.available ? 'opacity-40 grayscale' : ''}`} style={{ color: providerData.available ? meta.color : '#71717a' }} />
+                                        <div>
+                                            <span className={`text-sm font-bold ${providerData.available ? 'text-white' : 'text-zinc-500'}`}>
+                                                {meta.label}
+                                            </span>
+                                            <span className="text-[10px] text-zinc-500 ml-2">
+                                                {providerData.available
+                                                    ? `${modelCount} model${modelCount !== 1 ? 's' : ''}`
+                                                    : key === 'ollama' ? 'Not running' : 'No key configured'
+                                                }
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {providerData.available
+                                            ? <Check className="h-4 w-4 text-green-500" />
+                                            : <XIcon className="h-3 w-3 text-zinc-600" />
+                                        }
+                                        {isExpanded ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
+                                    </div>
+                                </button>
+
+                                {/* Expanded Content */}
+                                {isExpanded && (
+                                    <div className="px-4 pb-4 space-y-3 border-t border-zinc-800/50 pt-3">
+                                        <p className="text-[10px] text-zinc-500">{meta.description}</p>
+
+                                        {/* API Key input (not for Ollama) */}
+                                        {key !== 'ollama' && key !== 'bedrock' && (
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
+                                                <input
+                                                    type="password"
+                                                    value={getKeyValue(key)}
+                                                    onChange={e => setKeyValue(key, e.target.value)}
+                                                    className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors"
+                                                    placeholder={meta.keyPlaceholder}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Bedrock-specific fields */}
+                                        {key === 'bedrock' && (
+                                            <div className="space-y-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
+                                                    <input type="password" value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK..." />
+                                                    <p className="text-[10px] text-zinc-600">Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">AWS Region</label>
+                                                    <input type="text" value={awsRegion} onChange={e => setAwsRegion(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="us-east-1" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Inference Profile (Optional)</label>
+                                                    <select
+                                                        value={bedrockInferenceProfile}
+                                                        onChange={(e) => setBedrockInferenceProfile(e.target.value)}
+                                                        className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-xs focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
+                                                    >
+                                                        <option value="">None (on-demand)</option>
+                                                        {loadingInferenceProfiles ? (
+                                                            <option value="" disabled>Loading...</option>
+                                                        ) : (
+                                                            bedrockInferenceProfiles.map((p) => {
+                                                                const value = (p.arn || p.id || '').toString();
+                                                                const label = (p.name || p.arn || p.id || '').toString();
+                                                                if (!value) return null;
+                                                                return <option key={value} value={value}>{label}</option>;
+                                                            })
+                                                        )}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Ollama info */}
+                                        {key === 'ollama' && (
+                                            <div className="text-[10px] text-zinc-500">
+                                                {providerData.available
+                                                    ? `Detected ${modelCount} local model${modelCount !== 1 ? 's' : ''}: ${providerData.models.slice(0, 5).join(', ')}${modelCount > 5 ? '...' : ''}`
+                                                    : 'Ollama is not running. Start it to use local models.'
+                                                }
+                                            </div>
+                                        )}
+
+                                        {/* Available models list */}
+                                        {providerData.available && providerData.models.length > 0 && key !== 'ollama' && (
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] uppercase font-bold text-zinc-600">Available Models</label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {providerData.models.map(m => (
+                                                        <span key={m} className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700/50 rounded-sm">{m}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Default Model Selector */}
+            <div className="space-y-2">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Default Model</label>
+                <p className="text-[10px] text-zinc-600 -mt-1">Used for system prompt generation and agents without a specific model assigned.</p>
+                <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
+                >
+                    {loadingModels ? (
+                        <option>Loading models...</option>
+                    ) : (
+                        <>
+                            <option value="" disabled>Select default model...</option>
+                            {Object.entries(providers).map(([providerKey, info]) => {
+                                if (!info.available || info.models.length === 0) return null;
+                                const label = PROVIDER_META[providerKey]?.label || providerKey;
+                                return (
+                                    <optgroup key={providerKey} label={label}>
+                                        {info.models.map((m: string) => (
+                                            <option key={m} value={m}>{m}</option>
+                                        ))}
+                                    </optgroup>
+                                );
+                            })}
+                        </>
+                    )}
+                </select>
+            </div>
+
+            <div className="pt-4 flex justify-end">
+                <button
+                    onClick={onSave}
+                    className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                >
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    );
+};

@@ -1,0 +1,293 @@
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+from typing import Any, Optional
+from contextlib import asynccontextmanager, AsyncExitStack
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from datetime import timedelta
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+# Default timeout for all MCP session requests — prevents any call from hanging
+# forever.  Per-request read_timeout_seconds overrides this when supplied.
+_SESSION_READ_TIMEOUT = timedelta(seconds=60)
+
+try:
+    from core.memory import MemoryStore
+except ImportError:
+    print("Warning: MemoryStore dependencies not found. Memory disabled.")
+    MemoryStore = None
+
+from core.mcp_client import MCPClientManager
+from core.config import load_settings
+from core.routes.settings import _init_memory_store
+
+# Route routers
+from core.routes.auth import router as auth_router
+from core.routes.settings import router as settings_router
+from core.routes.agents import router as agents_router
+from core.routes.tools import router as tools_router
+from core.routes.n8n import router as n8n_router
+from core.routes.data import router as data_router
+from core.routes.chat import router as chat_router
+from core.routes.repos import router as repos_router
+from core.routes.orchestrations import router as orchestrations_router
+from core.routes.logs import router as logs_router
+
+# Configuration
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+OLLAMA_MODEL = "llama3"
+
+# Agent Configuration
+TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
+
+AGENTS = {
+    "time": str(TOOLS_DIR / "time.py"),
+    "sql": str(TOOLS_DIR / "sql_agent.py"),
+    "maps": str(TOOLS_DIR / "map_details.py"),
+    "personal_details": str(TOOLS_DIR / "personal_details.py"),
+    "collect_data": str(TOOLS_DIR / "collect_data.py"),
+    "pdf_parser": str(TOOLS_DIR / "pdf_parser.py"),
+    "xlsx_parser": str(TOOLS_DIR / "xlsx_parser.py"),
+    "code_search": str(TOOLS_DIR / "code_search.py"),
+    "sandbox": str(TOOLS_DIR / "sandbox.py"),
+}
+
+REPOS_FILE = DATA_DIR / "repos.json"
+
+def _get_repo_paths() -> list[str]:
+    """Load repo paths from repos.json for filesystem MCP server permissions."""
+    if not REPOS_FILE.exists():
+        return []
+    try:
+        repos = json.loads(REPOS_FILE.read_text())
+        return [r["path"] for r in repos if r.get("path") and os.path.isdir(r["path"])]
+    except Exception as e:
+        print(f"Warning: Could not load repo paths: {e}")
+        return []
+
+
+def _get_google_oauth_env() -> dict[str, str]:
+    """Extract OAuth client_id and client_secret from credentials.json for workspace-mcp."""
+    creds_file = DATA_DIR / "credentials.json"
+    if not creds_file.exists():
+        return {}
+    try:
+        creds = json.loads(creds_file.read_text())
+        installed = creds.get("installed", creds.get("web", {}))
+        client_id = installed.get("client_id", "")
+        client_secret = installed.get("client_secret", "")
+        if client_id and client_secret:
+            return {
+                "GOOGLE_OAUTH_CLIENT_ID": client_id,
+                "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
+            }
+    except Exception as e:
+        print(f"Warning: Could not read Google OAuth credentials: {e}")
+    return {}
+
+
+def _build_native_mcp_servers() -> list[dict]:
+    """
+    Build the list of native MCP servers to connect at startup.
+    Returns a list of dicts with keys: name, command, args, env (optional).
+    """
+    servers = []
+
+    # --- Filesystem MCP Server ---
+    repo_paths = _get_repo_paths()
+    if repo_paths:
+        servers.append({
+            "name": "filesystem",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem"] + repo_paths,
+        })
+    else:
+        print("Warning: No repos configured — skipping filesystem MCP server.")
+
+    # --- Playwright MCP Server (browser automation) ---
+    servers.append({
+        "name": "playwright",
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
+        "env": {"PLAYWRIGHT_BROWSERS_PATH": os.path.expanduser("~/.cache/ms-playwright")},
+    })
+
+    # --- Google Workspace MCP Server (Gmail, Drive, Calendar) ---
+    google_env = _get_google_oauth_env()
+    if google_env:
+        servers.append({
+            "name": "google_workspace",
+            "command": "uvx",
+            "args": ["workspace-mcp", "--tools", "gmail", "drive", "calendar"],
+            "env": google_env,
+        })
+    else:
+        print("Warning: No Google OAuth credentials found — skipping Google Workspace MCP server.")
+
+    return servers
+
+
+# ---------------------------------------------------------------------------
+# Module-level mutable state.
+# Accessed by routes via `import core.server as _server; _server.agent_sessions`.
+# The react_engine receives this module as a parameter for testability.
+# ---------------------------------------------------------------------------
+agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
+tool_router: dict[str, str] = {}                 # tool_name -> client_name
+exit_stack: Optional[AsyncExitStack] = None
+memory_store: Any = None
+mcp_manager: Optional[MCPClientManager] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global exit_stack
+    print("Starting Multi-Agent Orchestrator...")
+    exit_stack = AsyncExitStack()
+    
+    try:
+        from services.code_indexer import init_cocoindex
+        init_cocoindex()
+    except Exception as e:
+        print(f"Failed to init cocoindex: {e}")
+
+    try:
+        for agent_name, script_path in AGENTS.items():
+            print(f"Connecting to {agent_name} agent at {script_path}...")
+            
+            # Prepare environment with PYTHONPATH specifically pointing to backend root
+            # This is crucial so agents can assume 'services' and 'core' are importable
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(BACKEND_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+
+            server_params = StdioServerParameters(
+                command=sys.executable,
+                args=[script_path],
+                env=env
+            )
+            
+            read, write = await exit_stack.enter_async_context(stdio_client(server_params))
+            session = await exit_stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+            
+            agent_sessions[agent_name] = session
+            
+            # Register tools
+            tools = await session.list_tools()
+            for tool in tools.tools:
+                tool_router[tool.name] = agent_name
+                print(f"  Registered tool: {tool.name} -> {agent_name}")
+
+        # --- Initialize Native MCP Servers ---
+        for mcp_cfg in _build_native_mcp_servers():
+            mcp_name = mcp_cfg["name"]
+            cmd = mcp_cfg["command"]
+
+            # Check that the command binary is available
+            if not shutil.which(cmd):
+                print(f"Warning: '{cmd}' not found — skipping native MCP server '{mcp_name}'.")
+                continue
+
+            print(f"Connecting native MCP server '{mcp_name}'...")
+            try:
+                env = os.environ.copy()
+                # Merge any extra env vars from the config (e.g. OAuth credentials)
+                env.update(mcp_cfg.get("env", {}))
+
+                server_params = StdioServerParameters(
+                    command=cmd,
+                    args=mcp_cfg["args"],
+                    env=env,
+                )
+                read, write = await exit_stack.enter_async_context(stdio_client(server_params))
+                session = await exit_stack.enter_async_context(
+                    ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
+                )
+                await session.initialize()
+
+                agent_sessions[mcp_name] = session
+
+                tools = await session.list_tools()
+                for tool in tools.tools:
+                    tool_router[tool.name] = mcp_name
+                    print(f"  Registered tool: {tool.name} -> {mcp_name}")
+            except Exception as e:
+                print(f"  Failed to connect native MCP server '{mcp_name}': {e}")
+
+        # --- Initialize External MCP Servers ---
+        global mcp_manager
+        mcp_manager = MCPClientManager(exit_stack)
+        print("Connecting to external MCP servers...")
+        external_sessions = await mcp_manager.connect_all()
+        
+        for name, session in external_sessions.items():
+            # Prefix to avoid collision with internal agents
+            agent_key = f"ext_mcp_{name}"
+            agent_sessions[agent_key] = session
+            print(f"Connected external MCP server: {name}")
+            
+            try:
+                tools = await session.list_tools()
+                print(f"  MCP Server '{name}' returned {len(tools.tools)} tools.")
+                for tool in tools.tools:
+                    tool_router[tool.name] = agent_key
+                    print(f"  Registered external tool: {tool.name} -> {agent_key}")
+            except Exception as e:
+                print(f"  Error listing tools for {name}: {e}")
+                import traceback
+                traceback.print_exc()
+                
+        # Initialize Memory Store
+        if MemoryStore:
+            print("Initializing Memory Store...")
+            global memory_store
+            memory_store = _init_memory_store(load_settings())
+        
+        print("All agents connected.")
+
+        # Expose server module on app.state for orchestration routes
+        import core.server as _self_module
+        app.state.server_module = _self_module
+
+        yield
+        
+    except Exception as e:
+        print(f"Error starting agents: {e}")
+        yield
+    finally:
+        print("Shutting down agents...")
+        if exit_stack:
+            await exit_stack.aclose()
+
+app = FastAPI(lifespan=lifespan)
+
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Include Route Routers ---
+app.include_router(auth_router)
+app.include_router(settings_router)
+app.include_router(agents_router)
+app.include_router(tools_router)
+app.include_router(n8n_router)
+app.include_router(data_router)
+app.include_router(chat_router)
+app.include_router(repos_router)
+app.include_router(orchestrations_router)
+app.include_router(logs_router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

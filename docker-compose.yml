@@ -1,0 +1,52 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: synapse-backend
+    env_file:
+      - .env
+    environment:
+      - SYNAPSE_DATA_DIR=/data
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host-gateway:11434}
+      - CORS_ORIGINS=http://localhost:3000
+    volumes:
+      - synapse-data:/data
+      - ./backend/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host-gateway:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        BACKEND_URL: http://synapse-backend:8000
+    container_name: synapse-frontend
+    env_file:
+      - .env
+    environment:
+      - BACKEND_URL=http://synapse-backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  synapse-data:
+    driver: local
+
+networks:
+  default:
+    name: synapse-network

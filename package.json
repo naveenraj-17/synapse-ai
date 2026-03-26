@@ -1,0 +1,34 @@
+{
+  "name": "synapse-ai",
+  "version": "0.1.0",
+  "description": "Synapse - A Multi Agent Orchestrator",
+  "keywords": ["ai", "agent", "mcp", "llm", "orchestrator", "local", "ollama"],
+  "homepage": "https://github.com/naveenraj-17/synapse",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naveenraj-17/synapse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/naveenraj-17/synapse/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "synapse": "./bin/synapse.js"
+  },
+  "files": [
+    "bin/",
+    "frontend-build/",
+    "backend/core/",
+    "backend/services/",
+    "backend/tools/",
+    "backend/main.py",
+    "backend/requirements.txt"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/bundle-frontend.js",
+    "prepublishOnly": "npm run build"
+  }
+}

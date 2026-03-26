@@ -1,0 +1,61 @@
+[
+    {
+        "name": "GitHub",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-github"
+        ],
+        "env": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_pat_here"
+        }
+    },
+    {
+        "name": "Slack",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-slack"
+        ],
+        "env": {
+            "SLACK_BOT_TOKEN": "xoxb-your-bot-token-here",
+            "SLACK_TEAM_ID": "T0XXXXXXXXX"
+        }
+    },
+    {
+        "name": "PostgreSQL",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-postgres",
+            "postgresql://username:password@localhost:5432/your_database"
+        ],
+        "env": {}
+    },
+    {
+        "name": "Notion",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-notion"
+        ],
+        "env": {
+            "NOTION_API_TOKEN": "secret_your_notion_integration_token"
+        }
+    },
+    {
+        "name": "Jira & Confluence",
+        "command": "uvx",
+        "args": [
+            "mcp-atlassian"
+        ],
+        "env": {
+            "JIRA_URL": "https://your-org.atlassian.net",
+            "JIRA_USERNAME": "your-email@company.com",
+            "JIRA_API_TOKEN": "your_jira_api_token_here",
+            "CONFLUENCE_URL": "https://your-org.atlassian.net/wiki",
+            "CONFLUENCE_USERNAME": "your-email@company.com",
+            "CONFLUENCE_API_TOKEN": "your_jira_api_token_here"
+        }
+    }
+]

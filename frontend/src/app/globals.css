@@ -1,0 +1,242 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-inter: var(--font-inter), 'Inter', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+@layer utilities {
+
+  /* Chrome, Safari, Edge, Opera */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #09090b;
+    /* zinc-950 */
+    border-left: 1px solid #18181b;
+    /* zinc-900 */
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    /* zinc-800 */
+    border-radius: 9999px;
+    border: 2px solid #09090b;
+    /* Padding effect */
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+    /* zinc-700 */
+  }
+}
+
+/* Light Mode Overrides */
+.light-mode.bg-black,
+.light-mode .bg-black {
+  background-color: #ffffff;
+}
+
+.light-mode.text-white,
+.light-mode .text-white {
+  color: #000000;
+}
+
+/* Invert White/Black for Buttons (e.g., Save Button) */
+.light-mode.bg-white,
+.light-mode .bg-white {
+  background-color: #18181b;
+}
+
+/* Invert to dark (zinc-900) */
+.light-mode.text-black,
+.light-mode .text-black {
+  color: #ffffff;
+}
+
+.light-mode.bg-zinc-950,
+.light-mode .bg-zinc-950 {
+  background-color: #fafafa;
+}
+
+/* zinc-50 */
+.light-mode.bg-zinc-900,
+.light-mode .bg-zinc-900 {
+  background-color: #f4f4f5;
+}
+
+/* zinc-100 */
+.light-mode.bg-zinc-800,
+.light-mode .bg-zinc-800 {
+  background-color: #e4e4e7;
+}
+
+/* zinc-200 */
+
+.light-mode.border-zinc-900,
+.light-mode .border-zinc-900 {
+  border-color: #e4e4e7;
+}
+
+/* zinc-200 */
+.light-mode.border-zinc-800,
+.light-mode .border-zinc-800 {
+  border-color: #e4e4e7;
+}
+
+/* zinc-200 */
+.light-mode.border-zinc-700,
+.light-mode .border-zinc-700 {
+  border-color: #d4d4d8;
+}
+
+/* zinc-300 */
+.light-mode.border-white,
+.light-mode .border-white {
+  border-color: #000000;
+}
+
+/* Modal specific borders */
+.light-mode .border-white\/20 {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Text Color Mappings */
+.light-mode.text-zinc-100,
+.light-mode .text-zinc-100 {
+  color: #18181b;
+}
+
+/* zinc-900 */
+.light-mode.text-zinc-300,
+.light-mode .text-zinc-300 {
+  color: #3f3f46;
+}
+
+/* zinc-700 */
+.light-mode.text-zinc-400,
+.light-mode .text-zinc-400 {
+  color: #52525b;
+}
+
+/* zinc-600 */
+.light-mode.text-zinc-500,
+.light-mode .text-zinc-500 {
+  color: #71717a;
+}
+
+/* zinc-500 */
+.light-mode.text-zinc-600,
+.light-mode .text-zinc-600 {
+  color: #a1a1aa;
+}
+
+/* zinc-400 */
+
+/* Warnings (Red) Mappings */
+.light-mode .bg-red-950\/20 {
+  background-color: #fef2f2;
+}
+
+/* red-50 */
+.light-mode .border-red-900\/50 {
+  border-color: #fca5a5;
+}
+
+/* red-300 */
+.light-mode .text-red-200 {
+  color: #b91c1c;
+}
+
+/* red-700 */
+.light-mode .text-red-400 {
+  color: #ef4444;
+}
+
+/* red-500 */
+.light-mode .bg-red-950\/30 {
+  background-color: #fee2e2;
+}
+
+/* red-100 */
+
+/* Specific Opacity Classes */
+.light-mode .bg-zinc-900\/50 {
+  background-color: #fafafa;
+}
+
+/* zinc-50 - Assistant Bubble */
+.light-mode .bg-zinc-900\/20 {
+  background-color: #f4f4f5;
+}
+
+/* Gradient Overrides - Resetting variables for light mode */
+.light-mode .from-black {
+  --tw-gradient-from: #ffffff;
+}
+
+.light-mode .via-black {
+  --tw-gradient-via: #ffffff;
+}
+
+/* Hover States */
+.light-mode .hover\:bg-zinc-900:hover {
+  background-color: #e4e4e7;
+}
+
+/* zinc-200 for visibility */
+.light-mode .hover\:bg-zinc-200:hover {
+  background-color: #27272a;
+}
+
+/* zinc-800 for inverted white button hover */
+.light-mode .hover\:text-white:hover {
+  color: #000000;
+}
+
+.light-mode .placeholder\:text-zinc-600::placeholder {
+  color: #a1a1aa;
+}
+
+.light-mode .placeholder\:text-zinc-700::placeholder {
+  color: #a1a1aa;
+}
+
+/* Scrollbar Overrides for Light Mode */
+.light-mode ::-webkit-scrollbar-track {
+  background: #fafafa;
+  border-left: 1px solid #f4f4f5;
+}
+
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border: 2px solid #fafafa;
+}
+
+.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
+}
