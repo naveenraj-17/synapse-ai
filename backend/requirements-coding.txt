@@ -1,0 +1,3 @@
+psycopg[binary]
+psycopg_pool
+cocoindex

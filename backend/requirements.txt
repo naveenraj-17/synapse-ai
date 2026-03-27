@@ -20,6 +20,3 @@ openpyxl
 requests
 anthropic
 google-genai
-psycopg[binary]
-psycopg_pool
-cocoindex

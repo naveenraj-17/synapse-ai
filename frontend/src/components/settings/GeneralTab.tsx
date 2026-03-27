@@ -28,7 +28,6 @@ export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnab
             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Large Response Handling</label>
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="text-sm text-white font-medium">Save large responses to file</p>
                     <p className="text-xs text-zinc-600 mt-0.5">When enabled, tool outputs exceeding the threshold are saved to a vault file instead of flooding the context.</p>
                 </div>
                 <button
@@ -59,10 +58,9 @@ export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnab
             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Database Write Access</label>
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="text-sm text-white font-medium">Allow agents to modify database</p>
                     <p className="text-xs text-zinc-600 mt-0.5">
-                        When <strong className="text-zinc-400">disabled</strong> (default), agents are strictly limited to SELECT/SHOW/DESCRIBE queries.
-                        When <strong className="text-zinc-400">enabled</strong>, INSERT/UPDATE/DELETE and other write queries are allowed — but agents must always ask for confirmation before executing them.
+                        When disabled (default), agents are strictly limited to SELECT/SHOW/DESCRIBE queries.
+                        When enabled, INSERT/UPDATE/DELETE and other write queries are allowed — but agents must always ask for confirmation before executing them.
                     </p>
                 </div>
                 <button

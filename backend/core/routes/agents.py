@@ -118,6 +118,23 @@ IMPORTANT RULES:
 Output ONLY the system prompt text, no explanations or wrapping."""
 
 
+@router.get("/api/agent-types")
+async def get_agent_types():
+    """Returns available agent types based on enabled features in settings."""
+    s = load_settings()
+    types = [
+        {"value": "conversational", "label": "Conversational", "description": "General-purpose agent with configurable tools."},
+        {"value": "analysis", "label": "Analysis", "description": "Automatically includes RAG/embedding tools for data exploration."},
+        {"value": "workflow", "label": "Workflow", "description": "For orchestration workflows."},
+        {"value": "orchestrator", "label": "Orchestrator", "description": "Multi-agent orchestration — deployed from the Orchestrations tab."},
+    ]
+    if s.get("report_agent_enabled"):
+        types.insert(2, {"value": "report", "label": "Report", "description": "Report generation with dynamic RAG support."})
+    if s.get("coding_agent_enabled"):
+        types.insert(3, {"value": "code", "label": "Code", "description": "Automatically includes search_codebase for semantic code search."})
+    return {"types": types}
+
+
 @router.post("/api/agents/generate-prompt")
 async def generate_agent_prompt(req: GeneratePromptRequest):
     """Generate a comprehensive system prompt from a description using the configured LLM."""

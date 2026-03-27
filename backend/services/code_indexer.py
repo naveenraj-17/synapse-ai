@@ -2,15 +2,20 @@
 Code indexer service: CocoIndex flow definitions, index management, and DB operations.
 Handles repo indexing lifecycle — creation, status, deletion, and background indexing.
 """
+from __future__ import annotations
+
 import json
 import os
 import threading
 from datetime import datetime
-import cocoindex
-import psycopg
-from typing import Literal
-from cocoindex.typing import Vector, Float32
 from core.config import load_settings
+
+try:
+    import cocoindex
+    import psycopg
+    COCOINDEX_AVAILABLE = True
+except ImportError:
+    COCOINDEX_AVAILABLE = False
 
 # Lock for repos.json read/write to prevent race conditions during concurrent indexing
 _repos_lock = threading.Lock()
@@ -29,15 +34,19 @@ CODE_EMBEDDING_DIM = 768
 def _extract_extension(filename: str) -> str:
     return os.path.splitext(filename)[1]
 
-try:
-    extract_extension = cocoindex.op.function()(_extract_extension)
-except RuntimeError:
-    # Already registered from a previous import — reuse the plain function
+
+if COCOINDEX_AVAILABLE:
+    try:
+        extract_extension = cocoindex.op.function()(_extract_extension)
+    except RuntimeError:
+        # Already registered from a previous import — reuse the plain function
+        extract_extension = _extract_extension
+else:
     extract_extension = _extract_extension
 
 
 # Our custom function for embedding via Gemini
-def _gemini_embed_batch(texts: list[str]) -> list[Vector[Float32, Literal[768]]]:
+def _gemini_embed_batch(texts: list[str]) -> list:
     zeros = [[0.0] * CODE_EMBEDDING_DIM for _ in range(len(texts))]
     try:
         from google import genai
@@ -68,10 +77,13 @@ def _gemini_embed_batch(texts: list[str]) -> list[Vector[Float32, Literal[768]]]
         traceback.print_exc()
         return zeros
 
-try:
-    # Use native cocoindex batching
-    gemini_embed_batch = cocoindex.op.function(batching=True, max_batch_size=100)(_gemini_embed_batch)
-except RuntimeError:
+
+if COCOINDEX_AVAILABLE:
+    try:
+        gemini_embed_batch = cocoindex.op.function(batching=True, max_batch_size=100)(_gemini_embed_batch)
+    except RuntimeError:
+        gemini_embed_batch = _gemini_embed_batch
+else:
     gemini_embed_batch = _gemini_embed_batch
 
 
@@ -87,6 +99,9 @@ def get_table_name(repo_id: str) -> str:
 
 def create_repo_flow(repo_id: str, repo_path: str, included_patterns: list[str], excluded_patterns: list[str]):
     """Dynamically create a CocoIndex flow for a specific repo."""
+    if not COCOINDEX_AVAILABLE:
+        raise RuntimeError("CocoIndex is not installed. Enable the coding agent to use this feature.")
+
     flow_name = f"ci_{repo_id}"
 
     # Close previous flow registration if it exists (prevents "already exists" on reindex)
@@ -143,6 +158,8 @@ def create_repo_flow(repo_id: str, repo_path: str, included_patterns: list[str],
 
 def _ensure_database_exists():
     """Create the target database if it doesn't already exist."""
+    if not COCOINDEX_AVAILABLE:
+        return
     from urllib.parse import urlparse, urlunparse
     parsed = urlparse(DATABASE_URL)
     db_name = parsed.path.lstrip("/")
@@ -161,12 +178,16 @@ def _ensure_database_exists():
 
 
 def init_cocoindex():
+    if not COCOINDEX_AVAILABLE:
+        return
     _ensure_database_exists()
     os.environ["COCOINDEX_DATABASE_URL"] = DATABASE_URL
     print("CocoIndex init check done.")
 
 
 def get_index_status(repo_id: str) -> dict:
+    if not COCOINDEX_AVAILABLE:
+        return {"status": "unavailable", "count": 0}
     table_name = get_table_name(repo_id)
     try:
         with psycopg.connect(DATABASE_URL) as conn:
@@ -184,6 +205,8 @@ def get_index_status(repo_id: str) -> dict:
 
 
 def drop_index(repo_id: str):
+    if not COCOINDEX_AVAILABLE:
+        return
     table_name = get_table_name(repo_id)
     tracking = f"ci_{repo_id}__cocoindex_tracking"
     try:
@@ -213,6 +236,9 @@ def _update_repo_status(repo_id: str, **fields):
 
 
 def run_index_task(repo_id: str, repo_path: str, included_patterns: list[str], excluded_patterns: list[str]):
+    if not COCOINDEX_AVAILABLE:
+        print("CocoIndex not available — skipping index task.")
+        return
     print(f"Starting index builder for {repo_id}...")
     try:
         repo_flow = create_repo_flow(repo_id, repo_path, included_patterns, excluded_patterns)

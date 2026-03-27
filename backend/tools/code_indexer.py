@@ -4,18 +4,25 @@ All indexing/management functions live in services/code_indexer.py.
 """
 import os
 import re
-from psycopg_pool import ConnectionPool
 from core.config import load_settings
 from services.code_indexer import CODE_EMBEDDING_MODEL, CODE_EMBEDDING_DIM, get_table_name
+
+try:
+    from psycopg_pool import ConnectionPool
+    PSYCOPG_AVAILABLE = True
+except ImportError:
+    PSYCOPG_AVAILABLE = False
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
 # Module-level lazy connection pool singleton
-_pool: ConnectionPool | None = None
+_pool = None
 
 
-def _get_pool() -> ConnectionPool:
+def _get_pool():
     global _pool
+    if not PSYCOPG_AVAILABLE:
+        raise RuntimeError("psycopg_pool is not installed. Enable the coding agent feature.")
     if _pool is None:
         _pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=5)
     return _pool

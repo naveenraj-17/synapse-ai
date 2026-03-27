@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Bot, Plus, Save, Trash, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { CAPABILITIES, AUTO_TOOLS_BY_TYPE, AGENT_TYPE_DESCRIPTIONS } from './types';
+import { CAPABILITIES, AUTO_TOOLS_BY_TYPE } from './types';
 import { renderTextContent } from '@/lib/utils';
 
 interface AgentsTabProps {
@@ -26,6 +26,7 @@ export const AgentsTab = ({
 }: AgentsTabProps) => {
     const [repos, setRepos] = useState<any[]>([]);
     const [dbConfigs, setDbConfigs] = useState<any[]>([]);
+    const [agentTypes, setAgentTypes] = useState<{value: string; label: string; description: string}[]>([]);
     const [expandedCaps, setExpandedCaps] = useState<Set<string>>(new Set());
     const [promptDescription, setPromptDescription] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -40,6 +41,10 @@ export const AgentsTab = ({
             .then(res => res.json())
             .then(data => setDbConfigs(data))
             .catch(err => console.error("Failed to fetch DB configs", err));
+        fetch('/api/agent-types')
+            .then(res => res.json())
+            .then(data => setAgentTypes(data.types || []))
+            .catch(err => console.error("Failed to fetch agent types", err));
     }, []);
 
     const toggleExpand = (capId: string) => {
@@ -254,12 +259,13 @@ export const AgentsTab = ({
                                 }}
                                 className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
                             >
-                                <option value="conversational">Conversational</option>
-                                <option value="analysis">Analysis</option>
-                                <option value="workflow">Workflow</option>
-                                <option value="code">Code</option>
+                                {agentTypes.map(t => (
+                                    <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
                             </select>
-                            <p className="text-[9px] text-zinc-500 mt-1">{AGENT_TYPE_DESCRIPTIONS[draftAgent.type || 'conversational']}</p>
+                            <p className="text-[9px] text-zinc-500 mt-1">
+                                {agentTypes.find(t => t.value === (draftAgent.type || 'conversational'))?.description}
+                            </p>
                         </div>
 
                         {/* Model Selection */}

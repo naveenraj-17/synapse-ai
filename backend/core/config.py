@@ -31,6 +31,8 @@ def load_settings():
         "n8n_api_key": "",
         "vault_enabled": True,
         "vault_threshold": 15000,
+        "coding_agent_enabled": False,
+        "report_agent_enabled": False,
     }
     
     if not os.path.exists(SETTINGS_FILE):

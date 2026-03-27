@@ -47,6 +47,8 @@ TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
 
+_settings = load_settings()
+
 TOOLS_LIST = {
     "time": str(TOOLS_DIR / "time.py"),
     "sql": str(TOOLS_DIR / "sql_agent.py"),
@@ -55,9 +57,11 @@ TOOLS_LIST = {
     "collect_data": str(TOOLS_DIR / "collect_data.py"),
     "pdf_parser": str(TOOLS_DIR / "pdf_parser.py"),
     "xlsx_parser": str(TOOLS_DIR / "xlsx_parser.py"),
-    "code_search": str(TOOLS_DIR / "code_search.py"),
     "sandbox": str(TOOLS_DIR / "sandbox.py"),
 }
+
+if _settings.get("coding_agent_enabled"):
+    TOOLS_LIST["code_search"] = str(TOOLS_DIR / "code_search.py")
 
 REPOS_FILE = DATA_DIR / "repos.json"
 
@@ -151,11 +155,12 @@ async def lifespan(app: FastAPI):
     print("Starting Multi-Agent Orchestrator...")
     exit_stack = AsyncExitStack()
     
-    try:
-        from services.code_indexer import init_cocoindex
-        init_cocoindex()
-    except Exception as e:
-        print(f"Failed to init cocoindex: {e}")
+    if _settings.get("coding_agent_enabled"):
+        try:
+            from services.code_indexer import init_cocoindex
+            init_cocoindex()
+        except Exception as e:
+            print(f"Failed to init cocoindex: {e}")
 
     try:
         for agent_name, script_path in TOOLS_LIST.items():

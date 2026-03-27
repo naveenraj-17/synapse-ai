@@ -14,17 +14,9 @@ export type Tab = 'general' | 'models' | 'workspace' | 'memory' | 'agents' | 'or
 export const AUTO_TOOLS_BY_TYPE: Record<string, string[]> = {
     all_types: ['query_past_conversations'],
     analysis: ['decide_search_or_analyze', 'search_embedded_report', 'embed_report_for_exploration'],
+    report: ['decide_search_or_analyze', 'search_embedded_report', 'embed_report_for_exploration'],
     code: ['search_codebase', 'grep', 'glob'],
     orchestrator: [],
-};
-
-// Helper text per agent type for the type dropdown.
-export const AGENT_TYPE_DESCRIPTIONS: Record<string, string> = {
-    conversational: 'General-purpose agent with configurable tools.',
-    analysis: 'Automatically includes RAG/embedding tools for data exploration.',
-    workflow: 'For orchestration workflows (LangGraph integration planned).',
-    code: 'Automatically includes search_codebase for semantic code search.',
-    orchestrator: 'Multi-agent orchestration — deployed from the Orchestrations tab.',
 };
 
 // Static tool group definitions for native Python agents.
