@@ -1,4 +1,4 @@
-# Synapse — Multi-Agent Orchestrator
+# Synapse AI — A Multi-Agent Orchestrator
 
 **Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can wrap in an MCP server or n8n workflow.
 
@@ -9,8 +9,14 @@
 ### Quick Setup Script (recommended)
 The easiest way to get started is to run the automated setup script. This will clone the repository, install all necessary dependencies, verify your environment, and start both the backend and frontend servers.
 
+**macOS / Linux:**
 ```bash
 curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
 ```
 
 ### Docker
