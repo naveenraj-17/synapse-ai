@@ -10,13 +10,13 @@ from fastapi import APIRouter, HTTPException
 import httpx
 
 from core.config import load_settings
-from core.llm_providers import _make_aws_client, OLLAMA_BASE_URL
+from core.llm_providers import _make_aws_client
 from core.session import conversation_histories, session_state
 from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_DIR
 
 router = APIRouter()
 
-
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 # --- Synthetic Data ---
 
 @router.post("/api/synthetic/generate")

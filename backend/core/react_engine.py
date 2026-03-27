@@ -18,7 +18,7 @@ from core.session import (
 )
 from core.llm_providers import generate_response as llm_generate_response
 from core.tools import aggregate_all_tools, build_system_prompt, DEFAULT_TOOLS_BY_TYPE
-from core.routes.agents import load_user_agents, get_active_agent_data, active_agent_id
+from core.routes.agents import load_user_agents, get_active_agent_data
 from core.routes.tools import load_custom_tools
 
 import anyio as _anyio
@@ -133,13 +133,13 @@ def _handle_report_auto_embed(memory_store, session_id, raw_output, target_tool,
 
 
 def _resolve_agent_by_id(agent_id):
-    """Load an agent dict by ID, with fallback to active agent."""
+    """Load an agent dict by ID, falling back to the active agent."""
     if agent_id:
         agents = load_user_agents()
         agent = next((a for a in agents if a["id"] == agent_id), None)
         if agent:
             return agent
-    return get_active_agent_data()
+    return get_active_agent_data()  # raises RuntimeError if no agents configured
 
 
 def _inject_db_context(agent_data, system_template):
@@ -238,17 +238,15 @@ async def run_agent_step(
     Used by both run_react_loop (chat) and the orchestration engine (per-step).
     Yields the same structured events as run_react_loop.
     """
-    from core.tools import NATIVE_TOOL_SYSTEM_PROMPT
-
     if max_turns is None:
         max_turns = MAX_TURNS
 
     # Resolve agent
     active_agent = _resolve_agent_by_id(agent_id)
-    agent_id_for_session = active_agent.get("id", agent_id or "default")
+    agent_id_for_session = active_agent.get("id", agent_id or "unknown")
 
     # Build system prompt with repo and DB context injection
-    agent_system_template = active_agent.get("system_prompt", NATIVE_TOOL_SYSTEM_PROMPT)
+    agent_system_template = active_agent.get("system_prompt", "")
     agent_system_template = _inject_repo_context(active_agent, agent_system_template)
     agent_system_template = _inject_db_context(active_agent, agent_system_template)
 

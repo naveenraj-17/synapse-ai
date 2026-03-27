@@ -107,6 +107,7 @@ DEFAULT_SETTINGS = {
     "aws_session_token": "",
     "aws_region": "us-east-1",
     "sql_connection_string": "",
+    "ollama_base_url": "",
     "n8n_url": "http://localhost:5678",
     "n8n_api_key": "",
     "n8n_table_id": "",
@@ -292,14 +293,31 @@ def ask_llm(cfg):
     ollama_models = _ollama_models()
     if ollama_models:
         ok(f"Ollama detected with {len(ollama_models)} model(s).")
-        info("Available models:")
         model = ask_choice("Select model", ollama_models)
         cfg["model"] = model
         cfg["mode"] = "local"
         ok(f"Model set to: {model}  (can be updated later in Settings)")
         return
 
-    info("Ollama not found. Select a cloud LLM provider:")
+    # Ollama not detected — ask if user has it on a custom URL
+    if ask_yn("Ollama not detected on default port. Do you have Ollama running?"):
+        base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
+        cfg["ollama_base_url"] = base_url
+        os.environ["OLLAMA_HOST"] = base_url  # ollama CLI respects OLLAMA_HOST
+        info("Checking for models at that URL…")
+        ollama_models = _ollama_models()
+        if ollama_models:
+            ok(f"Found {len(ollama_models)} model(s).")
+            model = ask_choice("Select model", ollama_models)
+        else:
+            warn("No models found. Enter a model name manually.")
+            model = ask("Ollama model name", default="llama3")
+        cfg["model"] = model
+        cfg["mode"] = "local"
+        ok(f"Model set to: {model}  (can be updated later in Settings)")
+        return
+
+    info("Select a cloud LLM provider:")
     providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "Bedrock (AWS)"]
     choice = ask_choice("Select provider", providers)
 
@@ -386,17 +404,11 @@ def ask_examples():
 # Install helpers
 # ---------------------------------------------------------------------------
 def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
-    """Run a subprocess command, retrying on failure (e.g. AV scan interference)."""
+    """Run a subprocess command with retries. Output flows to terminal so the user can see progress."""
     last_exc = None
-    # Capture stderr so we can show it on final failure
-    kwargs.pop("stderr", None)
-    stdout  = kwargs.pop("stdout", subprocess.DEVNULL)
     for attempt in range(1, retries + 1):
         try:
-            subprocess.run(
-                cmd, stdout=stdout, stderr=subprocess.PIPE,
-                check=True, **kwargs
-            )
+            subprocess.check_call(cmd, **kwargs)
             return
         except subprocess.CalledProcessError as e:
             last_exc = e
@@ -404,8 +416,6 @@ def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
                 warn(f"Command failed (attempt {attempt}/{retries}). Retrying in {delay}s…")
                 time.sleep(delay)
             else:
-                if e.stderr:
-                    print(e.stderr.decode(errors="replace"))
                 raise last_exc
 
 # ---------------------------------------------------------------------------
@@ -422,24 +432,15 @@ def install_backend(coding_enabled):
         subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
 
     info("Installing base requirements…")
-    _run_with_retry(
-        [PYTHON_EXE, "-m", "pip", "install", "--upgrade", "pip", "-q"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
-    )
-    _run_with_retry(
-        [PYTHON_EXE, "-m", "pip", "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt"), "-q"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
-    )
+    _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "--upgrade", "pip"])
+    _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt")])
     ok("Base dependencies installed.")
 
     if coding_enabled:
         coding_req = os.path.join(BACKEND_DIR, "requirements-coding.txt")
         if os.path.exists(coding_req):
             info("Installing coding-agent dependencies (cocoindex, psycopg)…")
-            _run_with_retry(
-                [PYTHON_EXE, "-m", "pip", "install", "-r", coding_req, "-q"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
-            )
+            _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", coding_req])
             ok("Coding-agent dependencies installed.")
         else:
             warn(f"requirements-coding.txt not found at {coding_req}")
@@ -450,13 +451,7 @@ def install_frontend():
         err("npm not found.")
         sys.exit(1)
     info("Running npm install (this may take a while)…")
-    _run_with_retry(
-        ["npm", "install"],
-        cwd=FRONTEND_DIR,
-        shell=IS_WIN,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT
-    )
+    _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
     ok("Frontend dependencies installed.")
 
 # ---------------------------------------------------------------------------

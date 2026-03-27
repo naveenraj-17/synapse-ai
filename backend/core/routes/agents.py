@@ -9,7 +9,6 @@ import zoneinfo
 from fastapi import APIRouter, HTTPException
 
 from core.models import Agent, AgentActiveRequest, GeneratePromptRequest
-from core.tools import NATIVE_TOOL_SYSTEM_PROMPT
 from core.config import DATA_DIR, load_settings
 from core.json_store import JsonStore
 from core.llm_providers import generate_response as llm_generate_response
@@ -19,7 +18,7 @@ router = APIRouter()
 _agents_store = JsonStore(os.path.join(DATA_DIR, "user_agents.json"), cache_ttl=2.0)
 
 # Module-level state
-active_agent_id = "synapse"  # Default
+active_agent_id: str | None = None
 
 
 def load_user_agents() -> list[dict]:
@@ -32,18 +31,13 @@ def save_user_agents(agents: list[dict]):
 
 def get_active_agent_data():
     agents = load_user_agents()
-    for a in agents:
-        if a["id"] == active_agent_id:
-            return a
-    # Fallback to first or hardcoded default if file empty
+    if active_agent_id:
+        for a in agents:
+            if a["id"] == active_agent_id:
+                return a
     if agents:
         return agents[0]
-    return {
-        "id": "synapse",
-        "name": "Synapse",
-        "system_prompt": NATIVE_TOOL_SYSTEM_PROMPT,
-        "tools": ["all"]
-    }
+    raise RuntimeError("No agents configured.")
 
 
 @router.get("/api/agents")
@@ -68,17 +62,22 @@ async def create_agent(agent: Agent):
 
 @router.delete("/api/agents/{agent_id}")
 async def delete_agent(agent_id: str):
-    if agent_id == "synapse":
-        raise HTTPException(status_code=400, detail="Cannot delete default agent.")
+    global active_agent_id
     agents = load_user_agents()
     agents = [a for a in agents if a["id"] != agent_id]
     save_user_agents(agents)
+    if active_agent_id == agent_id:
+        active_agent_id = None
     return {"status": "success"}
 
 
 @router.get("/api/agents/active")
 async def get_active_agent_endpoint():
-    return {"active_agent_id": active_agent_id}
+    try:
+        agent = get_active_agent_data()
+        return {"active_agent_id": agent["id"]}
+    except RuntimeError:
+        return {"active_agent_id": None}
 
 
 @router.post("/api/agents/active")

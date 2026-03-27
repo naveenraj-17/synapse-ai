@@ -49,6 +49,10 @@ DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
 
 _settings = load_settings()
 
+# Propagate ollama_base_url from settings to env so llm_providers picks it up
+if _settings.get("ollama_base_url"):
+    os.environ["OLLAMA_BASE_URL"] = _settings["ollama_base_url"]
+
 TOOLS_LIST = {
     "time": str(TOOLS_DIR / "time.py"),
     "sql": str(TOOLS_DIR / "sql_agent.py"),

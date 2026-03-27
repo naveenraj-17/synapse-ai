@@ -192,17 +192,15 @@ export const AgentsTab = ({
                                 <div className="text-[10px] text-zinc-500 truncate">{a.description}</div>
                             </div>
                         </div>
-                        {a.id !== 'synapse' && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDeleteAgent(a.id);
-                                }}
-                                className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash className="h-3 w-3" />
-                            </button>
-                        )}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteAgent(a.id);
+                            }}
+                            className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <Trash className="h-3 w-3" />
+                        </button>
                     </div>
                 ))}
             </div>
@@ -214,7 +212,7 @@ export const AgentsTab = ({
                 <div className="space-y-6 h-full flex flex-col pb-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                            <div className={`h-2 w-2 rounded-full ${draftAgent.id === 'synapse' ? 'bg-blue-500' : 'bg-purple-500'}`} />
+                            <div className="h-2 w-2 rounded-full bg-purple-500" />
                             EDITING: {draftAgent.name.toUpperCase()}
                         </h3>
                         <button
@@ -359,13 +357,7 @@ export const AgentsTab = ({
                         </div>
                     )}
 
-                    {draftAgent.id === 'synapse' ? (
-                        <div className="p-4 bg-blue-900/10 border border-blue-900/30 text-blue-300 text-xs text-center">
-                            <div className="font-bold mb-1">System Managed</div>
-                            The capabilities and brain of the default agent are managed by the core system for optimal business performance.
-                        </div>
-                    ) : (
-                        <>
+                    <>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase">Capabilities (Tools)</label>
                                 {(() => {
@@ -553,8 +545,7 @@ export const AgentsTab = ({
                                     />
                                 )}
                             </div>
-                        </>
-                    )}
+                    </>
                 </div>
             ) : (
                 <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-4">

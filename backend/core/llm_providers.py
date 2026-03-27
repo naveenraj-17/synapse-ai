@@ -19,8 +19,10 @@ class LLMError(Exception):
     pass
 
 
-# Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+# Configuration — read at call time so OLLAMA_BASE_URL set after import is respected
+def _ollama_base_url() -> str:
+    return os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
 OLLAMA_MODEL = "llama3"
 
 
@@ -717,7 +719,7 @@ async def generate_response(
                 messages.append({"role": "user", "content": prompt_msg})
 
                 response = await client.post(
-                    f"{OLLAMA_BASE_URL}/api/chat",
+                    f"{_ollama_base_url()}/api/chat",
                     json={
                         "model": current_model,
                         "messages": messages,
@@ -752,7 +754,7 @@ async def generate_response(
                     prompt_for_generate = f"Conversation so far:\n{prior}\n\nUser: {prompt_msg}".strip()
 
             response = await client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
+                f"{_ollama_base_url()}/api/generate",
                 json={
                     "model": current_model,
                     "prompt": prompt_for_generate,
