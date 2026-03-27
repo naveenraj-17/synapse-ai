@@ -3,9 +3,12 @@
 
 $ErrorActionPreference = "Stop"
 
-# Check python
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Host "Error: Python could not be found. Python 3.11 or higher is required."
+# Check python and filter out the fake Windows Store alias
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+$isFakePython = $pythonCmd.Source -match "WindowsApps"
+
+if (-not $pythonCmd -or $isFakePython) {
+    Write-Host "Error: Python could not be found or is blocked by Windows App Aliases. Python 3.11+ is required." -ForegroundColor Red
     Write-Host ""
     Write-Host "Install Python using one of the following methods:"
     Write-Host ""
@@ -14,12 +17,13 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "  Option 2 - Official installer:"
     Write-Host "    https://www.python.org/downloads/"
-    Write-Host "    (Check 'Add Python to PATH' during installation)"
+    Write-Host "    (CRITICAL: Check 'Add python.exe to PATH' during installation)"
     Write-Host ""
-    Write-Host "  Option 3 - Microsoft Store:"
-    Write-Host "    ms-windows-store://pdp/?ProductId=9NRWMJP3717K"
+    Write-Host "If Python is already installed, turn off the App Aliases:"
+    Write-Host "  1. Search 'Manage app execution aliases' in the Windows Start menu."
+    Write-Host "  2. Turn OFF 'App Installer (python.exe)' and '(python3.exe)'."
     Write-Host ""
-    Write-Host "After installing, restart PowerShell and run this script again."
+    Write-Host "After fixing, restart PowerShell and run this script again."
     exit 1
 }
 
