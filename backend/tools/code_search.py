@@ -15,7 +15,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from psycopg_pool import ConnectionPool
 
-DATABASE_URL = "postgresql://postgres:root@localhost:5432/cocoindex"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
 # Must match the indexing config in services/code_indexer.py
 CODE_EMBEDDING_MODEL = "gemini-embedding-001"

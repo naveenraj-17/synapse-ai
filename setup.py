@@ -49,7 +49,12 @@ def install_backend():
         python_exe = os.path.join(venv_dir, "bin", "python")
         pip_exe = os.path.join(venv_dir, "bin", "pip")
 
-    if not os.path.exists(venv_dir):
+    # Check for pip_exe to avoid broken venv states
+    if not os.path.exists(pip_exe):
+        if os.path.exists(venv_dir):
+            print("Removing corrupted virtual environment...")
+            shutil.rmtree(venv_dir)
+            
         print("Creating virtual environment...")
         subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
     
@@ -59,10 +64,38 @@ def install_backend():
                               stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         print_success("Backend dependencies installed.")
     except subprocess.CalledProcessError:
-        print_error("Failed to install backend dependencies.")
+        print_error("Failed to install backend dependencies. Check your requirements.txt.")
         sys.exit(1)
         
     return python_exe
+
+def verify_backend_installation(python_exe):
+    print_step("Verifying Python Modules...")
+    
+    # Python script to strictly test critical imports
+    test_script = """
+import sys
+try:
+    import fastapi
+    import psycopg
+    import psycopg_pool
+    import chromadb
+    import sqlalchemy
+    import pypdf
+    import bs4 # beautifulsoup4
+except ImportError as e:
+    print(str(e))
+    sys.exit(1)
+"""
+    result = subprocess.run([python_exe, "-c", test_script], capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print_error(f"Backend module validation failed!")
+        print_error(f"Import Error: {result.stdout.strip() or result.stderr.strip()}")
+        print(f"{Colors.WARNING}Please ensure your requirements.txt contains 'psycopg[binary]' instead of just 'psycopg'.{Colors.ENDC}")
+        sys.exit(1)
+        
+    print_success("All critical backend modules verified.")
 
 def install_frontend():
     print_step("Setting up Frontend...")
@@ -72,7 +105,6 @@ def install_frontend():
         
     print("Installing npm packages (this may take a while)...")
     try:
-        # Use shell=True for Windows compatibility with npm
         shell_cmd = True if sys.platform == "win32" else False
         subprocess.check_call(["npm", "install"], cwd=FRONTEND_DIR, shell=shell_cmd,
                              stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -83,7 +115,6 @@ def install_frontend():
 
 def start_backend(python_exe):
     print_step("Starting Backend Server...")
-    # Using Popen to run non-blocking
     return subprocess.Popen([python_exe, "main.py"], cwd=BACKEND_DIR)
 
 def start_frontend():
@@ -91,31 +122,48 @@ def start_frontend():
     shell_cmd = True if sys.platform == "win32" else False
     return subprocess.Popen(["npm", "run", "dev"], cwd=FRONTEND_DIR, shell=shell_cmd)
 
-    # 4. Browser
+def main():
+    # 1. Hard Check for system dependencies BEFORE doing anything
+    print_step("Checking System Dependencies...")
+    if shutil.which("psql") is None:
+        print_error("psql (PostgreSQL) is not installed on this system.")
+        print(f"{Colors.WARNING}Coding agents require PostgreSQL and the pgvector extension to function.{Colors.ENDC}")
+        print("Please install them and try again.")
+        sys.exit(1)
+    print_success("psql found.")
+
+    # 2. Run Installations
+    python_exe = install_backend()
+    verify_backend_installation(python_exe) # NEW: Verifies imports actually work
+    install_frontend()
+
+    # 3. Start Servers
+    backend_process = start_backend(python_exe)
+    frontend_process = start_frontend()
+
+    # 4. Launch Browser
     threading.Thread(target=launch_browser.open_browser).start()
     
     print(f"\n{Colors.GREEN}{Colors.BOLD}Application is running!{Colors.ENDC}")
     print(f"{Colors.WARNING}Press Ctrl+C to stop servers and exit.{Colors.ENDC}\n")
     
+    # 5. Monitor Processes
     try:
         while True:
             time.sleep(1)
-            # Check if processes are still alive
             if backend_process.poll() is not None:
-                print_error("Backend crashed!")
+                print_error("Backend crashed! Check terminal logs.")
                 break
-            # Note: Checking frontend npm process is trickier as it spawns children, 
-            # but basic poll check helps if the main wrapper dies.
+            
             if frontend_process.poll() is not None:
-                print_error("Frontend crashed!")
+                print_error("Frontend crashed! Check terminal logs.")
                 break
+                
     except KeyboardInterrupt:
         print("\nStopping servers...")
         backend_process.terminate()
-        # npm run dev spawns children, terminate() might not kill them all on Linux/Mac without groups
-        # But for simple scripts this is usually "good enough" or requires pkill
+        
         if sys.platform != "win32":
-             # Try to kill the process group
              try:
                  os.killpg(os.getpgid(frontend_process.pid), 15)
              except:

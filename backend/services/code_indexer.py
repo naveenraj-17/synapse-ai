@@ -19,7 +19,7 @@ _repos_lock = threading.Lock()
 _active_flows: dict[str, object] = {}
 
 # Connect using psycopg pool (CocoIndex prefers standard postgres connections)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/cocoindex")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
 # Shared constant — query embedding model must match index embedding model
 CODE_EMBEDDING_MODEL = "gemini-embedding-001"
@@ -141,7 +141,27 @@ def create_repo_flow(repo_id: str, repo_path: str, included_patterns: list[str],
     return repo_flow
 
 
+def _ensure_database_exists():
+    """Create the target database if it doesn't already exist."""
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(DATABASE_URL)
+    db_name = parsed.path.lstrip("/")
+
+    # Connect to the default 'postgres' maintenance database to run CREATE DATABASE
+    admin_url = urlunparse(parsed._replace(path="/postgres"))
+    try:
+        with psycopg.connect(admin_url, autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+                if not cur.fetchone():
+                    cur.execute(f'CREATE DATABASE "{db_name}"')
+                    print(f"Created database '{db_name}'.")
+    except Exception as e:
+        print(f"Warning: could not ensure database exists: {e}")
+
+
 def init_cocoindex():
+    _ensure_database_exists()
     os.environ["COCOINDEX_DATABASE_URL"] = DATABASE_URL
     print("CocoIndex init check done.")
 

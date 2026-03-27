@@ -6,13 +6,19 @@
 
 ## Install
 
-### Docker (recommended)
+### Quick Setup Script (recommended)
+The easiest way to get started is to run the automated setup script. This will clone the repository, install all necessary dependencies, verify your environment, and start both the backend and frontend servers.
+
+```bash
+curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.sh | bash
+```
+
+### Docker
 ```bash
 git clone https://github.com/naveenraj-17/synapse
 cd synapse
 docker-compose up
 ```
-Open [http://localhost:3000](http://localhost:3000)
 
 ### npm
 ```bash

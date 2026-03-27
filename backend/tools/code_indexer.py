@@ -2,12 +2,13 @@
 Code indexer agent: search_codebase tool for vector similarity search.
 All indexing/management functions live in services/code_indexer.py.
 """
+import os
 import re
 from psycopg_pool import ConnectionPool
 from core.config import load_settings
 from services.code_indexer import CODE_EMBEDDING_MODEL, CODE_EMBEDDING_DIM, get_table_name
 
-DATABASE_URL = "postgresql://postgres:root@localhost:5432/cocoindex"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
 # Module-level lazy connection pool singleton
 _pool: ConnectionPool | None = None
