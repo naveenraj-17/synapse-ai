@@ -388,17 +388,24 @@ def ask_examples():
 def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
     """Run a subprocess command, retrying on failure (e.g. AV scan interference)."""
     last_exc = None
+    # Capture stderr so we can show it on final failure
+    kwargs.pop("stderr", None)
+    stdout  = kwargs.pop("stdout", subprocess.DEVNULL)
     for attempt in range(1, retries + 1):
         try:
-            subprocess.check_call(cmd, **kwargs)
+            subprocess.run(
+                cmd, stdout=stdout, stderr=subprocess.PIPE,
+                check=True, **kwargs
+            )
             return
         except subprocess.CalledProcessError as e:
             last_exc = e
             if attempt < retries:
                 warn(f"Command failed (attempt {attempt}/{retries}). Retrying in {delay}s…")
-                warn("(If an antivirus prompt appeared, click 'Allow' and wait for retry.)")
                 time.sleep(delay)
             else:
+                if e.stderr:
+                    print(e.stderr.decode(errors="replace"))
                 raise last_exc
 
 # ---------------------------------------------------------------------------
@@ -416,11 +423,11 @@ def install_backend(coding_enabled):
 
     info("Installing base requirements…")
     _run_with_retry(
-        [PIP_EXE, "install", "--upgrade", "pip", "-q"],
+        [PYTHON_EXE, "-m", "pip", "install", "--upgrade", "pip", "-q"],
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
     )
     _run_with_retry(
-        [PIP_EXE, "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt"), "-q"],
+        [PYTHON_EXE, "-m", "pip", "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt"), "-q"],
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
     )
     ok("Base dependencies installed.")
@@ -430,7 +437,7 @@ def install_backend(coding_enabled):
         if os.path.exists(coding_req):
             info("Installing coding-agent dependencies (cocoindex, psycopg)…")
             _run_with_retry(
-                [PIP_EXE, "install", "-r", coding_req, "-q"],
+                [PYTHON_EXE, "-m", "pip", "install", "-r", coding_req, "-q"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
             )
             ok("Coding-agent dependencies installed.")
