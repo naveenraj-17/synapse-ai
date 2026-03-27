@@ -44,11 +44,12 @@ dependencies = [
 
 [project.scripts]
 synapse = "synapse.cli:main"
+"synapse-ai" = "synapse.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/naveenraj-17/synapse"
-Repository = "https://github.com/naveenraj-17/synapse"
-Issues = "https://github.com/naveenraj-17/synapse/issues"
+Homepage = "https://github.com/naveenraj-17/synapse-ai"
+Repository = "https://github.com/naveenraj-17/synapse-ai"
+Issues = "https://github.com/naveenraj-17/synapse-ai/issues"
 
 [tool.hatch.build.targets.wheel]
 include = [
