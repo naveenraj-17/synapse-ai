@@ -383,6 +383,25 @@ def ask_examples():
             ok(f"Imported: {os.path.basename(dest)}")
 
 # ---------------------------------------------------------------------------
+# Install helpers
+# ---------------------------------------------------------------------------
+def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
+    """Run a subprocess command, retrying on failure (e.g. AV scan interference)."""
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            subprocess.check_call(cmd, **kwargs)
+            return
+        except subprocess.CalledProcessError as e:
+            last_exc = e
+            if attempt < retries:
+                warn(f"Command failed (attempt {attempt}/{retries}). Retrying in {delay}s…")
+                warn("(If an antivirus prompt appeared, click 'Allow' and wait for retry.)")
+                time.sleep(delay)
+            else:
+                raise last_exc
+
+# ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
 def install_backend(coding_enabled):
@@ -396,11 +415,11 @@ def install_backend(coding_enabled):
         subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
 
     info("Installing base requirements…")
-    subprocess.check_call(
+    _run_with_retry(
         [PIP_EXE, "install", "--upgrade", "pip", "-q"],
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
     )
-    subprocess.check_call(
+    _run_with_retry(
         [PIP_EXE, "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt"), "-q"],
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
     )
@@ -410,7 +429,7 @@ def install_backend(coding_enabled):
         coding_req = os.path.join(BACKEND_DIR, "requirements-coding.txt")
         if os.path.exists(coding_req):
             info("Installing coding-agent dependencies (cocoindex, psycopg)…")
-            subprocess.check_call(
+            _run_with_retry(
                 [PIP_EXE, "install", "-r", coding_req, "-q"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT
             )
@@ -424,7 +443,7 @@ def install_frontend():
         err("npm not found.")
         sys.exit(1)
     info("Running npm install (this may take a while)…")
-    subprocess.check_call(
+    _run_with_retry(
         ["npm", "install"],
         cwd=FRONTEND_DIR,
         shell=IS_WIN,
