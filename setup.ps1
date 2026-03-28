@@ -50,11 +50,11 @@ function Install-Python {
 # ---------------------------------------------------------------------------
 function Check-And-Install {
     # Check python
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    $pythonCmd = Get-Command python3.11 -ErrorAction SilentlyContinue
     $isFakePython = if ($pythonCmd) { $pythonCmd.Source -match "WindowsApps" } else { $false }
 
     if (-not $pythonCmd -or $isFakePython) {
-        Write-Host "⚠ Python could not be found or is blocked by Windows App Aliases." -ForegroundColor Yellow
+        Write-Host "⚠ Python 3.11 could not be found or is blocked by Windows App Aliases." -ForegroundColor Yellow
         Write-Host "Attempting to install Python 3.11…"
         Install-Python
     }
@@ -99,7 +99,7 @@ function Main {
     Set-Location $DestDir
 
     Write-Host ""
-    python setup.py
+    python3.11 setup.py
 }
 
 # Run the setup

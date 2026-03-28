@@ -79,7 +79,7 @@ try {
         $BackendJob = Start-Job -ScriptBlock {
             param($Dir)
             . "$Dir\backend\venv\Scripts\activate.ps1"
-            python "$Dir\backend\main.py"
+            python3.11 "$Dir\backend\main.py"
         } -ArgumentList $DIR
         Write-Host "Backend started."
     } else {
@@ -107,7 +107,7 @@ try {
     Wait-ForUrl "http://localhost:3000" "Frontend"
 
     Write-Host "Launching Browser..."
-    python "$DIR\launch_browser.py"
+    python3.11 "$DIR\launch_browser.py"
 
     Write-Host "Services are running. Press Ctrl+C to stop."
     Wait-Job -Any

@@ -100,13 +100,13 @@ install_python() {
 # Check and validate requirements
 # ---------------------------------------------------------------------------
 check_python() {
-    if ! command -v python3 &> /dev/null; then
-        echo "⚠ python3 not found."
+    if ! command -v python3.11 &> /dev/null; then
+        echo "⚠ python3.11 not found."
         install_python
     fi
     
     # Verify Python 3.11+
-    PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    PYTHON_VERSION=$(python3.11 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     REQUIRED_VERSION="3.11"
     
     if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
@@ -114,7 +114,7 @@ check_python() {
         install_python
         
         # Re-check the version after upgrading
-        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        PYTHON_VERSION=$(python3.11 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
         if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
             echo "✗ Failed to upgrade Python automatically. You still have $PYTHON_VERSION."
             echo "Please manually install Python 3.11 or higher."
@@ -175,7 +175,7 @@ main() {
     cd "$DEST_DIR"
     
     echo ""
-    python3 setup.py
+    python3.11 setup.py
 }
 
 main
