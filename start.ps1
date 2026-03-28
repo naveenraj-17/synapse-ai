@@ -11,6 +11,30 @@ $BackendJob = $null
 $FrontendJob = $null
 
 # Cleanup function
+function Get-PythonCmd {
+    if (Get-Command python3.11 -ErrorAction SilentlyContinue) { return "python3.11" }
+    $candidates = @("python3", "python", "python3.12", "python3.13")
+    foreach ($cmd in $candidates) {
+        $c = Get-Command $cmd -ErrorAction SilentlyContinue
+        if ($c) {
+            if ($c.Source -match "WindowsApps") { continue }
+            $out = & $cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            if ($out) {
+                try {
+                    if ([version]"$out.0" -ge [version]"3.11.0") { return $cmd }
+                } catch {}
+            }
+        }
+    }
+    return $null
+}
+
+$global:PYTHON_CMD = Get-PythonCmd
+if (-not $global:PYTHON_CMD) {
+    Write-Host "Python 3.11+ is required but not found. Please run setup.ps1 first." -ForegroundColor Red
+    exit 1
+}
+
 function Cleanup {
     Write-Host ""
     Write-Host "Stopping services..."
@@ -77,10 +101,10 @@ try {
     if (-not (Test-Port 8000)) {
         Write-Host "Starting Backend..."
         $BackendJob = Start-Job -ScriptBlock {
-            param($Dir)
+            param($Dir, $PyCmd)
             . "$Dir\backend\venv\Scripts\activate.ps1"
-            python3.11 "$Dir\backend\main.py"
-        } -ArgumentList $DIR
+            & $PyCmd "$Dir\backend\main.py"
+        } -ArgumentList $DIR, $global:PYTHON_CMD
         Write-Host "Backend started."
     } else {
         Write-Host "Backend is already running."
@@ -107,7 +131,7 @@ try {
     Wait-ForUrl "http://localhost:3000" "Frontend"
 
     Write-Host "Launching Browser..."
-    python3.11 "$DIR\launch_browser.py"
+    & $global:PYTHON_CMD "$DIR\launch_browser.py"
 
     Write-Host "Services are running. Press Ctrl+C to stop."
     Wait-Job -Any

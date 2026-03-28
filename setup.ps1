@@ -45,21 +45,46 @@ function Install-Python {
     }
 }
 
+function Get-PythonCmd {
+    if (Get-Command python3.11 -ErrorAction SilentlyContinue) { return "python3.11" }
+
+    $candidates = @("python3", "python", "python3.12", "python3.13")
+    foreach ($cmd in $candidates) {
+        $c = Get-Command $cmd -ErrorAction SilentlyContinue
+        if ($c) {
+            if ($c.Source -match "WindowsApps") { continue }
+            $out = & $cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            if ($out) {
+                try {
+                    if ([version]"$out.0" -ge [version]"3.11.0") { return $cmd }
+                } catch {}
+            }
+        }
+    }
+    return $null
+}
+
 # ---------------------------------------------------------------------------
 # Check and Install Requirements
 # ---------------------------------------------------------------------------
 function Check-And-Install {
     # Check python
-    $pythonCmd = Get-Command python3.11 -ErrorAction SilentlyContinue
-    $isFakePython = if ($pythonCmd) { $pythonCmd.Source -match "WindowsApps" } else { $false }
+    $global:PYTHON_CMD = Get-PythonCmd
 
-    if (-not $pythonCmd -or $isFakePython) {
-        Write-Host "⚠ Python 3.11 could not be found or is blocked by Windows App Aliases." -ForegroundColor Yellow
+    if (-not $global:PYTHON_CMD) {
+        Write-Host "⚠ Python 3.11+ could not be found." -ForegroundColor Yellow
         Write-Host "Attempting to install Python 3.11…"
         Install-Python
+        
+        $global:PYTHON_CMD = Get-PythonCmd
+        if (-not $global:PYTHON_CMD) {
+            Write-Host "✗ Failed to install Python 3.11+ automatically." -ForegroundColor Red
+            Write-Host "Please manually install Python 3.11 or higher." -ForegroundColor Red
+            exit 1
+        }
     }
 
-    Write-Host "✓ Python found" -ForegroundColor Green
+    Write-Host "✓ Python found ($global:PYTHON_CMD)" -ForegroundColor Green
 
     # Check git
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -99,7 +124,7 @@ function Main {
     Set-Location $DestDir
 
     Write-Host ""
-    python3.11 setup.py
+    & $global:PYTHON_CMD setup.py
 }
 
 # Run the setup

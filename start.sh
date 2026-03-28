@@ -4,6 +4,29 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 BACKEND_PID=""
 FRONTEND_PID=""
 
+get_python_cmd() {
+    if command -v python3.11 &> /dev/null; then
+        echo "python3.11"
+        return
+    fi
+    for cmd in python3 python python3.12 python3.13; do
+        if command -v $cmd &> /dev/null; then
+            ver=$($cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+            if [ ! -z "$ver" ] && (( $(echo "$ver >= 3.11" | bc -l) )); then
+                echo "$cmd"
+                return
+            fi
+        fi
+    done
+    echo ""
+}
+
+PYTHON_CMD=$(get_python_cmd)
+if [ -z "$PYTHON_CMD" ]; then
+    echo "Python 3.11+ is required but not found. Please run setup.sh first."
+    exit 1
+fi
+
 # Cleanup function to kill processes on exit
 cleanup() {
     echo ""
@@ -66,7 +89,7 @@ echo "Checking Backend..."
 if ! check_port 8000; then
     echo "Starting Backend..."
     source "$DIR/backend/venv/bin/activate"
-    python3.11 "$DIR/backend/main.py" &
+    $PYTHON_CMD "$DIR/backend/main.py" &
     BACKEND_PID=$!
     echo "Backend started with PID $BACKEND_PID"
 else
@@ -92,7 +115,7 @@ fi
 wait_for_url "http://localhost:3000" "Frontend"
 
 echo "Launching Browser..."
-python3.11 "$DIR/launch_browser.py"
+$PYTHON_CMD "$DIR/launch_browser.py"
 
 echo "Services are running. Press Ctrl+C to stop."
 wait

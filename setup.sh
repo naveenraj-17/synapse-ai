@@ -100,23 +100,34 @@ install_python() {
 # Check and validate requirements
 # ---------------------------------------------------------------------------
 check_python() {
-    if ! command -v python3.11 &> /dev/null; then
-        echo "⚠ python3.11 not found."
-        install_python
+    PYTHON_CMD=""
+    
+    if command -v python3.11 &> /dev/null; then
+        PYTHON_CMD="python3.11"
+    else
+        for cmd in python3 python python3.12 python3.13; do
+            if command -v $cmd &> /dev/null; then
+                ver=$($cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+                if [ ! -z "$ver" ] && (( $(echo "$ver >= 3.11" | bc -l) )); then
+                    PYTHON_CMD="$cmd"
+                    break
+                fi
+            fi
+        done
     fi
-    
-    # Verify Python 3.11+
-    PYTHON_VERSION=$(python3.11 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    REQUIRED_VERSION="3.11"
-    
-    if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
-        echo "⚠ Python 3.11+ required. You have $PYTHON_VERSION. Attempting to upgrade..."
+
+    if [ -z "$PYTHON_CMD" ]; then
+        echo "⚠ Python 3.11+ not found. Attempting to install..."
         install_python
         
-        # Re-check the version after upgrading
-        PYTHON_VERSION=$(python3.11 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
-            echo "✗ Failed to upgrade Python automatically. You still have $PYTHON_VERSION."
+        if command -v python3.11 &> /dev/null; then
+            PYTHON_CMD="python3.11"
+        elif command -v python3 &> /dev/null; then
+            PYTHON_CMD="python3"
+        fi
+        
+        if [ -z "$PYTHON_CMD" ]; then
+            echo "✗ Failed to install Python 3.11+ automatically."
             echo "Please manually install Python 3.11 or higher."
             if [[ "$OS" == "linux" ]] && [[ "$DISTRO" == "ubuntu" ]]; then
                 echo ""
@@ -133,7 +144,14 @@ check_python() {
         fi
     fi
     
-    echo "✓ Python $PYTHON_VERSION found"
+    PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    if (( $(echo "$PYTHON_VERSION < 3.11" | bc -l) )); then
+        echo "✗ Python 3.11+ required. You have $PYTHON_VERSION"
+        exit 1
+    fi
+    
+    echo "✓ Python $PYTHON_VERSION found ($PYTHON_CMD)"
+    export PYTHON_CMD
 }
 
 check_git() {
@@ -175,7 +193,7 @@ main() {
     cd "$DEST_DIR"
     
     echo ""
-    python3.11 setup.py
+    $PYTHON_CMD setup.py
 }
 
 main
