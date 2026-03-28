@@ -110,8 +110,27 @@ check_python() {
     REQUIRED_VERSION="3.11"
     
     if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
-        echo "✗ Python 3.11+ required. You have $PYTHON_VERSION"
-        exit 1
+        echo "⚠ Python 3.11+ required. You have $PYTHON_VERSION. Attempting to upgrade..."
+        install_python
+        
+        # Re-check the version after upgrading
+        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        if (( $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc -l) )); then
+            echo "✗ Failed to upgrade Python automatically. You still have $PYTHON_VERSION."
+            echo "Please manually install Python 3.11 or higher."
+            if [[ "$OS" == "linux" ]] && [[ "$DISTRO" == "ubuntu" ]]; then
+                echo ""
+                echo "For Ubuntu, you may need to add the deadsnakes PPA:"
+                echo "  sudo add-apt-repository ppa:deadsnakes/ppa"
+                echo "  sudo apt update"
+                echo "  sudo apt install python3.11 python3.11-venv"
+            elif [[ "$OS" == "macos" ]]; then
+                echo ""
+                echo "For macOS, you can use Homebrew:"
+                echo "  brew install python@3.11"
+            fi
+            exit 1
+        fi
     fi
     
     echo "✓ Python $PYTHON_VERSION found"
