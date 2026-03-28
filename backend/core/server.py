@@ -46,6 +46,7 @@ OLLAMA_MODEL = "llama3"
 TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
+GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data" / "google-credentials")))
 
 _settings = load_settings()
 
@@ -82,8 +83,10 @@ def _get_repo_paths() -> list[str]:
 
 
 def _get_google_oauth_env() -> dict[str, str]:
-    """Extract OAuth client_id and client_secret from credentials.json for workspace-mcp."""
+    """Extract OAuth client_id and client_secret from credentials.json for workspace-mcp.
+    Also reads user email from token.json to pass USER_GOOGLE_EMAIL for single-user mode."""
     creds_file = DATA_DIR / "credentials.json"
+    token_file = DATA_DIR / "token.json"
     if not creds_file.exists():
         return {}
     try:
@@ -91,11 +94,37 @@ def _get_google_oauth_env() -> dict[str, str]:
         installed = creds.get("installed", creds.get("web", {}))
         client_id = installed.get("client_id", "")
         client_secret = installed.get("client_secret", "")
-        if client_id and client_secret:
-            return {
-                "GOOGLE_OAUTH_CLIENT_ID": client_id,
-                "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
-            }
+        if not (client_id and client_secret):
+            return {}
+
+        env = {
+            "GOOGLE_OAUTH_CLIENT_ID": client_id,
+            "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
+            "OAUTHLIB_INSECURE_TRANSPORT": "1",  # allow http:// redirect URIs for localhost
+            "GOOGLE_MCP_CREDENTIALS_DIR": str(GOOGLE_CREDENTIALS_DIR.resolve()),
+        }
+
+        # Read user email from token.json so workspace-mcp can skip the email prompt
+        if token_file.exists():
+            print("token_file", token_file)
+            try:
+                import base64
+                token_data = json.loads(token_file.read_text())
+                email = token_data.get("email")
+                if not email and token_data.get("token"):
+                    id_token = token_data["token"]
+                    payload_b64 = id_token.split(".")[1]
+                    payload_b64 += "=" * (4 - len(payload_b64) % 4)
+                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                    email = payload.get("email")
+                if email:
+                    env["USER_GOOGLE_EMAIL"] = email
+            except Exception as e:
+                print(f"Warning: Could not read user email from token.json: {e}")
+        
+        print("env", env)
+
+        return env
     except Exception as e:
         print(f"Warning: Could not read Google OAuth credentials: {e}")
     return {}
@@ -133,11 +162,12 @@ def _build_native_mcp_servers() -> list[dict]:
         servers.append({
             "name": "Google Workspace",
             "command": "uvx",
-            "args": ["workspace-mcp", "--tools", "gmail", "drive", "calendar"],
+            "args": ["workspace-mcp", "--single-user", "--tools", "gmail", "drive", "calendar"],
             "env": google_env,
         })
     else:
         print("Warning: No Google OAuth credentials found — skipping Google Workspace MCP server.")
+
 
     # --- Memory MCP Server ---
     memory_file_path = DATA_DIR / "memory" / "memory.jsonl"

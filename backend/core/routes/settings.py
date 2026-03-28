@@ -260,23 +260,49 @@ async def upload_google_token(request: Request):
 
 @router.get("/api/config")
 async def get_config():
-    if not os.path.exists(CREDENTIALS_FILE):
-        return {"error": "Credentials not found"}
+    has_credentials = os.path.exists(CREDENTIALS_FILE)
+    has_token = os.path.exists(TOKEN_FILE)
+
+    if not has_credentials:
+        return {"has_credentials": False, "is_connected": False}
 
     try:
         with open(CREDENTIALS_FILE, 'r') as f:
             creds = json.load(f)
             app_info = creds.get("web") or creds.get("installed", {})
 
-            return {
-                "client_id": app_info.get("client_id", "")[:10] + "..." + app_info.get("client_id", "")[-10:],
-                "project_id": app_info.get("project_id", ""),
-                "auth_uri": app_info.get("auth_uri", ""),
-                "token_uri": app_info.get("token_uri", ""),
-                "is_connected": os.path.exists(TOKEN_FILE)
-            }
+        client_id_full = app_info.get("client_id", "")
+        # Mask: show only last 4 chars, e.g. ****h453
+        masked_client_id = ("****" + client_id_full[-8:]) if len(client_id_full) > 8 else "****"
+
+        # Read user email from token.json if available
+        user_email = None
+        if has_token:
+            try:
+                with open(TOKEN_FILE, 'r') as tf:
+                    token_data = json.load(tf)
+                    user_email = token_data.get("id_token_hint") or token_data.get("email")
+                    # google-auth stores it in the token as a raw JWT — try to decode the id_token
+                    if not user_email and token_data.get("id_token"):
+                        import base64
+                        id_token = token_data["id_token"]
+                        payload_b64 = id_token.split(".")[1]
+                        # Add padding
+                        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+                        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                        user_email = payload.get("email")
+            except Exception:
+                pass
+
+        return {
+            "has_credentials": True,
+            "client_id": masked_client_id,
+            "project_id": app_info.get("project_id", ""),
+            "is_connected": has_token,
+            "user_email": user_email,
+        }
     except Exception as e:
-        return {"error": str(e)}
+        return {"has_credentials": True, "error": str(e), "is_connected": has_token}
 
 
 @router.get("/api/file")

@@ -1,8 +1,10 @@
 import os
+import json
 import base64
+from pathlib import Path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
@@ -10,15 +12,34 @@ from email.mime.text import MIMEText
 from core.config import TOKEN_FILE, CREDENTIALS_FILE
 
 # If modifying these scopes, delete the file token.json.
+# Make sure to delete the old token.json whenever you modify these scopes!
 SCOPES = [
-    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/calendar'
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/presentations',
+    'https://www.googleapis.com/auth/forms',
+    'https://www.googleapis.com/auth/tasks',
+    'https://www.googleapis.com/auth/contacts',
 ]
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data" / "google-credentials")))
+
 
 class UnauthenticatedError(Exception):
     pass
+
+# Module-level storage: keeps the Flow object alive between get_auth_url() and
+# finish_auth() so that the internally-generated code_verifier (PKCE) and state
+# are preserved. Without this, a fresh Flow in finish_auth loses the verifier
+# and Google returns "Missing code verifier".
+_pending_flow = None
 
 def get_google_credentials():
     """Returns valid credentials or None."""
@@ -42,44 +63,95 @@ def get_google_credentials():
     return None
 
 def get_auth_url(redirect_uri):
-    """Generates the OAuth2 authorization URL."""
-    if not os.path.exists(CREDENTIALS_FILE):
-         # Create a dummy credentials file to prevent crash and show Google error
-         dummy_creds = {
-             "installed": {
-                 "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-                 "project_id": "YOUR_PROJECT_ID",
-                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                 "token_uri": "https://oauth2.googleapis.com/token",
-                 "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                 "client_secret": "YOUR_CLIENT_SECRET",
-                 "redirect_uris": [redirect_uri]
-             }
-         }
-         os.makedirs(os.path.dirname(CREDENTIALS_FILE), exist_ok=True)
-         import json
-         with open(CREDENTIALS_FILE, 'w') as f:
-             json.dump(dummy_creds, f, indent=4)
+    """Generates the OAuth2 authorization URL and stores the flow for later use."""
+    global _pending_flow
 
-    flow = InstalledAppFlow.from_client_secrets_file(
+    if not os.path.exists(CREDENTIALS_FILE):
+        raise FileNotFoundError(
+            f"credentials.json not found at {CREDENTIALS_FILE}. "
+            "Please upload it via Settings → Integrations."
+        )
+
+    flow = Flow.from_client_secrets_file(
         CREDENTIALS_FILE, SCOPES, redirect_uri=redirect_uri
     )
-    # Using access_type='offline' is crucial for receiving a refresh token
-    auth_url, _ = flow.authorization_url(access_type='offline', prompt='consent', include_granted_scopes='true')
-    print(f"DEBUG: Auth URL: {auth_url}")
+    auth_url, _ = flow.authorization_url(
+        access_type='offline',
+        prompt='consent',
+    )
+    # Keep the flow alive so finish_auth can reuse it (preserves code_verifier)
+    _pending_flow = flow
+    print(f"DEBUG: Auth URL generated — flow stored for callback.")
     return auth_url
 
 def finish_auth(code, redirect_uri):
-    """Exchanges the auth code for credentials."""
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CREDENTIALS_FILE, SCOPES, redirect_uri=redirect_uri
-    )
+    """Exchanges the auth code using the stored flow (preserves code_verifier)."""
+    global _pending_flow
+
+    # Reuse the stored flow to keep the code_verifier intact
+    if _pending_flow is not None:
+        flow = _pending_flow
+        _pending_flow = None
+        print("DEBUG: Using stored flow for token exchange.")
+    else:
+        # Fallback: create fresh flow (may fail if PKCE was involved)
+        print("WARNING: No stored flow found — creating fresh flow (may fail with PKCE).")
+        flow = Flow.from_client_secrets_file(
+            CREDENTIALS_FILE, SCOPES, redirect_uri=redirect_uri
+        )
+
+    # Allow Google to return extra/different scopes without raising an error
+    os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
     flow.fetch_token(code=code)
     creds = flow.credentials
-    
+
+    # Build the token data
+    token_data = json.loads(creds.to_json())
+
+    # Fetch user email via Userinfo API
+    email = None
+    try:
+        import urllib.request as _urlreq
+        req = _urlreq.Request(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {creds.token}"}
+        )
+        with _urlreq.urlopen(req, timeout=5) as r:
+            userinfo = json.loads(r.read().decode())
+            print(f"DEBUG: Userinfo response: {userinfo}")
+            email = userinfo.get("email")
+            if email:
+                token_data["email"] = email
+                print(f"DEBUG: Saved user email: {email}")
+    except Exception as e:
+        print(f"Warning: Could not fetch user email after OAuth: {e}")
+
     with open(TOKEN_FILE, "w") as token:
-        token.write(creds.to_json())
-        
+        json.dump(token_data, token, indent=2)
+
+    print(f"DEBUG: token.json saved to {TOKEN_FILE}")
+
+    # --- Sync to workspace-mcp's default directory ---
+    try:
+        mcp_cred_dir = GOOGLE_CREDENTIALS_DIR
+        os.makedirs(mcp_cred_dir, exist_ok=True)
+        # 1. Copy our credentials.json as client_secret.json
+        import shutil
+        shutil.copy2(CREDENTIALS_FILE, os.path.join(mcp_cred_dir, "client_secret.json"))
+        # 2. Save the token with the email formatted name
+        if email:
+            mcp_token_path = os.path.join(mcp_cred_dir, f"{email}.json")
+            with open(mcp_token_path, "w") as token:
+                json.dump(token_data, token, indent=2)
+            print(f"DEBUG: Synchronized token to workspace-mcp via {mcp_token_path}")
+        # 3. Always save generic token.json just in case
+        mcp_generic_token = os.path.join(mcp_cred_dir, "token.json")
+        with open(mcp_generic_token, "w") as token:
+            json.dump(token_data, token, indent=2)
+            
+    except Exception as e:
+        print(f"Warning: Failed to sync tokens to workspace-mcp dir: {e}")
+
     return creds
 
 def get_service(api, version):

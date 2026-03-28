@@ -888,7 +888,6 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                                 {/* INTEGRATIONS TAB */}
                                 {activeTab === 'workspace' && (
                                     <IntegrationsTab
-                                        credentials={credentials}
                                         n8nUrl={n8nUrl} setN8nUrl={setN8nUrl}
                                         n8nApiKey={n8nApiKey} setN8nApiKey={setN8nApiKey}
                                         googleMapsApiKey={googleMapsApiKey} setGoogleMapsApiKey={setGoogleMapsApiKey}

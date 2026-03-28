@@ -19,7 +19,9 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 DATA_DIR = os.path.join(BACKEND_DIR, "data")
+EXAMPLES_DIR = os.path.join(BACKEND_DIR, "examples")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
 
 IS_WIN = sys.platform == "win32"
 VENV_DIR = os.path.join(BACKEND_DIR, "venv")
@@ -434,6 +436,159 @@ def ask_report_agent(cfg):
     status = "enabled" if cfg["report_agent_enabled"] else "disabled"
     ok(f"Report Agent {status}.")
 
+
+# ---------------------------------------------------------------------------
+# Q2b — Google Workspace (optional)
+# ---------------------------------------------------------------------------
+GOOGLE_APIS = [
+    ("Gmail",    "gmail.googleapis.com"),
+    ("Drive",    "drive.googleapis.com"),
+    ("Calendar", "calendar-json.googleapis.com"),
+    ("Docs",     "docs.googleapis.com"),
+    ("Sheets",   "sheets.googleapis.com"),
+    ("Slides",   "slides.googleapis.com"),
+    ("Forms",    "forms.googleapis.com"),
+    ("Tasks",    "tasks.googleapis.com"),
+    ("Contacts", "people.googleapis.com"),
+]
+
+def _gcloud_enable_apis(project_id):
+    """Enable the three Google Workspace APIs via gcloud."""
+    api_ids = ",".join(api for _, api in GOOGLE_APIS)
+    try:
+        subprocess.check_call(
+            ["gcloud", "services", "enable"] + [api for _, api in GOOGLE_APIS]
+            + ["--project", project_id],
+            timeout=60
+        )
+        ok("APIs enabled: Gmail, Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts.")
+        return True
+    except subprocess.CalledProcessError as e:
+        warn(f"gcloud services enable failed: {e}")
+        return False
+
+
+def ask_google_workspace():
+    """Optional step: Set up Google Workspace OAuth credentials."""
+    step("Google Workspace Integration")
+    info("Powers Gmail, Drive, Calendar, Docs, Tasks, and more in Synapse.")
+
+    # Skip if credentials already exist
+    if os.path.exists(CREDENTIALS_FILE):
+        ok(f"credentials.json already exists at {CREDENTIALS_FILE} — skipping.")
+        return
+
+    if not ask_yn("Configure Google Workspace now?", default="n"):
+        ok("Skipped — you can configure this later in Settings → Integrations.")
+        return
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    has_gcloud = shutil.which("gcloud") is not None
+
+    if has_gcloud:
+        info("gcloud CLI detected — using it to streamline setup.")
+        step("Step 1/3 — Authenticate with Google")
+        info("Running: gcloud auth login")
+        try:
+            subprocess.check_call(["gcloud", "auth", "login", "--update-adc"])
+            ok("Authenticated with Google.")
+        except subprocess.CalledProcessError:
+            warn("gcloud auth login failed. Continuing to manual step.")
+
+        # List projects
+        step("Step 2/3 — Select or create a Google Cloud Project")
+        try:
+            result = subprocess.run(
+                ["gcloud", "projects", "list", "--format=value(projectId,name)"],
+                capture_output=True, text=True, timeout=15
+            )
+            lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+            if lines:
+                info("Your projects:")
+                for i, line in enumerate(lines, 1):
+                    parts = line.split()
+                    pid = parts[0] if parts else line
+                    name = " ".join(parts[1:]) if len(parts) > 1 else ""
+                    print(f"   {_c(C.CYAN, str(i))}.  {pid}  {_c(C.YELLOW, name)}")
+                raw = ask("Enter project number or type a project ID")
+                if raw.isdigit() and 1 <= int(raw) <= len(lines):
+                    project_id = lines[int(raw)-1].split()[0]
+                else:
+                    project_id = raw.strip()
+            else:
+                project_id = ask("Enter your Google Cloud project ID")
+        except Exception:
+            project_id = ask("Enter your Google Cloud project ID")
+
+        if project_id:
+            ok(f"Using project: {project_id}")
+            step("Step 2b — Enabling Gmail, Drive, Calendar and other APIs")
+            _gcloud_enable_apis(project_id)
+        else:
+            warn("No project selected — skipping API enable.")
+            project_id = None
+
+        # Deep link for OAuth client creation
+        step("Step 3/3 — Create OAuth 2.0 Client ID (requires browser)")
+        console_url = (
+            f"https://console.cloud.google.com/apis/credentials/oauthclient?project={project_id}"
+            if project_id else
+            "https://console.cloud.google.com/apis/credentials"
+        )
+        info("gcloud CLI cannot create OAuth Desktop App clients automatically.")
+        info(f"Open this link to create one (pre-filled to your project):")
+        print(f"\n   {_c(C.CYAN, console_url)}\n")
+        info("Instructions:")
+        info("  1. Choose 'OAuth client ID'")
+        info("  2. Application type → 'Web application'")
+        info("  3. Set 'Authorized redirect URIs' to: http://localhost:8000/auth/callback")
+        info("  4. Ensure OAuth consent screen has all required scopes configured")
+        info("  5. Click Create → Download JSON")
+    else:
+        # No gcloud — full manual flow
+        info("gcloud CLI not found — using manual setup.")
+        info("Quick link to create OAuth credentials:")
+        print(f"\n   {_c(C.CYAN, 'https://console.cloud.google.com/apis/credentials')}\n")
+        info("  1. Create Project (or pick existing)")
+        print(f"   Enable APIs: {_c(C.CYAN, 'https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,drive.googleapis.com,calendar-json.googleapis.com,docs.googleapis.com,sheets.googleapis.com,slides.googleapis.com,forms.googleapis.com,tasks.googleapis.com,people.googleapis.com')}")
+        info("  2. Configure OAuth consent screen and add these scopes:")
+        info("     userinfo.email, userinfo.profile, gmail.modify, gmail.send, drive, calendar,")
+        info("     documents, spreadsheets, presentations, forms, tasks, contacts")
+        info("  3. Create Credentials → OAuth Client ID → Web application")
+        info("  4. Set 'Authorized redirect URIs' to: http://localhost:8000/auth/callback")
+        info("  5. Download JSON and paste below.")
+
+    # Paste area
+    print()
+    info("Paste the downloaded credentials JSON here (multi-line OK, end with a blank line):")
+    lines = []
+    try:
+        while True:
+            line = input()
+            if line == "" and lines:
+                break
+            lines.append(line)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        warn("No credentials pasted — skipping Google Workspace setup.")
+        return
+
+    raw_json = "\n".join(lines).strip()
+    if not raw_json:
+        warn("Empty input — skipping.")
+        return
+
+    try:
+        parsed = json.loads(raw_json)
+        with open(CREDENTIALS_FILE, "w") as f:
+            json.dump(parsed, f, indent=4)
+        ok(f"credentials.json saved to {CREDENTIALS_FILE}")
+        info("After Synapse starts, go to Settings → Integrations → 'Connect Google Account' to complete OAuth.")
+    except json.JSONDecodeError as e:
+        err(f"Invalid JSON: {e}")
+        warn("credentials.json was NOT saved. Configure via Settings → Integrations later.")
+
+
 # ---------------------------------------------------------------------------
 # Q3 — Agent Name
 # ---------------------------------------------------------------------------
@@ -634,18 +789,20 @@ def ask_examples():
         return
 
     import glob
-    example_files = glob.glob(os.path.join(DATA_DIR, "*.example.json"))
+    example_files = glob.glob(os.path.join(EXAMPLES_DIR, "*.example.json"))
     if not example_files:
         warn("No *.example.json files found — nothing to import.")
         return
 
+    os.makedirs(DATA_DIR, exist_ok=True)
     for src in example_files:
-        dest = src.replace(".example.json", ".json")
+        base_name = os.path.basename(src).replace(".example.json", ".json")
+        dest = os.path.join(DATA_DIR, base_name)
         if os.path.exists(dest):
-            info(f"Skipping (already exists): {os.path.basename(dest)}")
+            info(f"Skipping (already exists): {base_name}")
         else:
             shutil.copy2(src, dest)
-            ok(f"Imported: {os.path.basename(dest)}")
+            ok(f"Imported: {base_name}")
 
 # ---------------------------------------------------------------------------
 # Install helpers
@@ -836,6 +993,7 @@ def main():
 
     ask_coding_agent(cfg)
     ask_report_agent(cfg)
+    ask_google_workspace()
     ask_agent_name(cfg)
     ask_llm(cfg)
     ask_examples()

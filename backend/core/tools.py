@@ -244,6 +244,26 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
     # Start with the user's system prompt as-is
     system_prompt_text = agent_system_template.strip()
 
+    # --- INJECT GOOGLE WORKSPACE EMAIL ---
+    try:
+        from core.config import TOKEN_FILE
+        import os
+        if os.path.exists(TOKEN_FILE):
+            with open(TOKEN_FILE, "r") as f:
+                token_data = json.load(f)
+                email = token_data.get("email")
+                if not email and token_data.get("id_token"):
+                    import base64
+                    id_token = token_data["id_token"]
+                    payload_b64 = id_token.split(".")[1]
+                    payload_b64 += "=" * (4 - len(payload_b64) % 4)
+                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+                    email = payload.get("email")
+                if email:
+                    system_prompt_text += f"\n\n### GOOGLE WORKSPACE CONTEXT\nYou are authenticated with Google Workspace as **{email}**. Whenever a tool requires `user_google_email` or similar, ALWAYS use {email}.\n"
+    except Exception as e:
+        print(f"DEBUG: Error injecting Google Workspace Email: {e}")
+
     # Append tools, date/time, and instructions at the end
     system_prompt_text += f"""
 
