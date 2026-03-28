@@ -164,11 +164,30 @@ async def get_run_status(run_id: str):
 
 @router.post("/api/orchestrations/runs/{run_id}/human-input")
 async def submit_human_input(run_id: str, request: Request):
-    """Submit human input and resume the orchestration. Returns SSE stream."""
+    """Submit human input and resume the orchestration. Returns SSE stream.
+
+    Also resolves any pending messaging-channel Future for this run
+    (first-response-wins: if the messaging app already answered, this
+    call is a no-op for the Future but still streams the resumed run).
+    """
     body = await request.json()
     human_response = body.get("response", {})
+    step_id = body.get("step_id", "")  # optional, sent by frontend
 
     server_module = request.app.state.server_module
+
+    # Try to resolve messaging Future (first-wins).  If the Future was
+    # already resolved by the messaging adapter, this is a no-op.
+    messaging_manager = getattr(request.app.state, "messaging_manager", None)
+    if messaging_manager and step_id:
+        key = f"{run_id}:{step_id}"
+        # Flatten response to string for messaging resolution
+        response_text = ""
+        if isinstance(human_response, dict):
+            response_text = " ".join(str(v) for v in human_response.values())
+        else:
+            response_text = str(human_response)
+        messaging_manager.resolve_human_input_by_key(key, response_text)
 
     from core.orchestration.engine import OrchestrationEngine
 

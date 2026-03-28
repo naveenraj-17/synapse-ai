@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Bot, Plus, Save, Trash, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Bot, Plus, Save, Trash, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2, MessageSquare, ExternalLink, CheckCircle, XCircle, Square } from 'lucide-react';
 import { CAPABILITIES, AUTO_TOOLS_BY_TYPE } from './types';
 import { renderTextContent } from '@/lib/utils';
 
@@ -31,6 +31,8 @@ export const AgentsTab = ({
     const [promptDescription, setPromptDescription] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
+    const [agentSubTab, setAgentSubTab] = useState<'config' | 'messaging'>('config');
+    const [agentChannels, setAgentChannels] = useState<any[]>([]);
 
     useEffect(() => {
         fetch('/api/repos')
@@ -215,149 +217,174 @@ export const AgentsTab = ({
                             <div className="h-2 w-2 rounded-full bg-purple-500" />
                             EDITING: {draftAgent.name.toUpperCase()}
                         </h3>
-                        <button
-                            onClick={onSaveAgent}
-                            className="flex items-center gap-2 px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200"
-                        >
-                            <Save className="h-3 w-3" /> SAVE AGENT
-                        </button>
+                        {agentSubTab === 'config' && (
+                            <button
+                                onClick={onSaveAgent}
+                                className="flex items-center gap-2 px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200"
+                            >
+                                <Save className="h-3 w-3" /> SAVE AGENT
+                            </button>
+                        )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Name</label>
-                            <input
-                                type="text"
-                                value={draftAgent.name}
-                                onChange={e => setDraftAgent({ ...draftAgent, name: e.target.value })}
-                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Description</label>
-                            <input
-                                type="text"
-                                value={draftAgent.description}
-                                onChange={e => setDraftAgent({ ...draftAgent, description: e.target.value })}
-                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Agent Type</label>
-                            <select
-                                value={draftAgent.type || 'conversational'}
-                                onChange={e => {
-                                    const newType = e.target.value;
-                                    // Remove old type-specific auto-tools from explicit list
-                                    const oldAutoTools = AUTO_TOOLS_BY_TYPE[draftAgent.type] || [];
-                                    const cleanedTools = draftAgent.tools.filter(
-                                        (t: string) => !oldAutoTools.includes(t)
-                                    );
-                                    setDraftAgent({ ...draftAgent, type: newType, tools: cleanedTools });
+                    {/* Sub-tab row */}
+                    <div className="flex gap-0 border-b border-zinc-800">
+                        {[{ id: 'config', label: 'Configuration' }, { id: 'messaging', label: 'Messaging Channels' }].map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => {
+                                    setAgentSubTab(t.id as any);
+                                    if (t.id === 'messaging' && draftAgent.id) {
+                                        fetch(`/api/messaging/channels?agent_id=${draftAgent.id}`)
+                                            .then(r => r.ok ? r.json() : [])
+                                            .then(d => setAgentChannels(Array.isArray(d) ? d : []))
+                                            .catch(() => setAgentChannels([]));
+                                    }
                                 }}
-                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                className={`px-4 py-2 text-xs font-bold transition-all border-b-2 -mb-px
+                                    ${agentSubTab === t.id ? 'text-white border-white' : 'text-zinc-500 border-transparent hover:text-zinc-300'}`}
                             >
-                                {agentTypes.map(t => (
-                                    <option key={t.value} value={t.value}>{t.label}</option>
-                                ))}
-                            </select>
-                            <p className="text-[9px] text-zinc-500 mt-1">
-                                {agentTypes.find(t => t.value === (draftAgent.type || 'conversational'))?.description}
-                            </p>
-                        </div>
-
-                        {/* Model Selection */}
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Model</label>
-                            <select
-                                value={draftAgent.model || ''}
-                                onChange={e => setDraftAgent({ ...draftAgent, model: e.target.value || null })}
-                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                            >
-                                <option value="">Use Default ({defaultModel || 'not set'})</option>
-                                {providers && Object.entries(providers).map(([providerKey, info]) => {
-                                    if (!info.available || info.models.length === 0) return null;
-                                    const providerLabel = providerKey.charAt(0).toUpperCase() + providerKey.slice(1);
-                                    return (
-                                        <optgroup key={providerKey} label={providerLabel}>
-                                            {info.models.map((m: string) => (
-                                                <option key={m} value={m}>{m}</option>
-                                            ))}
-                                        </optgroup>
-                                    );
-                                })}
-                            </select>
-                            <p className="text-[9px] text-zinc-500 mt-1">Override the default model for this agent. Leave empty to use the system default.</p>
-                        </div>
+                                {t.label}
+                            </button>
+                        ))}
                     </div>
 
-                    {draftAgent.type === 'code' && (
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Repositories</label>
-                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
-                                {repos.length === 0 && <span className="text-xs text-zinc-500">No repositories indexed yet.</span>}
-                                {repos.map(repo => {
-                                    const isLinked = draftAgent.repos?.includes(repo.id);
-                                    return (
-                                        <button
-                                            key={repo.id}
-                                            onClick={() => {
-                                                const currentRepos = draftAgent.repos || [];
-                                                if (isLinked) {
-                                                    setDraftAgent({ ...draftAgent, repos: currentRepos.filter((id: string) => id !== repo.id) });
-                                                } else {
-                                                    setDraftAgent({ ...draftAgent, repos: [...currentRepos, repo.id] });
-                                                }
-                                            }}
-                                            className={`px-3 py-1.5 text-xs font-bold border transition-colors ${
-                                                isLinked
-                                                    ? 'bg-white text-black border-white'
-                                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
-                                            }`}
-                                        >
-                                            {repo.name} {isLinked && '✓'}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <p className="text-[9px] text-zinc-500 mt-1">Select indexed repositories for semantic code search access.</p>
-                        </div>
-                    )}
+                    {/* ── Configuration sub-tab ──────────────────────── */}
+                    {agentSubTab === 'config' && (
+                        <div className="space-y-6 flex-1 flex flex-col min-h-0">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Name</label>
+                                    <input
+                                        type="text"
+                                        value={draftAgent.name}
+                                        onChange={e => setDraftAgent({ ...draftAgent, name: e.target.value })}
+                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Description</label>
+                                    <input
+                                        type="text"
+                                        value={draftAgent.description}
+                                        onChange={e => setDraftAgent({ ...draftAgent, description: e.target.value })}
+                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Agent Type</label>
+                                    <select
+                                        value={draftAgent.type || 'conversational'}
+                                        onChange={e => {
+                                            const newType = e.target.value;
+                                            const oldAutoTools = AUTO_TOOLS_BY_TYPE[draftAgent.type] || [];
+                                            const cleanedTools = draftAgent.tools.filter(
+                                                (t: string) => !oldAutoTools.includes(t)
+                                            );
+                                            setDraftAgent({ ...draftAgent, type: newType, tools: cleanedTools });
+                                        }}
+                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                    >
+                                        {agentTypes.map(t => (
+                                            <option key={t.value} value={t.value}>{t.label}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[9px] text-zinc-500 mt-1">
+                                        {agentTypes.find(t => t.value === (draftAgent.type || 'conversational'))?.description}
+                                    </p>
+                                </div>
 
-                    {draftAgent.type === 'code' && (
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Databases</label>
-                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
-                                {dbConfigs.length === 0 && <span className="text-xs text-zinc-500">No databases configured yet.</span>}
-                                {dbConfigs.map((db: any) => {
-                                    const isLinked = draftAgent.db_configs?.includes(db.id);
-                                    return (
-                                        <button
-                                            key={db.id}
-                                            onClick={() => {
-                                                const currentDbs = draftAgent.db_configs || [];
-                                                if (isLinked) {
-                                                    setDraftAgent({ ...draftAgent, db_configs: currentDbs.filter((id: string) => id !== db.id) });
-                                                } else {
-                                                    setDraftAgent({ ...draftAgent, db_configs: [...currentDbs, db.id] });
-                                                }
-                                            }}
-                                            className={`px-3 py-1.5 text-xs font-bold border transition-colors ${
-                                                isLinked
-                                                    ? 'bg-white text-black border-white'
-                                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
-                                            }`}
-                                        >
-                                            {db.name} <span className="opacity-50">{db.db_type}</span> {isLinked && '✓'}
-                                        </button>
-                                    );
-                                })}
+                                {/* Model Selection */}
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Model</label>
+                                    <select
+                                        value={draftAgent.model || ''}
+                                        onChange={e => setDraftAgent({ ...draftAgent, model: e.target.value || null })}
+                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                    >
+                                        <option value="">Use Default ({defaultModel || 'not set'})</option>
+                                        {providers && Object.entries(providers).map(([providerKey, info]) => {
+                                            if (!info.available || info.models.length === 0) return null;
+                                            const providerLabel = providerKey.charAt(0).toUpperCase() + providerKey.slice(1);
+                                            return (
+                                                <optgroup key={providerKey} label={providerLabel}>
+                                                    {info.models.map((m: string) => (
+                                                        <option key={m} value={m}>{m}</option>
+                                                    ))}
+                                                </optgroup>
+                                            );
+                                        })}
+                                    </select>
+                                    <p className="text-[9px] text-zinc-500 mt-1">Override the default model for this agent. Leave empty to use the system default.</p>
+                                </div>
                             </div>
-                            <p className="text-[9px] text-zinc-500 mt-1">Select databases to inject schema context into the agent's system prompt.</p>
-                        </div>
-                    )}
 
-                    <>
+                            {draftAgent.type === 'code' && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Repositories</label>
+                                    <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
+                                        {repos.length === 0 && <span className="text-xs text-zinc-500">No repositories indexed yet.</span>}
+                                        {repos.map(repo => {
+                                            const isLinked = draftAgent.repos?.includes(repo.id);
+                                            return (
+                                                <button
+                                                    key={repo.id}
+                                                    onClick={() => {
+                                                        const currentRepos = draftAgent.repos || [];
+                                                        if (isLinked) {
+                                                            setDraftAgent({ ...draftAgent, repos: currentRepos.filter((id: string) => id !== repo.id) });
+                                                        } else {
+                                                            setDraftAgent({ ...draftAgent, repos: [...currentRepos, repo.id] });
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-1.5 text-xs font-bold border transition-colors ${
+                                                        isLinked
+                                                            ? 'bg-white text-black border-white'
+                                                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
+                                                    }`}
+                                                >
+                                                    {repo.name} {isLinked && '✓'}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[9px] text-zinc-500 mt-1">Select indexed repositories for semantic code search access.</p>
+                                </div>
+                            )}
+
+                            {draftAgent.type === 'code' && (
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Databases</label>
+                                    <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
+                                        {dbConfigs.length === 0 && <span className="text-xs text-zinc-500">No databases configured yet.</span>}
+                                        {dbConfigs.map((db: any) => {
+                                            const isLinked = draftAgent.db_configs?.includes(db.id);
+                                            return (
+                                                <button
+                                                    key={db.id}
+                                                    onClick={() => {
+                                                        const currentDbs = draftAgent.db_configs || [];
+                                                        if (isLinked) {
+                                                            setDraftAgent({ ...draftAgent, db_configs: currentDbs.filter((id: string) => id !== db.id) });
+                                                        } else {
+                                                            setDraftAgent({ ...draftAgent, db_configs: [...currentDbs, db.id] });
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-1.5 text-xs font-bold border transition-colors ${
+                                                        isLinked
+                                                            ? 'bg-white text-black border-white'
+                                                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
+                                                    }`}
+                                                >
+                                                    {db.name} <span className="opacity-50">{db.db_type}</span> {isLinked && '✓'}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[9px] text-zinc-500 mt-1">Select databases to inject schema context into the agent's system prompt.</p>
+                                </div>
+                            )}
+
                             <div className="space-y-3">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase">Capabilities (Tools)</label>
                                 {(() => {
@@ -367,127 +394,120 @@ export const AgentsTab = ({
                                         ...(AUTO_TOOLS_BY_TYPE[agentType] || []),
                                     ]);
                                     return (
-                                <div className="grid grid-cols-2 gap-4">
-                                    {availableCapabilities.map((cap: any) => {
-                                        const toolDetails: {name: string, description: string}[] = cap.toolDetails || cap.tools.map((t: string) => ({ name: t, description: '' }));
-                                        const hasMultipleTools = toolDetails.length > 1;
-                                        const isExpanded = expandedCaps.has(cap.id);
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {availableCapabilities.map((cap: any) => {
+                                                const toolDetails: {name: string, description: string}[] = cap.toolDetails || cap.tools.map((t: string) => ({ name: t, description: '' }));
+                                                const hasMultipleTools = toolDetails.length > 1;
+                                                const isExpanded = expandedCaps.has(cap.id);
+                                                const isAutoGroup = cap.tools.every((t: string) => autoTools.has(t));
+                                                const enabledCount = cap.tools.filter((t: string) =>
+                                                    isAutoGroup || draftAgent.tools.includes("all") || draftAgent.tools.includes(t)
+                                                ).length;
+                                                const allGroupEnabled = enabledCount === cap.tools.length;
+                                                const someEnabled = enabledCount > 0 && !allGroupEnabled;
 
-                                        // Check if all tools in this group are auto-included for this agent type
-                                        const isAutoGroup = cap.tools.every((t: string) => autoTools.has(t));
-
-                                        const enabledCount = cap.tools.filter((t: string) =>
-                                            isAutoGroup || draftAgent.tools.includes("all") || draftAgent.tools.includes(t)
-                                        ).length;
-                                        const allGroupEnabled = enabledCount === cap.tools.length;
-                                        const someEnabled = enabledCount > 0 && !allGroupEnabled;
-
-                                        return (
-                                            <div
-                                                key={cap.id}
-                                                className={`border transition-colors
-                                                    ${isAutoGroup
-                                                        ? 'bg-zinc-900/60 border-blue-900/40'
-                                                        : allGroupEnabled
-                                                            ? 'bg-zinc-900 border-zinc-600'
-                                                            : someEnabled
-                                                                ? 'bg-zinc-900/50 border-zinc-700'
-                                                                : 'bg-black border-zinc-800 opacity-50'
-                                                    }`}
-                                            >
-                                                {/* Group header */}
-                                                <div className={`p-4 flex items-center gap-2 transition-colors ${isAutoGroup ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-800/30'}`}
-                                                    onClick={() => {
-                                                        if (isAutoGroup) return;
-                                                        if (hasMultipleTools) {
-                                                            toggleExpand(cap.id);
-                                                        } else {
-                                                            toggleGroupTools(cap);
-                                                        }
-                                                    }}
-                                                >
-                                                    {/* Group checkbox or lock icon */}
-                                                    {isAutoGroup ? (
-                                                        <Lock className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                                                    ) : (
+                                                return (
                                                     <div
-                                                        onClick={(e) => {
-                                                            if (hasMultipleTools) {
-                                                                e.stopPropagation();
-                                                                toggleGroupTools(cap);
-                                                            }
-                                                        }}
-                                                        className={`w-3 h-3 border flex-shrink-0 flex items-center justify-center
-                                                            ${allGroupEnabled
-                                                                ? 'bg-green-500 border-green-500'
-                                                                : someEnabled
-                                                                    ? 'bg-yellow-500 border-yellow-500'
-                                                                    : 'border-zinc-600'
+                                                        key={cap.id}
+                                                        className={`border transition-colors
+                                                            ${isAutoGroup
+                                                                ? 'bg-zinc-900/60 border-blue-900/40'
+                                                                : allGroupEnabled
+                                                                    ? 'bg-zinc-900 border-zinc-600'
+                                                                    : someEnabled
+                                                                        ? 'bg-zinc-900/50 border-zinc-700'
+                                                                        : 'bg-black border-zinc-800 opacity-50'
                                                             }`}
                                                     >
-                                                        {someEnabled && <div className="w-1.5 h-0.5 bg-white"></div>}
-                                                    </div>
-                                                    )}
-                                                    <span className="text-xs font-bold text-white truncate flex-1">{cap.label}</span>
-                                                    {isAutoGroup && <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">DEFAULT</span>}
-                                                    {!isAutoGroup && cap.toolType === 'custom' && <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 rounded">CUSTOM</span>}
-                                                    {!isAutoGroup && cap.toolType === 'mcp' && <span className="text-[9px] px-1 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">MCP</span>}
-                                                    {!isAutoGroup && hasMultipleTools && (
-                                                        <span className="text-[9px] text-zinc-500">{enabledCount}/{cap.tools.length}</span>
-                                                    )}
-                                                    {!isAutoGroup && hasMultipleTools && (
-                                                        isExpanded
-                                                            ? <ChevronDown className="h-3 w-3 text-zinc-500 flex-shrink-0" />
-                                                            : <ChevronRight className="h-3 w-3 text-zinc-500 flex-shrink-0" />
-                                                    )}
-                                                </div>
-
-                                                {/* Group description */}
-                                                {!isExpanded && (
-                                                    <div className="px-4 pb-3 -mt-1">
-                                                        <p className="text-[9px] text-zinc-500 pl-5 truncate">
-                                                            {isAutoGroup ? `Included by default for ${agentType} agents` : cap.description}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                {/* Expanded: individual tools (not for auto groups) */}
-                                                {isExpanded && hasMultipleTools && !isAutoGroup && (
-                                                    <div className="border-t border-zinc-800 px-3 py-2 space-y-1 max-h-[200px] overflow-y-auto">
-                                                        {toolDetails.map((tool: {name: string, description: string}) => {
-                                                            const isToolAuto = autoTools.has(tool.name);
-                                                            const isToolEnabled = isToolAuto || draftAgent.tools.includes("all") || draftAgent.tools.includes(tool.name);
-                                                            return (
+                                                        <div className={`p-4 flex items-center gap-2 transition-colors ${isAutoGroup ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-800/30'}`}
+                                                            onClick={() => {
+                                                                if (isAutoGroup) return;
+                                                                if (hasMultipleTools) {
+                                                                    toggleExpand(cap.id);
+                                                                } else {
+                                                                    toggleGroupTools(cap);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {isAutoGroup ? (
+                                                                <Lock className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                                            ) : (
                                                                 <div
-                                                                    key={tool.name}
-                                                                    onClick={() => !isToolAuto && toggleSingleTool(tool.name, cap)}
-                                                                    className={`flex gap-2.5 py-1.5 px-2 rounded transition-colors ${isToolAuto ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-zinc-800/40'}`}
-                                                                >
-                                                                    {isToolAuto ? (
-                                                                        <Lock className="w-2.5 h-2.5 text-blue-400 flex-shrink-0 mt-[3px]" />
-                                                                    ) : (
-                                                                    <div className={`w-2.5 h-2.5 border flex-shrink-0 mt-[3px]
-                                                                        ${isToolEnabled
+                                                                    onClick={(e) => {
+                                                                        if (hasMultipleTools) {
+                                                                            e.stopPropagation();
+                                                                            toggleGroupTools(cap);
+                                                                        }
+                                                                    }}
+                                                                    className={`w-3 h-3 border flex-shrink-0 flex items-center justify-center
+                                                                        ${allGroupEnabled
                                                                             ? 'bg-green-500 border-green-500'
-                                                                            : 'border-zinc-600'
+                                                                            : someEnabled
+                                                                                ? 'bg-yellow-500 border-yellow-500'
+                                                                                : 'border-zinc-600'
                                                                         }`}
-                                                                    ></div>
-                                                                    )}
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <div className="text-[10px] font-mono text-zinc-300">{tool.name}</div>
-                                                                        {tool.description && (
-                                                                            <p className="text-[9px] text-zinc-600 mt-0.5 leading-tight">{tool.description}</p>
-                                                                        )}
-                                                                    </div>
+                                                                >
+                                                                    {someEnabled && <div className="w-1.5 h-0.5 bg-white"></div>}
                                                                 </div>
-                                                            );
-                                                        })}
+                                                            )}
+                                                            <span className="text-xs font-bold text-white truncate flex-1">{cap.label}</span>
+                                                            {isAutoGroup && <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">DEFAULT</span>}
+                                                            {!isAutoGroup && cap.toolType === 'custom' && <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 rounded">CUSTOM</span>}
+                                                            {!isAutoGroup && cap.toolType === 'mcp' && <span className="text-[9px] px-1 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">MCP</span>}
+                                                            {!isAutoGroup && hasMultipleTools && (
+                                                                <span className="text-[9px] text-zinc-500">{enabledCount}/{cap.tools.length}</span>
+                                                            )}
+                                                            {!isAutoGroup && hasMultipleTools && (
+                                                                isExpanded
+                                                                    ? <ChevronDown className="h-3 w-3 text-zinc-500 flex-shrink-0" />
+                                                                    : <ChevronRight className="h-3 w-3 text-zinc-500 flex-shrink-0" />
+                                                            )}
+                                                        </div>
+
+                                                        {!isExpanded && (
+                                                            <div className="px-4 pb-3 -mt-1">
+                                                                <p className="text-[9px] text-zinc-500 pl-5 truncate">
+                                                                    {isAutoGroup ? `Included by default for ${agentType} agents` : cap.description}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        {isExpanded && hasMultipleTools && !isAutoGroup && (
+                                                            <div className="border-t border-zinc-800 px-3 py-2 space-y-1 max-h-[200px] overflow-y-auto">
+                                                                {toolDetails.map((tool: {name: string, description: string}) => {
+                                                                    const isToolAuto = autoTools.has(tool.name);
+                                                                    const isToolEnabled = isToolAuto || draftAgent.tools.includes("all") || draftAgent.tools.includes(tool.name);
+                                                                    return (
+                                                                        <div
+                                                                            key={tool.name}
+                                                                            onClick={() => !isToolAuto && toggleSingleTool(tool.name, cap)}
+                                                                            className={`flex gap-2.5 py-1.5 px-2 rounded transition-colors ${isToolAuto ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-zinc-800/40'}`}
+                                                                        >
+                                                                            {isToolAuto ? (
+                                                                                <Lock className="w-2.5 h-2.5 text-blue-400 flex-shrink-0 mt-[3px]" />
+                                                                            ) : (
+                                                                                <div className={`w-2.5 h-2.5 border flex-shrink-0 mt-[3px]
+                                                                                    ${isToolEnabled
+                                                                                        ? 'bg-green-500 border-green-500'
+                                                                                        : 'border-zinc-600'
+                                                                                    }`}
+                                                                                ></div>
+                                                                            )}
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="text-[10px] font-mono text-zinc-300">{tool.name}</div>
+                                                                                {tool.description && (
+                                                                                    <p className="text-[9px] text-zinc-600 mt-0.5 leading-tight">{tool.description}</p>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                                );
+                                            })}
+                                        </div>
                                     );
                                 })()}
                             </div>
@@ -545,7 +565,45 @@ export const AgentsTab = ({
                                     />
                                 )}
                             </div>
-                    </>
+                        </div>
+                    )} {/* end agentSubTab === 'config' */}
+
+                    {/* ── Messaging Channels sub-tab ─────────────────── */}
+                    {agentSubTab === 'messaging' && (
+                        <div className="space-y-4">
+                            <p className="text-[10px] text-zinc-500">
+                                Messaging channels bound to this agent. Configure them in full from <strong className="text-zinc-300">Settings → Messaging</strong>.
+                            </p>
+                            {agentChannels.length === 0 ? (
+                                <div className="p-8 border border-dashed border-zinc-800 text-center text-zinc-600 space-y-3">
+                                    <MessageSquare className="h-8 w-8 mx-auto opacity-20" />
+                                    <p className="text-xs">No messaging channels bound to this agent yet.</p>
+                                    <p className="text-[10px]">Go to <strong className="text-zinc-400">Settings → Messaging</strong> and select this agent when creating a channel.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {agentChannels.map((ch: any) => {
+                                        const EMOJI: Record<string,string> = { telegram:'✈️', discord:'🎮', slack:'💬', teams:'📘', whatsapp:'📱' };
+                                        return (
+                                            <div key={ch.id} className="flex items-center gap-3 p-3 border border-zinc-800 bg-zinc-950">
+                                                <span className="text-lg">{EMOJI[ch.platform] ?? '🤖'}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-xs font-bold text-white">{ch.name}</div>
+                                                    <div className="text-[10px] text-zinc-500 capitalize">{ch.platform}{ch.multi_agent_mode ? ' · multi-agent' : ''}</div>
+                                                </div>
+                                                {ch.status === 'running'
+                                                    ? <span className="flex items-center gap-1 text-[10px] text-green-400"><CheckCircle className="h-3 w-3" /> Running</span>
+                                                    : ch.status === 'error'
+                                                    ? <span className="flex items-center gap-1 text-[10px] text-red-400"><XCircle className="h-3 w-3" /> Error</span>
+                                                    : <span className="flex items-center gap-1 text-[10px] text-zinc-500"><Square className="h-3 w-3" /> Stopped</span>
+                                                }
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-4">

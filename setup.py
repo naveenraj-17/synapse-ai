@@ -340,6 +340,7 @@ DEFAULT_SETTINGS = {
     "report_agent_enabled": False,
     "browser_automation_enabled": True,
     "playwright_browsers_path": "",
+    "messaging_enabled": False,
 }
 
 def load_settings():
@@ -480,8 +481,21 @@ def ask_browser_automation(cfg):
 
 
 # ---------------------------------------------------------------------------
-# Q2b — Google Workspace (optional)
+# Q2d — Messaging App Integration
 # ---------------------------------------------------------------------------
+def ask_messaging_app(cfg):
+    step("Messaging App Integration")
+    info("Lets your agents be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
+    info("You will configure individual bots later in Settings → Messaging.")
+    enabled = ask_yn("Enable Messaging App support?", default="n")
+    cfg["messaging_enabled"] = enabled
+    if not enabled:
+        ok("Messaging disabled — skipping.")
+        return
+    ok("Messaging enabled. Messaging libraries will be installed now.")
+
+
+
 GOOGLE_APIS = [
     ("Gmail",    "gmail.googleapis.com"),
     ("Drive",    "drive.googleapis.com"),
@@ -867,7 +881,7 @@ def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
 # ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
-def install_backend(coding_enabled):
+def install_backend(coding_enabled, messaging_enabled=False):
     step("Installing Backend Dependencies")
 
     if not os.path.exists(PIP_EXE):
@@ -890,6 +904,15 @@ def install_backend(coding_enabled):
             ok("Coding-agent dependencies installed.")
         else:
             warn(f"requirements-coding.txt not found at {coding_req}")
+    
+    if messaging_enabled:
+        messaging_req = os.path.join(BACKEND_DIR, "requirements-messaging.txt")
+        if os.path.exists(messaging_req):
+            info("Installing messaging integration dependencies…")
+            _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", messaging_req])
+            ok("Messaging dependencies installed.")
+        else:
+            warn(f"requirements-messaging.txt not found at {messaging_req}")
 
     info("Installing Synapse package (editable mode)…")
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-e", ROOT_DIR])
@@ -1051,6 +1074,7 @@ def main():
     ask_coding_agent(cfg)
     ask_report_agent(cfg)
     ask_browser_automation(cfg)
+    ask_messaging_app(cfg)
     ask_google_workspace()
     ask_agent_name(cfg)
     ask_llm(cfg)
@@ -1061,7 +1085,10 @@ def main():
     ok(f"Settings saved to {SETTINGS_FILE}")
 
     try:
-        install_backend(cfg.get("coding_agent_enabled", False))
+        install_backend(
+            cfg.get("coding_agent_enabled", False),
+            cfg.get("messaging_enabled", False),
+        )
         install_frontend()
     except subprocess.CalledProcessError as e:
         err(f"Installation failed: {e}")

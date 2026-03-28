@@ -37,6 +37,7 @@ from core.routes.repos import router as repos_router
 from core.routes.db_configs import router as db_configs_router
 from core.routes.orchestrations import router as orchestrations_router
 from core.routes.logs import router as logs_router
+from core.routes.messaging import router as messaging_router
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -207,6 +208,7 @@ tool_router: dict[str, str] = {}                 # tool_name -> client_name
 exit_stack: Optional[AsyncExitStack] = None
 memory_store: Any = None
 mcp_manager: Optional[MCPClientManager] = None
+messaging_manager: Any = None  # MessagingManager (set in lifespan if enabled)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -312,12 +314,26 @@ async def lifespan(app: FastAPI):
             print("Initializing Memory Store...")
             global memory_store
             memory_store = _init_memory_store(load_settings())
-        
+
         print("All agents connected.")
 
         # Expose server module on app.state for orchestration routes
         import core.server as _self_module
         app.state.server_module = _self_module
+
+        # --- Initialize Messaging Manager (if enabled) ---
+        if _settings.get("messaging_enabled", False):
+            try:
+                from core.messaging.manager import MessagingManager
+                global messaging_manager
+                messaging_manager = MessagingManager(server_module=_self_module)
+                await messaging_manager.start_all()
+                app.state.messaging_manager = messaging_manager
+                print("Messaging manager started.")
+            except Exception as e:
+                print(f"Warning: Failed to start messaging manager: {e}")
+        else:
+            app.state.messaging_manager = None
 
         yield
         
@@ -326,6 +342,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         print("Shutting down agents...")
+        if messaging_manager:
+            try:
+                await messaging_manager.stop_all()
+            except Exception as e:
+                print(f"Warning: Messaging manager shutdown error: {e}")
         if exit_stack:
             await exit_stack.aclose()
 
@@ -353,6 +374,7 @@ app.include_router(repos_router)
 app.include_router(db_configs_router)
 app.include_router(orchestrations_router)
 app.include_router(logs_router)
+app.include_router(messaging_router)
 
 if __name__ == "__main__":
     import uvicorn

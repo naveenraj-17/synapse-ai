@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Plus, Trash2, MessageSquare } from 'lucide-react';
 import type { StepConfig, StepType } from '@/types/orchestration';
 import { STEP_TYPE_META } from '@/types/orchestration';
 
@@ -261,16 +261,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
 
                 {/* ===== HUMAN config ===== */}
                 {step.type === 'human' && (
-                    <div>
-                        <label className="text-xs text-zinc-400 block mb-1">Prompt for Human</label>
-                        <textarea
-                            className={textareaCls}
-                            rows={3}
-                            value={step.human_prompt || ''}
-                            onChange={(e) => update({ human_prompt: e.target.value })}
-                            placeholder="What should the user decide?"
-                        />
-                    </div>
+                    <HumanStepConfig step={step} update={update} textareaCls={textareaCls} inputCls={inputCls} selectCls={selectCls} />
                 )}
 
                 {/* ===== TRANSFORM config ===== */}
@@ -388,6 +379,82 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                     Delete Step
                 </button>
             </div>
+        </div>
+    );
+}
+
+/** Human Step config — prompt + optional messaging channel + timeout */
+function HumanStepConfig({ step, update, textareaCls, inputCls, selectCls }: {
+    step: StepConfig;
+    update: (patch: Partial<StepConfig>) => void;
+    textareaCls: string;
+    inputCls: string;
+    selectCls: string;
+}) {
+    const [channels, setChannels] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetch('/api/messaging/channels')
+            .then(r => r.ok ? r.json() : [])
+            .then(d => setChannels(Array.isArray(d) ? d : []))
+            .catch(() => {});
+    }, []);
+
+    const PLATFORM_EMOJI: Record<string, string> = {
+        telegram: '✈️', discord: '🎮', slack: '💬', teams: '📘', whatsapp: '📱',
+    };
+
+    return (
+        <div className="space-y-3">
+            <div>
+                <label className="text-xs text-zinc-400 block mb-1">Prompt for Human</label>
+                <textarea
+                    className={textareaCls}
+                    rows={3}
+                    value={step.human_prompt || ''}
+                    onChange={(e) => update({ human_prompt: e.target.value })}
+                    placeholder="What should the user decide? Use {state.key} for context."
+                />
+                <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values.</p>
+            </div>
+
+            <div>
+                <label className="text-xs text-zinc-400 flex items-center gap-1 mb-1">
+                    <MessageSquare size={11} /> Notify Messaging Channel <span className="text-zinc-600">(optional)</span>
+                </label>
+                <select
+                    className={selectCls}
+                    value={(step as any).human_channel_id || ''}
+                    onChange={(e) => update({ human_channel_id: e.target.value || undefined } as any)}
+                >
+                    <option value="">Browser UI only</option>
+                    {channels.map((ch: any) => (
+                        <option key={ch.id} value={ch.id}>
+                            {PLATFORM_EMOJI[ch.platform] ?? '🤖'} {ch.name} [{ch.status ?? 'stopped'}]
+                        </option>
+                    ))}
+                </select>
+                {(step as any).human_channel_id && (
+                    <p className="text-[10px] text-amber-400 mt-1">
+                        ⏱ First response wins — from messaging app <em>or</em> browser, whichever arrives first.
+                    </p>
+                )}
+            </div>
+
+            {(step as any).human_channel_id && (
+                <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Timeout (seconds)</label>
+                    <input
+                        type="number"
+                        className={inputCls}
+                        value={(step as any).human_timeout_seconds ?? 3600}
+                        onChange={(e) => update({ human_timeout_seconds: parseInt(e.target.value) || 3600 } as any)}
+                        min={60}
+                        step={60}
+                    />
+                    <p className="text-[10px] text-zinc-600 mt-0.5">How long to wait for a reply from the messaging channel before falling back to the browser UI only.</p>
+                </div>
+            )}
         </div>
     );
 }

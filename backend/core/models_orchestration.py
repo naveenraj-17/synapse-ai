@@ -54,6 +54,8 @@ class StepConfig(BaseModel):
     # HUMAN -- pause for human input
     human_prompt: str | None = None
     human_fields: list[dict[str, str]] = []  # [{name, type, label}]
+    human_channel_id: str | None = None      # messaging channel to notify (optional)
+    human_timeout_seconds: int = 3600        # how long to wait for messaging response
 
     # I/O mapping
     input_keys: list[str] = []    # Keys to pull from shared state as context

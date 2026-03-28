@@ -2,7 +2,7 @@
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef } from 'react';
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare } from 'lucide-react';
 
 import type { SettingsModalProps, Tab } from './settings/types';
 import { GeneralTab } from './settings/GeneralTab';
@@ -21,6 +21,7 @@ import { ReposTab } from './settings/ReposTab';
 import { DBsTab } from './settings/DBsTab';
 import { OrchestrationTab } from './settings/OrchestrationTab';
 import { LogsTab } from './settings/LogsTab';
+import { MessagingTab } from './settings/MessagingTab';
 
 
 export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: SettingsModalProps) => {
@@ -93,6 +94,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
     });
 
     const [availableCapabilities, setAvailableCapabilities] = useState<any[]>([]);
+    const [messagingEnabled, setMessagingEnabled] = useState(false);
 
     const refreshBedrockModels = async () => {
         setLoadingModels(true);
@@ -315,6 +317,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                     setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
                     setVaultThreshold(data.vault_threshold || 15000);
                     setAllowDbWrite(data.allow_db_write || false);
+                    setMessagingEnabled(data.messaging_enabled || false);
                     if (data.global_config) {
                          const configArray = Object.entries(data.global_config).map(([k, v]) => ({
                              id: Math.random().toString(36).substr(2, 9),
@@ -685,6 +688,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
         { id: 'workspace', label: 'Integrations', icon: Cloud },
         { id: 'memory', label: 'Memory', icon: Trash },
         { id: 'logs', label: 'Logs', icon: ScrollText },
+        ...(messagingEnabled ? [{ id: 'messaging', label: 'Messaging', icon: MessageSquare }] : []),
     ];
 
     // Added font-mono to ensure inheritance if not already inherited
@@ -756,7 +760,20 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                             </div>
                         )}
 
-                        <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' ? 'hidden' : ''}`}>
+                        {/* Messaging tab */}
+                        {activeTab === 'messaging' && (
+                            <div className="flex-1 overflow-y-auto p-6 md:p-12">
+                                <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
+                                    <div className="mb-8">
+                                        <h1 className="text-3xl font-bold mb-2">Messaging</h1>
+                                        <p className="text-zinc-500 text-sm">Connect your agents to Telegram, Discord, Slack, Teams, or WhatsApp.</p>
+                                    </div>
+                                    <MessagingTab />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' ? 'hidden' : ''}`}>
                             <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
 
                                 <div className="mb-8">
