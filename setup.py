@@ -445,6 +445,10 @@ def install_backend(coding_enabled):
         else:
             warn(f"requirements-coding.txt not found at {coding_req}")
 
+    info("Installing Synapse package (editable mode)…")
+    _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-e", ROOT_DIR])
+    ok("Synapse package installed.")
+
 def install_frontend():
     step("Installing Frontend Dependencies")
     if not shutil.which("npm"):
@@ -468,6 +472,107 @@ def start_frontend():
         cwd=FRONTEND_DIR,
         shell=IS_WIN
     )
+
+def wait_for_server(url: str, name: str, timeout: int = 60) -> bool:
+    """Wait for a server to be ready by checking HTTP status"""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            urllib.request.urlopen(url, timeout=3)
+            return True
+        except Exception:
+            time.sleep(2)
+    return False
+
+# ---------------------------------------------------------------------------
+# PATH Setup Helpers
+# ---------------------------------------------------------------------------
+def add_to_bashrc():
+    """Add bin directory to PATH in ~/.bashrc"""
+    bashrc = os.path.expanduser("~/.bashrc")
+    bin_dir = os.path.join(ROOT_DIR, "bin")
+    export_line = f"\nexport PATH=\"{bin_dir}:$PATH\"  # Synapse AI"
+    
+    if not os.path.exists(bashrc):
+        with open(bashrc, "w") as f:
+            f.write(export_line + "\n")
+        ok(f"Created {bashrc} with Synapse PATH")
+        return True
+    
+    with open(bashrc, "r") as f:
+        content = f.read()
+    
+    if "Synapse AI" in content or bin_dir in content:
+        ok("Synapse already in PATH (bashrc)")
+        return True
+    
+    with open(bashrc, "a") as f:
+        f.write(export_line + "\n")
+    ok(f"Added Synapse to PATH (bashrc)")
+    return True
+
+def add_to_zshrc():
+    """Add bin directory to PATH in ~/.zshrc"""
+    zshrc = os.path.expanduser("~/.zshrc")
+    if not os.path.exists(zshrc):
+        return False
+    
+    bin_dir = os.path.join(ROOT_DIR, "bin")
+    export_line = f"\nexport PATH=\"{bin_dir}:$PATH\"  # Synapse AI"
+    
+    with open(zshrc, "r") as f:
+        content = f.read()
+    
+    if "Synapse AI" in content or bin_dir in content:
+        ok("Synapse already in PATH (zshrc)")
+        return True
+    
+    with open(zshrc, "a") as f:
+        f.write(export_line + "\n")
+    ok(f"Added Synapse to PATH (zshrc)")
+    return True
+
+def setup_path():
+    """Setup PATH for the current platform"""
+    step("Setting up Synapse command")
+    bin_dir = os.path.join(ROOT_DIR, "bin")
+    
+    if IS_WIN:
+        # Windows: Just inform user about python -m synapse start
+        info("On Windows, use: python -m synapse start")
+        info("(Works from anywhere after setup)")
+        ok("Windows setup complete.")
+    else:
+        # Unix: Try to add to .bashrc / .zshrc
+        info("Checking for shell configuration files…")
+        added_bash = add_to_bashrc()
+        added_zsh = add_to_zshrc()
+        
+        if added_bash or added_zsh:
+            info(f"Synapse bin directory: {bin_dir}")
+            info("You may need to run: source ~/.bashrc  (or ~/.zshrc for zsh)")
+            info("Or restart your terminal.")
+        ok("PATH setup complete.")
+
+def show_restart_instructions():
+    """Show instructions for restarting Synapse"""
+    step("To Start Synapse Again Later")
+    
+    if IS_WIN:
+        info("From anywhere in Windows:")
+        info(f"  python -m synapse start")
+    else:
+        info("Simply run:")
+        info(f"  synapse start")
+        info("")
+        info("If the command is not found, either:")
+        info(f"  1. Restart your terminal (to reload ~/.bashrc or ~/.zshrc)")
+        info(f"  2. Or use: python -m synapse start")
+        info("")
+        info("Other useful commands:")
+        info(f"  synapse stop      # Stop running services")
+        info(f"  synapse status    # Check service status")
+        info(f"  synapse restart   # Restart services")
 
 # ---------------------------------------------------------------------------
 # Main
@@ -499,8 +604,25 @@ def main():
         err(f"Installation failed: {e}")
         sys.exit(1)
 
+    setup_path()
+
+    print()
+    start_now = ask_yn("Start Synapse now?", default="y")
+    
+    if not start_now:
+        print()
+        show_restart_instructions()
+        print(f"\n{C.GREEN}Setup complete! Synapse is ready to use.{C.RESET}\n")
+        sys.exit(0)
+
     backend_proc = start_backend()
     frontend_proc = start_frontend()
+
+    if wait_for_server("http://127.0.0.1:8000/docs", "Backend"):
+        ok("Backend is ready.")
+
+    if wait_for_server("http://127.0.0.1:3000", "Frontend"):
+        ok("Frontend is ready.")
 
     print(f"\n{C.BOLD}{C.GREEN}Application is running!{C.RESET}")
     print(f"   Frontend: {_c(C.CYAN, 'http://localhost:3000')}")
