@@ -5,6 +5,7 @@ Uses only Python stdlib so it works before the venv exists.
 """
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -72,6 +73,224 @@ def ask_choice(prompt, options):
         warn(f"Enter a number between 1 and {len(options)}.")
 
 # ---------------------------------------------------------------------------
+# OS Detection & Auto-Install Helpers
+# ---------------------------------------------------------------------------
+def get_os_type():
+    """Get OS type: 'linux', 'darwin', 'windows'"""
+    return sys.platform
+
+def get_linux_distro():
+    """Get Linux distribution type"""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("ID="):
+                    return line.split("=")[1].strip().strip('"')
+    except:
+        pass
+    return None
+
+def install_npm():
+    """Auto-install npm/Node.js if not found"""
+    step("Installing Node.js and npm")
+    
+    os_type = get_os_type()
+    
+    if IS_WIN:
+        info("Please download and install Node.js from https://nodejs.org/")
+        info("Then re-run this setup script.")
+        err("Node.js installation required.")
+        sys.exit(1)
+    elif os_type == "darwin":
+        info("Installing Node.js via Homebrew…")
+        try:
+            subprocess.check_call(["brew", "install", "node"])
+            ok("Node.js installed successfully.")
+        except FileNotFoundError:
+            err("Homebrew not found. Please install from https://brew.sh")
+            sys.exit(1)
+        except subprocess.CalledProcessError:
+            err("Failed to install Node.js via Homebrew.")
+            sys.exit(1)
+    else:  # Linux
+        distro = get_linux_distro()
+        
+        if distro in ("ubuntu", "debian"):
+            info("Installing Node.js on Ubuntu/Debian…")
+            try:
+                subprocess.check_call(["sudo", "apt-get", "update"])
+                subprocess.check_call(["sudo", "apt-get", "install", "-y", "nodejs", "npm"])
+                ok("Node.js installed successfully.")
+            except subprocess.CalledProcessError:
+                err("Failed to install Node.js.")
+                sys.exit(1)
+        elif distro in ("fedora", "rhel", "centos"):
+            info("Installing Node.js on Fedora/RHEL…")
+            try:
+                subprocess.check_call(["sudo", "dnf", "install", "-y", "nodejs", "npm"])
+                ok("Node.js installed successfully.")
+            except subprocess.CalledProcessError:
+                err("Failed to install Node.js.")
+                sys.exit(1)
+        elif distro in ("arch", "manjaro"):
+            info("Installing Node.js on Arch/Manjaro…")
+            try:
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"])
+                ok("Node.js installed successfully.")
+            except subprocess.CalledProcessError:
+                err("Failed to install Node.js.")
+                sys.exit(1)
+        else:
+            warn(f"Unknown Linux distribution: {distro}")
+            info("Please install Node.js manually from https://nodejs.org/")
+            sys.exit(1)
+
+def install_postgresql():
+    """Auto-install PostgreSQL if not found"""
+    step("Installing PostgreSQL")
+    
+    os_type = get_os_type()
+    
+    if IS_WIN:
+        info("Please download and install PostgreSQL from https://www.postgresql.org/download/")
+        info("Then re-run this setup script.")
+        err("PostgreSQL installation required.")
+        sys.exit(1)
+    elif os_type == "darwin":
+        info("Installing PostgreSQL via Homebrew…")
+        try:
+            subprocess.check_call(["brew", "install", "postgresql@15"])
+            subprocess.check_call(["brew", "services", "start", "postgresql@15"])
+            ok("PostgreSQL installed and started.")
+        except FileNotFoundError:
+            err("Homebrew not found. Please install from https://brew.sh")
+            sys.exit(1)
+        except subprocess.CalledProcessError:
+            err("Failed to install PostgreSQL.")
+            sys.exit(1)
+    else:  # Linux
+        distro = get_linux_distro()
+        
+        if distro in ("ubuntu", "debian"):
+            info("Installing PostgreSQL on Ubuntu/Debian…")
+            try:
+                subprocess.check_call(["sudo", "apt-get", "update"])
+                subprocess.check_call(["sudo", "apt-get", "install", "-y", "postgresql", "postgresql-contrib"])
+                subprocess.check_call(["sudo", "systemctl", "start", "postgresql"])
+                ok("PostgreSQL installed and started.")
+            except subprocess.CalledProcessError:
+                err("Failed to install PostgreSQL.")
+                sys.exit(1)
+        elif distro in ("fedora", "rhel", "centos"):
+            info("Installing PostgreSQL on Fedora/RHEL…")
+            try:
+                subprocess.check_call(["sudo", "dnf", "install", "-y", "postgresql-server", "postgresql-contrib"])
+                subprocess.check_call(["sudo", "systemctl", "start", "postgresql"])
+                ok("PostgreSQL installed and started.")
+            except subprocess.CalledProcessError:
+                err("Failed to install PostgreSQL.")
+                sys.exit(1)
+        elif distro in ("arch", "manjaro"):
+            info("Installing PostgreSQL on Arch/Manjaro…")
+            try:
+                subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "postgresql"])
+                ok("PostgreSQL installed. Start with: sudo systemctl start postgresql")
+            except subprocess.CalledProcessError:
+                err("Failed to install PostgreSQL.")
+                sys.exit(1)
+        else:
+            err(f"Unknown Linux distribution: {distro}")
+            sys.exit(1)
+
+def install_pgvector():
+    """Install pgvector extension in PostgreSQL"""
+    step("Installing pgvector Extension")
+    
+    os_type = get_os_type()
+    
+    if IS_WIN:
+        warn("On Windows, please install pgvector manually or use WSL.")
+        return False
+    
+    distro = get_linux_distro() if os_type != "darwin" else "darwin"
+    
+    try:
+        if os_type == "darwin":
+            subprocess.check_call(["brew", "install", "pgvector"])
+        elif distro in ("ubuntu", "debian"):
+            subprocess.check_call(["sudo", "apt-get", "install", "-y", "postgresql-contrib"])
+            subprocess.check_call(["sudo", "apt-get", "install", "-y", "postgresql-15-pgvector"])
+        elif distro in ("fedora", "rhel"):
+            subprocess.check_call(["sudo", "dnf", "install", "-y", "pgvector"])
+        elif distro in ("arch", "manjaro"):
+            subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "pgvector"])
+        else:
+            warn(f"pgvector installation not automated for {distro}. Please install manually.")
+            return False
+        ok("pgvector installed.")
+        return True
+    except subprocess.CalledProcessError:
+        warn("pgvector installation had issues. You may need to install manually.")
+        return False
+
+def create_postgresql_db(db_user, db_password, db_name="synapse"):
+    """Create a PostgreSQL database and return the connection URL"""
+    step("Setting up PostgreSQL Database")
+    
+    try:
+        # Try to create database and user using psql
+        # First, get superuser password or use peer authentication
+        info(f"Creating database '{db_name}' and user '{db_user}'…")
+        
+        # Create user if not exists
+        create_user_sql = f"CREATE USER {db_user} PASSWORD '{db_password}';"
+        create_db_sql = f"CREATE DATABASE {db_name} OWNER {db_user};"
+        alter_priv_sql = f"ALTER ROLE {db_user} CREATEDB;"
+        
+        try:
+            # Try with sudo -u postgres (Linux)
+            subprocess.run(
+                ["sudo", "-u", "postgres", "psql", "-c", alter_priv_sql],
+                check=True, capture_output=True, timeout=10
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Try direct connection
+            pass
+        
+        try:
+            subprocess.run(
+                ["sudo", "-u", "postgres", "psql", "-c", create_user_sql],
+                check=False, capture_output=True, timeout=10
+            )
+        except:
+            pass
+        
+        try:
+            subprocess.run(
+                ["sudo", "-u", "postgres", "psql", "-c", create_db_sql],
+                check=False, capture_output=True, timeout=10
+            )
+        except:
+            pass
+        
+        # Try to create vector extension
+        try:
+            subprocess.run(
+                ["sudo", "-u", "postgres", "psql", "-d", db_name, "-c", "CREATE EXTENSION IF NOT EXISTS vector;"],
+                check=False, capture_output=True, timeout=10
+            )
+            ok("Vector extension created.")
+        except:
+            warn("Could not create vector extension. You may need to do it manually.")
+        
+        url = f"postgresql+psycopg://{db_user}:{db_password}@localhost:5432/{db_name}"
+        return url
+    
+    except Exception as e:
+        err(f"Failed to setup database: {e}")
+        return None
+
+# ---------------------------------------------------------------------------
 # System checks
 # ---------------------------------------------------------------------------
 def check_python():
@@ -84,8 +303,8 @@ def check_python():
 
 def check_npm():
     if not shutil.which("npm"):
-        err("npm not found. Please install Node.js and npm.")
-        sys.exit(1)
+        warn("npm not found. Attempting to install Node.js and npm automatically…")
+        install_npm()
     ok("npm found")
 
 # ---------------------------------------------------------------------------
@@ -146,36 +365,64 @@ def ask_coding_agent(cfg):
         ok("Coding Agent disabled — skipping PostgreSQL setup.")
         return
 
-    # Ask for DB URL, try to validate
-    while True:
-        url = ask("PostgreSQL connection URL",
-                  default=cfg.get("sql_connection_string") or "postgresql://user:pass@localhost:5432/synapse")
-        if not url.startswith("postgresql"):
-            warn("URL must start with postgresql:// or postgresql+psycopg://")
-            continue
+    # Check if PostgreSQL was already installed by user
+    psql_was_preinstalled = shutil.which("psql") is not None
 
-        info("Testing connection…")
-        # Try psycopg2 (may already be system-installed)
+    # Check if PostgreSQL is installed, install if needed
+    if not psql_was_preinstalled:
+        warn("PostgreSQL not found. Installing PostgreSQL…")
+        install_postgresql()
+        # Use default credentials for auto-installed PostgreSQL
+        db_user = "postgres"
+        db_password = ""  # Default postgres user usually has no password (peer auth)
+        db_name = "synapse"
+        ok("Using default PostgreSQL credentials (postgres user, peer authentication).")
+    else:
+        ok("PostgreSQL is already installed.")
+        # Ask for credentials only if user had it pre-installed
+        info("Configuring PostgreSQL database for Coding Agent…")
+        db_user = ask("PostgreSQL username", default="postgres")
+        db_password = ask("PostgreSQL password", default="")
+        db_name = ask("Database name", default="synapse")
+
+    # Try to install pgvector
+    install_pgvector()
+
+    # Create database and get URL
+    db_url = create_postgresql_db(db_user, db_password, db_name)
+    
+    if db_url:
+        cfg["sql_connection_string"] = db_url
+        ok(f"Database URL: {db_url}")
+        
+        # Test connection
+        info("Testing PostgreSQL connection…")
         try:
             import psycopg2  # type: ignore
             try:
-                conn = psycopg2.connect(url, connect_timeout=5)
+                conn = psycopg2.connect(db_url, connect_timeout=5)
                 conn.close()
-                cfg["sql_connection_string"] = url
-                ok("Database connection successful.")
+                ok("PostgreSQL connection successful!")
                 return
             except Exception as e:
-                warn(f"Connection failed: {e}")
-                if not ask_yn("Try a different URL?", default="y"):
-                    cfg["sql_connection_string"] = url
-                    warn("Saved URL anyway — verify before starting the server.")
+                warn(f"Connection test failed: {e}")
+                if ask_yn("Save URL anyway?", default="y"):
+                    ok(f"Saved URL (verify before starting server)")
                     return
         except ImportError:
-            # psycopg2 not available yet — accept URL without validation
-            cfg["sql_connection_string"] = url
-            info("(Connection will be validated after install.)")
-            ok(f"Saved: {url}")
+            info("(psycopg2 will be installed with backend dependencies)")
+            ok(f"Database URL saved: {db_url}")
             return
+    else:
+        warn("Could not auto-create database. Please set it up manually.")
+        url = ask("PostgreSQL connection URL",
+                  default="postgresql://postgres:@localhost:5432/synapse")
+        if url.startswith("postgresql"):
+            cfg["sql_connection_string"] = url
+            ok(f"Saved: {url}")
+        else:
+            err("Invalid URL format.")
+            sys.exit(1)
 
 # ---------------------------------------------------------------------------
 # Q2 — Report Agent

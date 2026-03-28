@@ -15,6 +15,7 @@ import anyio
 DEFAULT_TOOLS_BY_TYPE = {
     "all_types": {
         "query_past_conversations",   # long-term memory
+        "sequentialthinking",         # multi-step tool execution
         "read_file_chunk",            # vault file access
         "search_file",                # vault file search
         "read_json_chunk",            # vault JSON access
@@ -256,6 +257,9 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
 ### TOOLS
 You have access to the following tools:
 {tools_json}
+
+**WHEN TO USE SEQUENTIALTHINKING:**
+For complex problems or multi-step analysis, use the sequentialthinking tool to organize your approach step-by-step.
 
 ### RESPONSE FORMAT INSTRUCTIONS
 If you need to use a specific tool from the list above, you MUST respond with **ONLY** a valid JSON object in the following format:

@@ -112,7 +112,7 @@ def _build_native_mcp_servers() -> list[dict]:
     repo_paths = _get_repo_paths()
     if repo_paths:
         servers.append({
-            "name": "filesystem",
+            "name": "Filesystem",
             "command": "npx",
             "args": ["-y", "@modelcontextprotocol/server-filesystem"] + repo_paths,
         })
@@ -121,7 +121,7 @@ def _build_native_mcp_servers() -> list[dict]:
 
     # --- Playwright MCP Server (browser automation) ---
     servers.append({
-        "name": "playwright",
+        "name": "Browser Automation",
         "command": "npx",
         "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
         "env": {"PLAYWRIGHT_BROWSERS_PATH": os.path.expanduser("~/.cache/ms-playwright")},
@@ -131,13 +131,29 @@ def _build_native_mcp_servers() -> list[dict]:
     google_env = _get_google_oauth_env()
     if google_env:
         servers.append({
-            "name": "google_workspace",
+            "name": "Google Workspace",
             "command": "uvx",
             "args": ["workspace-mcp", "--tools", "gmail", "drive", "calendar"],
             "env": google_env,
         })
     else:
         print("Warning: No Google OAuth credentials found — skipping Google Workspace MCP server.")
+
+    # --- Memory MCP Server ---
+    memory_file_path = DATA_DIR / "memory" / "memory.jsonl"
+    servers.append({
+        "name": "Memory",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-memory"],
+        "env": {"MEMORY_FILE_PATH": str(memory_file_path)},
+    })
+
+    # --- Sequential Thinking MCP Server ---
+    servers.append({
+        "name": "Sequential Thinking",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    })
 
     return servers
 

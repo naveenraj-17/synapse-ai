@@ -23,16 +23,6 @@
         }
     },
     {
-        "name": "PostgreSQL",
-        "command": "npx",
-        "args": [
-            "-y",
-            "@modelcontextprotocol/server-postgres",
-            "postgresql://username:password@localhost:5432/your_database"
-        ],
-        "env": {}
-    },
-    {
         "name": "Notion",
         "command": "npx",
         "args": [
@@ -45,17 +35,12 @@
     },
     {
         "name": "Jira & Confluence",
-        "command": "uvx",
+        "command": "npx",
         "args": [
-            "mcp-atlassian"
+            "-y",
+            "mcp-remote",
+            "https://mcp.atlassian.com/v1/mcp"
         ],
-        "env": {
-            "JIRA_URL": "https://your-org.atlassian.net",
-            "JIRA_USERNAME": "your-email@company.com",
-            "JIRA_API_TOKEN": "your_jira_api_token_here",
-            "CONFLUENCE_URL": "https://your-org.atlassian.net/wiki",
-            "CONFLUENCE_USERNAME": "your-email@company.com",
-            "CONFLUENCE_API_TOKEN": "your_jira_api_token_here"
-        }
+        "env": {}
     }
 ]
