@@ -4,7 +4,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText } from 'lucide-react';
 
-import { CAPABILITIES } from './settings/types';
 import type { SettingsModalProps, Tab } from './settings/types';
 import { GeneralTab } from './settings/GeneralTab';
 import { PersonalDetailsTab } from './settings/PersonalDetailsTab';
@@ -93,7 +92,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
         name: '', command: '', args: '', env: []
     });
 
-    const [availableCapabilities, setAvailableCapabilities] = useState<any[]>(CAPABILITIES);
+    const [availableCapabilities, setAvailableCapabilities] = useState<any[]>([]);
 
     const refreshBedrockModels = async () => {
         setLoadingModels(true);
@@ -418,16 +417,7 @@ export const SettingsModal = ({ isOpen, onClose, onSave, credentials }: Settings
                     });
                     
                     const dynamicCaps = Object.values(groups);
-                    const merged = dynamicCaps.map(cap => {
-                        // Try to find matching static capability by ID (e.g. 'gmail')
-                        const existing = CAPABILITIES.find(c => c.id === cap.id);
-                        if (existing) {
-                            return { ...cap, label: existing.label, description: existing.description, toolType: 'native' };
-                        }
-                        return cap;
-                    });
-                    
-                    setAvailableCapabilities(merged);
+                    setAvailableCapabilities(dynamicCaps);
                 });
         }
     }, [isOpen]);

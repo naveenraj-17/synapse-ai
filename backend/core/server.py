@@ -149,12 +149,21 @@ def _build_native_mcp_servers() -> list[dict]:
         print("Warning: No repos configured — skipping filesystem MCP server.")
 
     # --- Playwright MCP Server (browser automation) ---
-    servers.append({
-        "name": "Browser Automation",
-        "command": "npx",
-        "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
-        "env": {"PLAYWRIGHT_BROWSERS_PATH": os.path.expanduser("~/.cache/ms-playwright")},
-    })
+    if _settings.get("browser_automation_enabled", True):
+        env_dict = {}
+        pw_path = _settings.get("playwright_browsers_path")
+        if pw_path:
+            env_dict["PLAYWRIGHT_BROWSERS_PATH"] = pw_path
+        else:
+            # Fallback for old configs
+            env_dict["PLAYWRIGHT_BROWSERS_PATH"] = os.path.expanduser("~/.cache/ms-playwright")
+
+        servers.append({
+            "name": "Browser Automation",
+            "command": "npx",
+            "args": ["-y", "@playwright/mcp@latest", "--browser", "chromium"],
+            "env": env_dict,
+        })
 
     # --- Google Workspace MCP Server (Gmail, Drive, Calendar) ---
     google_env = _get_google_oauth_env()

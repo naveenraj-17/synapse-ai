@@ -5,6 +5,7 @@ Uses only Python stdlib so it works before the venv exists.
 """
 import json
 import os
+import stat
 import platform
 import shutil
 import subprocess
@@ -337,6 +338,8 @@ DEFAULT_SETTINGS = {
     "vault_threshold": 20000,
     "coding_agent_enabled": False,
     "report_agent_enabled": False,
+    "browser_automation_enabled": True,
+    "playwright_browsers_path": "",
 }
 
 def load_settings():
@@ -435,6 +438,45 @@ def ask_report_agent(cfg):
     cfg["report_agent_enabled"] = ask_yn("Enable the Report Agent?")
     status = "enabled" if cfg["report_agent_enabled"] else "disabled"
     ok(f"Report Agent {status}.")
+
+# ---------------------------------------------------------------------------
+# Q2c — Browser Automation
+# ---------------------------------------------------------------------------
+def ask_browser_automation(cfg):
+    step("Browser Automation")
+    info("Allows Agents to use the browser and browse the web.")
+    if ask_yn("Do your Agents need to use the browser and browse?", default="y"):
+        cfg["browser_automation_enabled"] = True
+        
+        # Determine default playwright path
+        system = platform.system()
+        user_home = os.path.expanduser("~")
+        if system == "Windows":
+            default_pw_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.join(user_home, "AppData", "Local")), "ms-playwright")
+        elif system == "Darwin":
+            default_pw_path = os.path.join(user_home, "Library", "Caches", "ms-playwright")
+        else: # Linux
+            default_pw_path = os.path.join(user_home, ".cache", "ms-playwright")
+
+        # Check if playwright browsers already exist
+        if os.path.exists(default_pw_path) and os.path.isdir(default_pw_path) and os.listdir(default_pw_path):
+            ok(f"Playwright browsers found.")
+            cfg["playwright_browsers_path"] = default_pw_path
+        else:
+            info("Playwright browsers not found. Installing... (this may take a minute)")
+            try:
+                subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"], shell=IS_WIN)
+                ok("Playwright installed successfully.")
+                cfg["playwright_browsers_path"] = default_pw_path
+            except subprocess.CalledProcessError as e:
+                warn(f"Failed to install Playwright browsers automatically: {e}")
+                info("You can install it manually by running:")
+                info("  npx -y playwright install chromium")
+                cfg["playwright_browsers_path"] = default_pw_path
+    else:
+        cfg["browser_automation_enabled"] = False
+        ok("Browser Automation disabled.")
+
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +636,7 @@ def ask_google_workspace():
 # ---------------------------------------------------------------------------
 def ask_agent_name(cfg):
     step("Agent Name")
-    name = ask("Enter a name for your AI agent", default=cfg.get("agent_name") or "Synapse")
+    name = ask("Enter a name for your AI Setup", default=cfg.get("agent_name") or "Synapse")
     cfg["agent_name"] = name or "Synapse"
     ok(f"Agent name set to: {cfg['agent_name']}")
 
@@ -861,6 +903,10 @@ def install_frontend():
     info("Running npm install (this may take a while)…")
     _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
     ok("Frontend dependencies installed.")
+    
+    info("Building frontend…")
+    _run_with_retry(["npm", "run", "build"], cwd=FRONTEND_DIR, shell=IS_WIN)
+    ok("Frontend built.")
 
 # ---------------------------------------------------------------------------
 # Start servers
@@ -872,7 +918,7 @@ def start_backend():
 def start_frontend():
     step("Starting Frontend Server")
     return subprocess.Popen(
-        ["npm", "run", "dev"],
+        ["npm", "run", "start"],
         cwd=FRONTEND_DIR,
         shell=IS_WIN
     )
@@ -892,9 +938,21 @@ def wait_for_server(url: str, name: str, timeout: int = 60) -> bool:
 # PATH Setup Helpers
 # ---------------------------------------------------------------------------
 def add_to_bashrc():
-    """Add bin directory to PATH in ~/.bashrc"""
+    """Add bin directory to PATH and ensure binary is executable"""
     bashrc = os.path.expanduser("~/.bashrc")
     bin_dir = os.path.join(ROOT_DIR, "bin")
+    
+    # --- NEW: Ensure the binary has execution permissions ---
+    synapse_bin = os.path.join(bin_dir, "synapse")
+    if os.path.exists(synapse_bin):
+        # Get current permissions
+        st = os.stat(synapse_bin)
+        # Add the 'Executable' bit for the Owner (User), Group, and Others
+        # This is the Python equivalent of 'chmod +x'
+        os.chmod(synapse_bin, st.st_mode | stat.S_IEXEC)
+        ok(f"Set execution permissions for {synapse_bin}")
+    # --------------------------------------------------------
+
     export_line = f"\nexport PATH=\"{bin_dir}:$PATH\"  # Synapse AI"
     
     if not os.path.exists(bashrc):
@@ -944,7 +1002,6 @@ def setup_path():
     if IS_WIN:
         # Windows: Just inform user about python -m synapse start
         info("On Windows, use: python -m synapse start")
-        info("(Works from anywhere after setup)")
         ok("Windows setup complete.")
     else:
         # Unix: Try to add to .bashrc / .zshrc
@@ -993,6 +1050,7 @@ def main():
 
     ask_coding_agent(cfg)
     ask_report_agent(cfg)
+    ask_browser_automation(cfg)
     ask_google_workspace()
     ask_agent_name(cfg)
     ask_llm(cfg)
