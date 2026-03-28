@@ -193,7 +193,11 @@ main() {
     cd "$DEST_DIR"
     
     echo ""
-    $PYTHON_CMD setup.py
+    if [ -t 1 ]; then
+        $PYTHON_CMD setup.py < /dev/tty
+    else
+        $PYTHON_CMD setup.py
+    fi
 }
 
 main
