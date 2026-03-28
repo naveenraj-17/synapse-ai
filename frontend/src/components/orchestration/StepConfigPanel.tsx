@@ -17,7 +17,7 @@ interface StepConfigPanelProps {
     availableModels?: string[];
 }
 
-const STEP_TYPES: StepType[] = ['agent', 'evaluator', 'parallel', 'merge', 'loop', 'human', 'transform', 'end'];
+const STEP_TYPES: StepType[] = ['agent', 'llm', 'evaluator', 'parallel', 'merge', 'loop', 'human', 'transform', 'end'];
 
 export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, onClose, isEntry, onSetEntry, availableModels }: StepConfigPanelProps) {
     const update = (patch: Partial<StepConfig>) => onUpdate({ ...step, ...patch });
@@ -74,6 +74,35 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                         <div>
                             <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
                             <textarea className={textareaCls} rows={4} value={step.prompt_template || ''} onChange={(e) => update({ prompt_template: e.target.value })} placeholder="Use {state.key} to reference shared state..." />
+                        </div>
+                    </>
+                )}
+
+                {/* ===== LLM config ===== */}
+                {step.type === 'llm' && (
+                    <>
+                        <div className="rounded bg-teal-950/40 border border-teal-800/40 px-3 py-2 text-[10px] text-teal-400 leading-relaxed">
+                            <strong>Single LLM call</strong> — no agent, no tools. Great for summaries, rewrites, and lightweight reasoning between steps.
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
+                            <textarea
+                                className={textareaCls}
+                                rows={5}
+                                value={step.prompt_template || ''}
+                                onChange={(e) => update({ prompt_template: e.target.value })}
+                                placeholder={`Summarize the following in 3 bullet points:\n\n{state.analysis_result}`}
+                            />
+                            <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values.</p>
+                        </div>
+                        <div>
+                            <label className="text-xs text-zinc-400 block mb-1">Model <span className="text-zinc-600 normal-case">(override)</span></label>
+                            <select className={selectCls} value={step.model || ''} onChange={(e) => update({ model: e.target.value || undefined })}>
+                                <option value="">(Default)</option>
+                                {(availableModels || []).map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
                         </div>
                     </>
                 )}

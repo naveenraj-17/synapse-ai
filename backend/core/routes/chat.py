@@ -52,26 +52,61 @@ async def chat_stream(request: ChatRequest):
                     yield f"data: {json.dumps({'type': 'status', 'message': event['message']})}\n\n"
 
                 elif etype == "thinking":
-                    yield f"data: {json.dumps({'type': 'thinking', 'message': event['message']})}\n\n"
+                    yield f"data: {json.dumps({'type': 'thinking', 'message': event.get('message', ''), 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name')})}\n\n"
 
                 elif etype == "tool_execution":
-                    yield f"data: {json.dumps({'type': 'tool_execution', 'tool_name': event['tool_name'], 'args': event['args']})}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_execution', 'tool_name': event['tool_name'], 'args': event['args'], 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name')})}\n\n"
 
                 elif etype == "tool_result":
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': event['tool_name'], 'preview': event['preview']})}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': event['tool_name'], 'preview': event['preview'], 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name')})}\n\n"
+
+                elif etype == "llm_thought":
+                    # Forward LLM thought — carries orch_step_id & step_name when inside orchestration
+                    yield f"data: {json.dumps({'type': 'llm_thought', 'thought': event['thought'], 'turn': event.get('turn', 1), 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name')}, default=str)}\n\n"
 
                 elif etype == "final":
-                    yield f"data: {json.dumps({'type': 'response', 'content': event['response'], 'intent': event['intent'], 'data': event.get('data'), 'tool_name': event.get('tool_name')})}\n\n"
-                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    # Sub-agent step final (inside orchestration) → agent_step_result
+                    # Distinguished by the presence of orch_step_id (added by AgentStepExecutor)
+                    if event.get("orch_step_id"):
+                        yield f"data: {json.dumps({'type': 'agent_step_result', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name', ''), 'content': event['response'], 'intent': event['intent'], 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+                    else:
+                        # Top-level final (single agent or orchestration summary) → response + done
+                        yield f"data: {json.dumps({'type': 'response', 'content': event['response'], 'intent': event['intent'], 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
                 elif etype == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': event['message']})}\n\n"
 
-                # Forward orchestration events directly to the frontend
+                # ── Orchestration lifecycle events ────────────────────────────────
+                elif etype == "orchestration_start":
+                    yield f"data: {json.dumps({'type': 'orchestration_start', 'run_id': event.get('run_id'), 'orchestration_name': event.get('orchestration_name'), 'orchestration_id': event.get('orchestration_id')}, default=str)}\n\n"
+
+                elif etype == "step_start":
+                    yield f"data: {json.dumps({'type': 'step_start', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name'), 'step_type': event.get('step_type')}, default=str)}\n\n"
+
+                elif etype == "step_complete":
+                    yield f"data: {json.dumps({'type': 'step_complete', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name'), 'duration_seconds': event.get('duration_seconds')}, default=str)}\n\n"
+
+                elif etype == "step_error":
+                    yield f"data: {json.dumps({'type': 'step_error', 'orch_step_id': event.get('orch_step_id'), 'error': event.get('error')}, default=str)}\n\n"
+
+                elif etype == "orchestration_complete":
+                    yield f"data: {json.dumps({'type': 'orchestration_complete', 'run_id': event.get('run_id'), 'status': event.get('status')}, default=str)}\n\n"
+
+                elif etype == "orchestration_error":
+                    yield f"data: {json.dumps({'type': 'orchestration_error', 'error': event.get('error')}, default=str)}\n\n"
+
+                elif etype == "human_input_required":
+                    yield f"data: {json.dumps(event, default=str)}\n\n"
+                    # Send done so the loading spinner stops — user must submit the form
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
                 elif etype in (
-                    "orchestration_start", "orchestration_complete", "orchestration_error",
-                    "step_start", "step_complete", "step_error",
-                    "human_input_required", "loop_limit_reached",
+                    "parallel_start", "parallel_complete", "branch_start",
+                    "loop_iteration", "loop_complete", "merge_complete",
+                    "transform_result", "routing_decision",
+                    "loop_limit_reached", "step_warning",
                 ):
                     yield f"data: {json.dumps(event, default=str)}\n\n"
 

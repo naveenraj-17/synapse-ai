@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 class StepType(str, Enum):
     AGENT = "agent"
+    LLM = "llm"
     EVALUATOR = "evaluator"
     PARALLEL = "parallel"
     MERGE = "merge"

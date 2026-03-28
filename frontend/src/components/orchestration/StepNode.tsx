@@ -2,12 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Square } from 'lucide-react';
+import { Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Square, Zap } from 'lucide-react';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import type { StepConfig, StepType } from '@/types/orchestration';
 
 const ICONS: Record<string, React.FC<{ size?: number; className?: string }>> = {
-    Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Square,
+    Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Square, Zap,
 };
 
 // Consistent color palette for evaluator routes (avoids red which implies error)
@@ -58,6 +58,13 @@ function StepNodeComponent({ data, selected }: { data: any; selected?: boolean }
                 {/* Agent — show agent name */}
                 {step.type === 'agent' && agentName && (
                     <div className="text-xs text-zinc-400 truncate">{agentName}</div>
+                )}
+
+                {/* LLM — show prompt snippet */}
+                {step.type === 'llm' && (
+                    <div className="text-[10px] text-teal-400 truncate">
+                        {step.prompt_template ? step.prompt_template.slice(0, 40) + (step.prompt_template.length > 40 ? '…' : '') : 'No prompt set'}
+                    </div>
                 )}
 
                 {/* Evaluator — show route count */}

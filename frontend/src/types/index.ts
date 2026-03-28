@@ -35,12 +35,26 @@ export interface LocalFile {
     size: number;
 }
 
+export type OrchMsgType =
+    | 'regular'
+    | 'orchestration_start'
+    | 'step_start'
+    | 'agent_step_result'
+    | 'orchestration_complete'
+    | 'human_input_required';
+
 export interface Message {
     role: 'user' | 'assistant';
     content: string;
-    intent?: 'chat' | 'list_emails' | 'read_email' | 'list_files' | 'list_events' | 'request_auth' | 'list_local_files' | 'render_local_file' | 'draft_email' | 'send_email' | 'custom_tool' | 'collect_data';
+    intent?: 'chat' | 'list_emails' | 'read_email' | 'list_files' | 'list_events' | 'request_auth' | 'list_local_files' | 'render_local_file' | 'draft_email' | 'send_email' | 'custom_tool' | 'collect_data' | 'orchestration';
     data?: any;
     tool?: string;
+    // Orchestration fields
+    msgType?: OrchMsgType;
+    stepName?: string;
+    stepType?: string;
+    orchStepId?: string;
+    thoughts?: string[];
 }
 
 export interface SystemStatus {

@@ -361,6 +361,10 @@ async def run_agent_step(
             _llm_duration = round(time.time() - _llm_start, 1)
             print(f"DEBUG: 🤖 LLM Response ({_llm_duration}s): {llm_output[:500]}{'...(truncated)' if len(llm_output) > 500 else ''}")
 
+            # Emit LLM thought for frontend (before tool parsing so UI can show reasoning)
+            if llm_output.strip():
+                yield {"type": "llm_thought", "thought": llm_output, "turn": turn + 1}
+
             # Parse tool call
             tool_call, json_error = parse_tool_call(llm_output)
 

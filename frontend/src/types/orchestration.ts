@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 
-export type StepType = 'agent' | 'evaluator' | 'parallel' | 'merge' | 'loop' | 'human' | 'transform' | 'end';
+export type StepType = 'agent' | 'llm' | 'evaluator' | 'parallel' | 'merge' | 'loop' | 'human' | 'transform' | 'end';
 
 export interface StepConfig {
     id: string;
@@ -121,6 +121,7 @@ export type StepEdge = Edge;
 // Step type metadata for UI
 export const STEP_TYPE_META: Record<StepType, { label: string; color: string; icon: string }> = {
     agent:     { label: 'Agent',     color: '#3b82f6', icon: 'Bot' },
+    llm:       { label: 'LLM',       color: '#14b8a6', icon: 'Zap' },
     evaluator: { label: 'Evaluator', color: '#10b981', icon: 'Scale' },
     parallel:  { label: 'Parallel',  color: '#8b5cf6', icon: 'GitBranch' },
     merge:     { label: 'Merge',     color: '#ec4899', icon: 'GitMerge' },

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus } from 'lucide-react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle } from 'lucide-react';
 
 import { SettingsModal } from '@/components/SettingsModal';
 import { AuthPrompt } from '@/components/AuthPrompt';
@@ -14,7 +14,145 @@ import { EmailComposer } from '@/components/EmailComposer';
 import { CollectDataForm } from '@/components/CollectDataForm';
 
 import { renderTextContent, cn } from '@/lib/utils';
-import { Message, SystemStatus } from '@/types';
+import { Message, OrchMsgType, SystemStatus } from '@/types';
+
+// ─── LLM Thought Collapsible ────────────────────────────────────────────────
+function ThoughtCollapsible({ thoughts, stepName }: { thoughts: string[]; stepName?: string }) {
+  const [open, setOpen] = useState(false);
+
+  // Filter out pure JSON tool calls — only show natural-language reasoning
+  const naturalThoughts = thoughts.filter(t => {
+    const trimmed = t.trim();
+    if (!trimmed) return false;
+    // If it starts with { and looks like JSON, it's a tool call — skip unless short enough to be partly text
+    if (trimmed.startsWith('{')) {
+      try { JSON.parse(trimmed); return false; } catch { /* not pure JSON */ }
+    }
+    return true;
+  });
+
+  if (naturalThoughts.length === 0) return null;
+
+  return (
+    <div className="mt-2 border border-zinc-800 rounded-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 transition-colors"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <span className="uppercase tracking-wider">
+          💭 Reasoning {stepName ? `· ${stepName}` : ''} ({naturalThoughts.length} turn{naturalThoughts.length > 1 ? 's' : ''})
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-zinc-800 bg-zinc-950/60 divide-y divide-zinc-900">
+          {naturalThoughts.map((t, i) => (
+            <div key={i} className="px-3 py-2 text-[12px] text-zinc-400 font-mono whitespace-pre-wrap leading-5">
+              {naturalThoughts.length > 1 && (
+                <span className="text-zinc-600 text-[10px] mr-2">Turn {i + 1}</span>
+              )}
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Orchestration Step Divider ──────────────────────────────────────────────
+function StepDivider({ stepName, stepType }: { stepName: string; stepType?: string }) {
+  const typeIcon: Record<string, string> = {
+    agent: '🤖', evaluator: '🔀', parallel: '⚡', merge: '🔗',
+    loop: '🔄', human: '👤', transform: '⚙️', end: '🏁',
+  };
+  const icon = typeIcon[stepType || ''] ?? '▶';
+  return (
+    <div className="flex items-center gap-3 my-1 px-1">
+      <div className="h-px flex-1 bg-gradient-to-r from-transparent to-zinc-800" />
+      <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-widest text-zinc-500 shrink-0">
+        <span>{icon}</span>
+        <span>{stepName}</span>
+        {stepType && <span className="text-zinc-700">· {stepType}</span>}
+      </div>
+      <div className="h-px flex-1 bg-gradient-to-l from-transparent to-zinc-800" />
+    </div>
+  );
+}
+
+// ─── Orchestration Info Banner ───────────────────────────────────────────────
+function OrchBanner({ content, variant }: { content: string; variant: 'start' | 'complete' | 'error' }) {
+  const styles: Record<string, string> = {
+    start:    'border-purple-900/50 bg-purple-950/20 text-purple-400',
+    complete: 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400',
+    error:    'border-red-900/50 bg-red-950/20 text-red-400',
+  };
+  return (
+    <div className="flex justify-center my-2">
+      <div className={cn('border px-5 py-1.5 text-[11px] font-mono uppercase tracking-widest rounded-sm', styles[variant])}>
+        {content}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-agent Result Bubble ─────────────────────────────────────────────────
+function AgentStepResult({ msg, onEmailClick, onSummarizeFile, onLocateFile, onOpenFile, sentDrafts, onSendEmail, idx, setSentDrafts, onCollectDataSubmit }: {
+  msg: Message;
+  onEmailClick: (id: string) => void;
+  onSummarizeFile: (p: string) => void;
+  onLocateFile: (p: string) => void;
+  onOpenFile: (p: string) => void;
+  sentDrafts: Set<number>;
+  onSendEmail: (idx: number, to: string, cc: string, bcc: string, subject: string, body: string) => void;
+  idx: number;
+  setSentDrafts: React.Dispatch<React.SetStateAction<Set<number>>>;
+  onCollectDataSubmit: (values: Record<string, unknown>) => void;
+}) {
+  return (
+    <div className="flex gap-3 max-w-4xl">
+      <div className="h-7 w-7 shrink-0 flex items-center justify-center border border-purple-800/50 bg-purple-950/30 text-purple-400 mt-1 rounded-sm">
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+      <div className="flex flex-col flex-1 min-w-0 gap-2">
+        {msg.stepName && (
+          <div className="text-[10px] uppercase tracking-widest text-purple-500/70 font-mono">
+            {msg.stepName}
+          </div>
+        )}
+        <div className="p-3 text-[14px] leading-7 border border-purple-900/30 bg-purple-950/10 relative font-sans rounded-sm">
+          <div className="prose prose-invert max-w-none text-zinc-200 font-normal">
+            {renderTextContent(msg.content)}
+          </div>
+        </div>
+        {/* Thoughts */}
+        {msg.thoughts && msg.thoughts.length > 0 && (
+          <ThoughtCollapsible thoughts={msg.thoughts} stepName={msg.stepName} />
+        )}
+        {/* Intent-based UI */}
+        <div className="w-full pl-1">
+          {msg.intent === 'list_emails' && <EmailList emails={msg.data?.emails || msg.data} onEmailClick={onEmailClick} />}
+          {msg.intent === 'read_email' && <EmailRenderer email={msg.data} />}
+          {msg.intent === 'list_files' && <DriveList files={msg.data?.files || msg.data} />}
+          {msg.intent === 'list_events' && <EventList events={msg.data?.events || msg.data} />}
+          {msg.intent === 'list_local_files' && <LocalFileList files={msg.data?.files || msg.data} onSummarizeFile={onSummarizeFile} onLocateFile={onLocateFile} onOpenFile={onOpenFile} />}
+          {msg.intent === 'draft_email' && !sentDrafts.has(idx) && (
+            <EmailComposer
+              to={msg.data.to}
+              initialSubject={msg.data.subject}
+              initialBody={msg.data.body}
+              onSend={(t, c, b, s, bo) => onSendEmail(idx, t, c, b, s, bo)}
+              onCancel={() => setSentDrafts(prev => new Set(prev).add(idx))}
+            />
+          )}
+          {msg.intent === 'collect_data' && msg.data && (
+            <CollectDataForm data={msg.data} onSubmit={onCollectDataSubmit} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [sessionId, setSessionId] = useState(() => {
@@ -36,6 +174,9 @@ export default function Home() {
   const [streamingActivity, setStreamingActivity] = useState<string | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Accumulate LLM thoughts per active step during streaming
+  const pendingThoughtsRef = useRef<string[]>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -216,6 +357,7 @@ export default function Home() {
   const processMessage = async (content: string) => {
     setIsLoading(true);
     setStreamingActivity(null);
+    pendingThoughtsRef.current = [];
 
     // Try SSE streaming first
     try {
@@ -227,18 +369,17 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       setStreamingActivity(null);
+      pendingThoughtsRef.current = [];
     }
   };
 
   // SSE Streaming implementation
   const processMessageSSE = async (content: string) => {
     return new Promise<void>((resolve, reject) => {
-      const params = new URLSearchParams({
-        message: content,
-        session_id: sessionId,
-      });
+      // Track state local to this SSE stream
+      let currentStepThoughts: string[] = [];
+      let currentOrchStepId: string | null = null;
 
-      // Use POST for SSE to send body data
       console.log('[SSE] Attempting SSE connection to /api/chat/stream');
       fetch('/api/chat/stream', {
         method: 'POST',
@@ -274,56 +415,171 @@ export default function Home() {
                   console.log('[SSE Event]', data.type, data);
 
                   switch (data.type) {
+
+                    // ── Standard events ──────────────────────────────────────────
                     case 'status':
                       setStreamingActivity(data.message);
                       break;
+
                     case 'thinking':
-                      setStreamingActivity('🤔 Thinking');
+                      setStreamingActivity('🤔 Thinking...');
                       break;
-                    case 'tool_execution':
+
+                    case 'tool_execution': {
                       const toolDisplayName = data.tool_name
                         .replace(/_/g, ' ')
                         .replace(/\b\w/g, (l: string) => l.toUpperCase());
-                      setStreamingActivity(`🔧 ${toolDisplayName}`);
+                      const stepLabel = data.step_name ? ` · ${data.step_name}` : '';
+                      setStreamingActivity(`🔧 ${toolDisplayName}${stepLabel}`);
                       break;
+                    }
+
                     case 'tool_result':
                       setStreamingActivity(`✓ Processing results`);
                       break;
+
+                    case 'llm_thought':
+                      // Accumulate thoughts for the current step
+                      if (data.orch_step_id) {
+                        // Inside orchestration — reset if new step started
+                        if (data.orch_step_id !== currentOrchStepId) {
+                          currentStepThoughts = [];
+                          currentOrchStepId = data.orch_step_id;
+                        }
+                        currentStepThoughts = [...currentStepThoughts, data.thought];
+                      } else {
+                        // Single-agent flow — accumulate in pending ref
+                        pendingThoughtsRef.current = [...pendingThoughtsRef.current, data.thought];
+                      }
+                      setStreamingActivity('💭 Reasoning...');
+                      break;
+
                     case 'response':
-                      // Final response
+                      // Final response — clear pending thoughts (they'll be shown in the message)
                       setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: data.content,
                         intent: data.intent,
                         data: data.data,
-                        tool: data.tool_name
+                        tool: data.tool_name,
+                        thoughts: [...pendingThoughtsRef.current],
+                      }]);
+                      pendingThoughtsRef.current = [];
+                      break;
+
+                    // ── Orchestration lifecycle ──────────────────────────────────
+                    case 'orchestration_start':
+                      setStreamingActivity(`🚀 Starting orchestration`);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `🚀 ${data.orchestration_name || 'Orchestration'} started`,
+                        msgType: 'orchestration_start',
                       }]);
                       break;
-                    // Orchestration events (when chatting with orchestrator agents)
-                    case 'orchestration_start':
-                      setStreamingActivity(`Orchestration started`);
-                      break;
+
                     case 'step_start':
+                      // Reset thoughts for this new step
+                      currentStepThoughts = [];
+                      currentOrchStepId = data.orch_step_id;
                       setStreamingActivity(`▶ ${data.step_name || 'Step'}`);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: data.step_name || 'Step',
+                        msgType: 'step_start',
+                        stepName: data.step_name,
+                        stepType: data.step_type,
+                        orchStepId: data.orch_step_id,
+                      }]);
                       break;
+
+                    case 'agent_step_result':
+                      // Sub-agent completed — add as purple-accented bubble with thoughts
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: data.content,
+                        intent: data.intent,
+                        data: data.data,
+                        tool: data.tool_name,
+                        msgType: 'agent_step_result',
+                        stepName: data.step_name,
+                        orchStepId: data.orch_step_id,
+                        thoughts: [...currentStepThoughts],
+                      }]);
+                      // Reset for next step
+                      currentStepThoughts = [];
+                      break;
+
                     case 'step_complete':
                       setStreamingActivity(`✓ ${data.step_name || 'Step'} complete`);
                       break;
+
                     case 'step_error':
                       setStreamingActivity(`✗ Step failed`);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `❌ Step failed: ${data.error || 'Unknown error'}`,
+                        msgType: 'orchestration_start', // reuse error styling via variant
+                      }]);
                       break;
+
                     case 'orchestration_complete':
                       setStreamingActivity(`Orchestration ${data.status}`);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `✅ Orchestration ${data.status || 'complete'}`,
+                        msgType: 'orchestration_complete',
+                      }]);
                       break;
+
                     case 'orchestration_error':
                       setStreamingActivity(`Orchestration error`);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `❌ Orchestration error: ${data.error || 'Unknown error'}`,
+                        msgType: 'orchestration_complete',
+                      }]);
                       break;
+
                     case 'human_input_required':
-                      setStreamingActivity(`Waiting for human input`);
+                      setStreamingActivity(null);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: data.prompt || 'Please provide input to continue.',
+                        msgType: 'human_input_required',
+                        data: {
+                          fields: data.fields,
+                          run_id: data.run_id,
+                          agent_context: data.agent_context,
+                          channel_id: data.channel_id,
+                        },
+                      }]);
                       break;
+
+                    // ── Parallel / loop / routing info ───────────────────────────
+                    case 'routing_decision':
+                      setStreamingActivity(`🔀 Route: ${data.decision || data.tool_name}`);
+                      break;
+
+                    case 'loop_iteration':
+                      setStreamingActivity(`🔄 Loop iteration ${data.iteration}/${data.total}`);
+                      break;
+
+                    case 'parallel_start':
+                      setStreamingActivity(`⚡ Running ${data.branch_count} parallel branches`);
+                      break;
+
+                    case 'branch_start':
+                      setStreamingActivity(`⚡ Branch ${(data.branch_index ?? 0) + 1}/${data.branch_count}`);
+                      break;
+
+                    case 'merge_complete':
+                      setStreamingActivity(`🔗 Merged ${data.input_count} results`);
+                      break;
+
                     case 'done':
                       resolve();
                       return;
+
                     case 'error':
                       reject(new Error(data.message));
                       return;
@@ -363,9 +619,167 @@ export default function Home() {
     }
   };
 
+  // ─── Rendering helpers ─────────────────────────────────────────────────────
+
+  const renderMessage = (msg: Message, idx: number) => {
+    // ── Orchestration start / complete banners ──
+    if (msg.msgType === 'orchestration_start') {
+      return (
+        <div key={idx}>
+          <OrchBanner content={msg.content} variant="start" />
+        </div>
+      );
+    }
+    if (msg.msgType === 'orchestration_complete') {
+      const isError = msg.content.startsWith('❌');
+      return (
+        <div key={idx}>
+          <OrchBanner content={msg.content} variant={isError ? 'error' : 'complete'} />
+        </div>
+      );
+    }
+
+    // ── Step divider line ──
+    if (msg.msgType === 'step_start') {
+      return (
+        <div key={idx}>
+          <StepDivider stepName={msg.stepName || msg.content} stepType={msg.stepType} />
+        </div>
+      );
+    }
+
+    // ── Sub-agent result (purple accent bubble) ──
+    if (msg.msgType === 'agent_step_result') {
+      return (
+        <AgentStepResult
+          key={idx}
+          msg={msg}
+          idx={idx}
+          onEmailClick={handleEmailClick}
+          onSummarizeFile={handleSummarizeFile}
+          onLocateFile={handleLocateFile}
+          onOpenFile={handleOpenFile}
+          sentDrafts={sentDrafts}
+          onSendEmail={handleSendEmail}
+          setSentDrafts={setSentDrafts}
+          onCollectDataSubmit={handleCollectDataSubmit}
+        />
+      );
+    }
+
+    // ── Human input required ──
+    if (msg.msgType === 'human_input_required') {
+      return (
+        <div key={idx} className="flex gap-4 max-w-4xl">
+          <div className="h-8 w-8 shrink-0 flex items-center justify-center border border-amber-700/50 bg-amber-950/30 text-amber-400">
+            <User className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col flex-1 min-w-0 gap-3">
+            <div className="p-4 text-[15px] leading-7 border border-amber-900/40 bg-amber-950/10 relative font-sans">
+              <div className="absolute -top-3 left-2 bg-zinc-950 border border-amber-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-500 font-mono">
+                Human Input Required
+              </div>
+              {msg.data?.agent_context && (
+                <div className="mb-3 p-3 bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 font-mono whitespace-pre-wrap max-h-40 overflow-auto rounded-sm">
+                  {msg.data.agent_context}
+                </div>
+              )}
+              <div className="prose prose-invert max-w-none text-zinc-100 font-normal mb-4">
+                {renderTextContent(msg.content)}
+              </div>
+              {msg.data?.fields && (
+                <CollectDataForm data={msg.data} onSubmit={handleCollectDataSubmit} />
+              )}
+              {msg.data?.channel_id && (
+                <div className="mt-2 text-[11px] text-zinc-500 font-mono">
+                  📲 Notification sent to messaging channel
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Regular user / assistant message ──
+    return (
+      <div key={idx} className={cn(
+        "flex gap-4",
+        msg.role === 'assistant' ? "max-w-4xl" : "max-w-3xl",
+        msg.role === 'user' ? "ml-auto flex-row-reverse" : ""
+      )}>
+        <div className={cn(
+          "h-8 w-8 shrink-0 flex items-center justify-center border",
+          msg.role === 'user' ? "bg-white border-white text-black" : "bg-black border-zinc-700 text-zinc-400"
+        )}>
+          {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        </div>
+
+        <div className="flex flex-col flex-1 min-w-0 gap-2">
+          <div className={cn(
+            "p-4 text-[15px] leading-7 border relative font-sans",
+            msg.role === 'user'
+              ? "bg-zinc-900 border-zinc-800 text-zinc-100 self-end max-w-[80%]"
+              : "bg-zinc-900/50 border-zinc-800 text-zinc-100 self-start max-w-full"
+          )}>
+            {/* Intent Indicator for Assistant */}
+            {msg.role === 'assistant' && msg.intent && (
+              <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
+                {msg.intent.replaceAll('_', ' ')} Operation
+              </div>
+            )}
+
+            {/* Content */}
+            <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
+              {renderTextContent(msg.content)}
+            </div>
+          </div>
+
+          {/* LLM Thoughts for regular responses */}
+          {msg.role === 'assistant' && msg.thoughts && msg.thoughts.length > 0 && (
+            <ThoughtCollapsible thoughts={msg.thoughts} />
+          )}
+
+          {/* Dynamic UI based on Intent - Rendered Outside Bubble */}
+          {msg.role === 'assistant' && (
+            <div className="w-full mt-2 pl-1">
+              {msg.intent === 'list_emails' && <EmailList emails={msg.data?.emails || msg.data} onEmailClick={handleEmailClick} />}
+              {msg.intent === 'read_email' && <EmailRenderer email={msg.data} />}
+              {msg.intent === 'list_files' && <DriveList files={msg.data?.files || msg.data} />}
+              {msg.intent === 'list_events' && <EventList events={msg.data?.events || msg.data} />}
+              {msg.intent === 'request_auth' && <AuthPrompt onOpenSettings={() => setIsSettingsOpen(true)} credentials={credentials} />}
+              {msg.intent === 'list_local_files' && <LocalFileList files={msg.data?.files || msg.data} onSummarizeFile={handleSummarizeFile} onLocateFile={handleLocateFile} onOpenFile={handleOpenFile} />}
+              {msg.intent === 'render_local_file' && (
+                <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto text-zinc-300">
+                  {msg.data.content}
+                </div>
+              )}
+              {msg.intent === 'draft_email' && !sentDrafts.has(idx) && (
+                <EmailComposer
+                  to={msg.data.to}
+                  initialSubject={msg.data.subject}
+                  initialBody={msg.data.body}
+                  onSend={(t, c, b, s, bo) => handleSendEmail(idx, t, c, b, s, bo)}
+                  onCancel={() => setSentDrafts(prev => new Set(prev).add(idx))}
+                />
+              )}
+              {msg.intent === 'draft_email' && sentDrafts.has(idx) && (
+                <div className="mt-2 text-xs text-zinc-500 italic border-l-2 border-zinc-800 pl-2">
+                  Draft processed.
+                </div>
+              )}
+              {msg.intent === 'collect_data' && msg.data && (
+                <CollectDataForm data={msg.data} onSubmit={handleCollectDataSubmit} />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <main className={cn("flex h-screen bg-black text-white font-mono overflow-hidden", theme === 'light' ? 'light-mode' : '')}>
-      {/* Settings Modal */}
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -475,75 +889,7 @@ export default function Home() {
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar pb-32">
           <div className="w-full md:max-w-5xl mx-auto space-y-6">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={cn(
-                "flex gap-4",
-                msg.role === 'assistant' ? "max-w-4xl" : "max-w-3xl",
-                msg.role === 'user' ? "ml-auto flex-row-reverse" : ""
-              )}>
-                <div className={cn(
-                  "h-8 w-8 shrink-0 flex items-center justify-center border",
-                  msg.role === 'user' ? "bg-white border-white text-black" : "bg-black border-zinc-700 text-zinc-400"
-                )}>
-                  {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                </div>
-
-                <div className="flex flex-col flex-1 min-w-0 gap-2">
-                  <div className={cn(
-                    "p-4 text-[15px] leading-7 border relative font-sans",
-                    msg.role === 'user'
-                      ? "bg-zinc-900 border-zinc-800 text-zinc-100 self-end max-w-[80%]"
-                      : "bg-zinc-900/50 border-zinc-800 text-zinc-100 self-start max-w-full"
-                  )}>
-                    {/* Intent Indicator for Assistant */}
-                    {msg.role === 'assistant' && msg.intent && (
-                      <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
-                        {msg.intent.replaceAll('_', ' ')} Operation
-                      </div>
-                    )}
-
-                    {/* Content */}
-                    <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
-                      {renderTextContent(msg.content)}
-                    </div>
-                  </div>
-
-                  {/* Dynamic UI based on Intent - Rendered Outside Bubble */}
-                  {msg.role === 'assistant' && (
-                    <div className="w-full mt-2 pl-1">
-                      {msg.intent === 'list_emails' && <EmailList emails={msg.data?.emails || msg.data} onEmailClick={handleEmailClick} />}
-                      {msg.intent === 'read_email' && <EmailRenderer email={msg.data} />}
-                      {msg.intent === 'list_files' && <DriveList files={msg.data?.files || msg.data} />}
-                      {msg.intent === 'list_events' && <EventList events={msg.data?.events || msg.data} />}
-                      {msg.intent === 'request_auth' && <AuthPrompt onOpenSettings={() => setIsSettingsOpen(true)} credentials={credentials} />}
-                      {msg.intent === 'list_local_files' && <LocalFileList files={msg.data?.files || msg.data} onSummarizeFile={handleSummarizeFile} onLocateFile={handleLocateFile} onOpenFile={handleOpenFile} />}
-                      {msg.intent === 'render_local_file' && (
-                        <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto text-zinc-300">
-                          {msg.data.content}
-                        </div>
-                      )}
-                      {msg.intent === 'draft_email' && !sentDrafts.has(idx) && (
-                        <EmailComposer
-                          to={msg.data.to}
-                          initialSubject={msg.data.subject}
-                          initialBody={msg.data.body}
-                          onSend={(t, c, b, s, bo) => handleSendEmail(idx, t, c, b, s, bo)}
-                          onCancel={() => setSentDrafts(prev => new Set(prev).add(idx))}
-                        />
-                      )}
-                      {msg.intent === 'draft_email' && sentDrafts.has(idx) && (
-                        <div className="mt-2 text-xs text-zinc-500 italic border-l-2 border-zinc-800 pl-2">
-                          Draft processed.
-                        </div>
-                      )}
-                      {msg.intent === 'collect_data' && msg.data && (
-                        <CollectDataForm data={msg.data} onSubmit={handleCollectDataSubmit} />
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+            {messages.map((msg, idx) => renderMessage(msg, idx))}
 
             {/* Loading Indicator */}
             {isLoading && (

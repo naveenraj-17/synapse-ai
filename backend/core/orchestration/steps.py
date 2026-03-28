@@ -111,7 +111,7 @@ class AgentStepExecutor:
                 allowed_tools_override=step.allowed_tools,
             ):
                 agent_log.log_event(event)
-                yield {**event, "orch_step_id": step.id}
+                yield {**event, "orch_step_id": step.id, "step_name": step.name}
                 if event.get("type") == "final":
                     final_response = event.get("response", "")
         except Exception:
@@ -365,33 +365,43 @@ class MergeStepExecutor:
     async def execute(
         self, step: StepConfig, run: OrchestrationRun, engine: "OrchestrationEngine"
     ) -> AsyncGenerator[dict, None]:
-        values = {}
+        # Use an ordered list of (display_label, value) pairs so that two steps
+        # sharing the same agent_id (and thus the same agent name) never
+        # overwrite each other.  The unique key is always the step ID; the
+        # display label is "StepName (step_id)" so it stays human-readable.
+        entries: list[tuple[str, object]] = []
         for key in step.input_keys:
             if key not in run.shared_state:
                 continue
-            # Find which agent produced this key for attribution
-            producer = next((s for s in engine.orch.steps if s.output_key == key), None)
-            if producer and producer.agent_id and producer.agent_id in engine.agent_names:
-                source_name = engine.agent_names[producer.agent_id]
-            elif producer:
-                source_name = producer.name
+
+            # Locate the step that produced this output_key
+            producer = next(
+                (s for s in engine.orch.steps if s.output_key == key), None
+            )
+
+            # Build a human-readable label anchored to the *step*, not the agent.
+            # Pattern: "StepName (step_id)"  e.g. "NSE Stock Alpha Data (step_ixjrdrk)"
+            if producer:
+                step_label = f"{producer.name} ({producer.id})"
             else:
-                source_name = key
-            values[source_name] = run.shared_state[key]
+                step_label = key
+
+            entries.append((step_label, run.shared_state[key]))
 
         if step.merge_strategy == "concat":
-            merged = "\n\n".join(f"[{k}]:\n{v}" for k, v in values.items())
+            merged = "\n\n".join(f"[{label}]:\n{value}" for label, value in entries)
         elif step.merge_strategy == "dict":
-            merged = values
+            # Use step_label as key — guaranteed unique because step IDs are unique
+            merged = {label: value for label, value in entries}
         else:  # "list" (default)
-            merged = [{"source": k, "data": v} for k, v in values.items()]
+            merged = [{"source": label, "data": value} for label, value in entries]
 
         if step.output_key:
             run.shared_state[step.output_key] = merged
 
         yield {
             "type": "merge_complete", "orch_step_id": step.id,
-            "input_count": len(values), "strategy": step.merge_strategy,
+            "input_count": len(entries), "strategy": step.merge_strategy,
         }
 
 
@@ -633,6 +643,59 @@ else:
         return await loop.run_in_executor(None, _run)
 
 
+class LLMStepExecutor:
+    """Single direct LLM call — no agent, no tools, no routing.
+
+    Useful for inline summaries, rewrites, or lightweight reasoning
+    between heavier agent steps.
+    """
+
+    async def execute(
+        self, step: StepConfig, run: OrchestrationRun, engine: "OrchestrationEngine"
+    ) -> AsyncGenerator[dict, None]:
+        from core.llm_providers import generate_response as llm_generate, detect_mode_from_model
+        from core.config import load_settings
+
+        # Reuse the shared prompt builder so {state.key} refs and context injection work
+        prompt = _build_step_prompt(step, run.shared_state, engine.step_map, engine.agent_names)
+
+        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt}
+        yield {
+            "type": "thinking",
+            "orch_step_id": step.id,
+            "step_name": step.name,
+            "message": f"LLM step '{step.name}' — calling model...",
+        }
+
+        settings = load_settings()
+        model = step.model if step.model else settings.get("model", "mistral")
+        mode = detect_mode_from_model(model)
+
+        try:
+            response = await llm_generate(
+                prompt_msg=prompt,
+                sys_prompt="You are a helpful assistant. Be concise and accurate.",
+                mode=mode,
+                current_model=model,
+                current_settings=settings,
+            )
+        except Exception as e:
+            from core.llm_providers import LLMError
+            if isinstance(e, LLMError):
+                raise
+            raise RuntimeError(f"LLM step '{step.name}' failed: {e}") from e
+
+        if step.output_key:
+            run.shared_state[step.output_key] = response
+
+        yield {
+            "type": "final",
+            "orch_step_id": step.id,
+            "step_name": step.name,
+            "response": response,
+        }
+
+
 class EndStepExecutor:
     """Terminate the orchestration."""
 
@@ -646,6 +709,7 @@ class EndStepExecutor:
 # Registry of all step executors
 STEP_EXECUTORS = {
     StepType.AGENT: AgentStepExecutor(),
+    StepType.LLM: LLMStepExecutor(),
     StepType.EVALUATOR: EvaluatorStepExecutor(),
     StepType.PARALLEL: ParallelStepExecutor(),
     StepType.MERGE: MergeStepExecutor(),
