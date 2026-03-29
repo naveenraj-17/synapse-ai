@@ -11,7 +11,7 @@ import httpx
 
 from core.config import load_settings
 from core.llm_providers import _make_aws_client
-from core.session import conversation_histories, session_state
+from core.session import session_state, _CHAT_SESSIONS_DIR
 from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_DIR
 
 router = APIRouter()
@@ -264,21 +264,43 @@ async def get_bedrock_inference_profiles():
 
 @router.delete("/api/history/recent")
 async def clear_recent_history():
-    """Clears the short-term in-memory session history."""
-    conversation_histories.clear()
+    """Clears all persisted JSON session files and in-memory session state."""
+    import shutil
+    import os
     session_state.clear()
-    return {"status": "success", "message": "Recent session history (all sessions) cleared."}
+    # Delete all JSON session files
+    cleared = 0
+    if os.path.isdir(_CHAT_SESSIONS_DIR):
+        for fname in os.listdir(_CHAT_SESSIONS_DIR):
+            if fname.endswith(".json"):
+                try:
+                    os.remove(os.path.join(_CHAT_SESSIONS_DIR, fname))
+                    cleared += 1
+                except Exception:
+                    pass
+    return {"status": "success", "message": f"Cleared {cleared} session file(s) and in-memory state."}
 
 
 @router.delete("/api/history/all")
 async def clear_all_history():
-    """Clears BOTH short-term session history AND long-term ChromaDB memory."""
+    """Clears ALL session files AND long-term ChromaDB memory (report RAG)."""
+    import os
     import core.server as _server
 
-    conversation_histories.clear()
     session_state.clear()
+    # Delete all JSON session files
+    cleared = 0
+    if os.path.isdir(_CHAT_SESSIONS_DIR):
+        for fname in os.listdir(_CHAT_SESSIONS_DIR):
+            if fname.endswith(".json"):
+                try:
+                    os.remove(os.path.join(_CHAT_SESSIONS_DIR, fname))
+                    cleared += 1
+                except Exception:
+                    pass
+    # Clear ChromaDB report-RAG collections
     if _server.memory_store:
         success = _server.memory_store.clear_memory()
         if not success:
             raise HTTPException(status_code=500, detail="Failed to clear long-term memory.")
-    return {"status": "success", "message": "All history (Recent + Long-term) cleared."}
+    return {"status": "success", "message": f"Cleared {cleared} session file(s) and long-term memory."}

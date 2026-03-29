@@ -14,7 +14,6 @@ import anyio
 # "all_types" applies to every agent regardless of type.
 DEFAULT_TOOLS_BY_TYPE = {
     "all_types": {
-        "query_past_conversations",   # long-term memory
         "sequentialthinking",         # multi-step tool execution
         "read_file_chunk",            # vault file access
         "search_file",                # vault file search
@@ -69,22 +68,6 @@ def build_virtual_tools(agent_type: str = "conversational"):
     Only returns tools relevant to the given agent type.
     """
     tools = []
-
-    # --- All agent types ---
-    tools.append(VirtualTool(
-        "query_past_conversations",
-        "Search long-term conversation memory. Use this only when you need context from older sessions."
-        " Arguments: query (string), n_results (int, optional), scope ('all'|'session').",
-        {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "n_results": {"type": "integer", "default": 5},
-                "scope": {"type": "string", "enum": ["all", "session"], "default": "all"},
-            },
-            "required": ["query"],
-        },
-    ))
 
     # --- Analysis agents only ---
     if agent_type == "analysis":
@@ -219,7 +202,7 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     return all_tools, tool_schema_map, ollama_tools, tools_json
 
 
-def build_system_prompt(agent_system_template, tools_json, session_id, session_state_getter, memory_store, agent_id=None):
+def build_system_prompt(agent_system_template, tools_json, session_id, session_state_getter, memory_store, agent_id=None, turns_remaining=None, max_turns=None):
     """
     Construct the final system prompt with tool info, date/time, session context, 
     and recent tool outputs injected.
@@ -264,6 +247,37 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
     except Exception as e:
         print(f"DEBUG: Error injecting Google Workspace Email: {e}")
 
+    # --- TURN AWARENESS ---
+    turns_block = ""
+    if turns_remaining is not None and max_turns is not None:
+        if turns_remaining <= 0:
+            turns_block = f"""
+
+### ⚠️ TURN LIMIT REACHED — FINAL RESPONSE REQUIRED
+You have used all {max_turns} available turns. You MUST stop calling tools and provide your **final answer now** based on everything gathered so far.
+- Summarize what you did and what you found.
+- If the task is incomplete, clearly state what could not be completed and why.
+- Do NOT call any more tools.
+"""
+        elif turns_remaining == 1:
+            turns_block = f"""
+
+### ⚠️ LAST TURN — RESPOND NOW
+This is your **final turn** (Turn {max_turns}/{max_turns}). You MUST provide your final answer now. Do NOT call any more tools.
+- If you have enough information, give the complete answer.
+- If you don't have enough information, say so clearly and summarize what you were able to find.
+- Provide a brief summary of all steps taken so far.
+"""
+        else:
+            turns_block = f"""
+
+### TURN BUDGET
+You have **{turns_remaining} turn(s) remaining** out of {max_turns} total.
+- Plan your tool calls efficiently — prioritize the most impactful steps first.
+- If you cannot complete the task within the remaining turns, provide a partial answer and summarize what was accomplished so far.
+- On the last turn you MUST answer in plain text (no tool calls), even if the task is not fully complete.
+"""
+
     # Append tools, date/time, and instructions at the end
     system_prompt_text += f"""
 
@@ -278,8 +292,11 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
 You have access to the following tools:
 {tools_json}
 
-**WHEN TO USE SEQUENTIALTHINKING:**
-For complex problems or multi-step analysis, use the sequentialthinking tool to organize your approach step-by-step.
+**SEQUENTIALTHINKING (OPTIONAL — USE SPARINGLY):**
+`sequentialthinking` is a lightweight planning aid. If the request is complex, you MAY call it **once** to briefly outline your plan. After that **one** call you MUST immediately call a real action tool (browser, search, data tool, etc.). Never call `sequentialthinking` more than once per task, and never call it in place of a real tool — it cannot fetch data, browse the web, or do anything productive by itself.
+
+### LINKS & REFERENCES
+Whenever a tool returns URLs, source links, documentation references, or any other hyperlinks — **always include them in your response**. Present them clearly so the user can visit them directly. If you know of relevant official documentation, articles, or resources that would help the user, proactively include those links even if not explicitly returned by a tool.
 
 ### RESPONSE FORMAT INSTRUCTIONS
 If you need to use a specific tool from the list above, you MUST respond with **ONLY** a valid JSON object in the following format:
@@ -288,6 +305,8 @@ If you need to use a specific tool from the list above, you MUST respond with **
 Do NOT output any other text or markdown when calling a tool.
 If you do not need to use a tool, reply in plain text.
 """
+
+    system_prompt_text += turns_block
     
     # --- DYNAMIC RAG INJECTION ---
     # If we have active embeddings, force the LLM to know about them
@@ -309,29 +328,5 @@ You have {last_report.get('row_count', 'some')} items of '{last_report.get('type
             print(f"DEBUG: 💉 Injected RAG context into system prompt")
     except Exception as e:
         print(f"DEBUG: Error injecting RAG prompt: {e}")
-    
-    # --- INJECT RECENT TOOL OUTPUTS ---
-    if memory_store:
-        try:
-            recent_tools = memory_store.get_session_tool_outputs(
-                session_id=session_id,
-                n_results=5,
-                agent_id=agent_id
-            )
-
-            if recent_tools and recent_tools.get('documents'):
-                tools_summary = "\n".join([
-                    f"- {doc}"
-                    for doc in recent_tools['documents']
-                ])
-
-                system_prompt_text += f"""
-
-### RECENT TOOL EXECUTIONS ###
-The following tools were executed recently in this session. Use the output values (especially IDs) from these tools:
-{tools_summary}
-"""
-        except Exception as e:
-            print(f"DEBUG: Error injecting tool history: {e}")
     
     return system_prompt_text

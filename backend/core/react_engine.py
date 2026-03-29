@@ -15,6 +15,7 @@ from core.session import (
     _get_session_id, _get_session_state,
     _apply_sticky_args, _clear_session_embeddings,
     get_recent_history_messages, _get_conversation_history,
+    _save_conversation_turn,
 )
 from core.llm_providers import generate_response as llm_generate_response
 from core.tools import aggregate_all_tools, build_system_prompt, DEFAULT_TOOLS_BY_TYPE
@@ -60,21 +61,6 @@ def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
     return None, None
 
 
-
-def _store_tool_in_memory(memory_store, session_id, tool_name, tool_args, raw_output, agent_id):
-    """Helper to store a tool execution in memory (non-fatal on error)."""
-    if not memory_store:
-        return
-    try:
-        memory_store.add_tool_execution(
-            session_id=session_id,
-            tool_name=tool_name,
-            tool_args=tool_args,
-            tool_output=raw_output,
-            agent_id=agent_id,
-        )
-    except Exception as e:
-        print(f"DEBUG: Error storing tool execution in memory: {e}")
 
 
 def _handle_report_auto_embed(memory_store, session_id, raw_output, target_tool, tool_name):
@@ -262,6 +248,7 @@ async def run_agent_step(
     system_prompt_text = build_system_prompt(
         agent_system_template, tools_json, session_id,
         _get_session_state, server_module.memory_store, agent_id=agent_id_for_session,
+        turns_remaining=max_turns, max_turns=max_turns,
     )
 
     current_settings = load_settings()
@@ -287,7 +274,10 @@ async def run_agent_step(
     # ReAct loop state
     user_message = message
     memory_context = ""
-    recent_history_messages = get_recent_history_messages(session_id, agent_id=agent_id_for_session)
+    agent_type = active_agent.get("type", "conversational")
+    # Orchestrator agents always start fresh — no history carryover between runs
+    is_orchestrator = agent_type == "orchestrator"
+    recent_history_messages = [] if is_orchestrator else get_recent_history_messages(session_id, agent_id=agent_id_for_session)
     current_context_text = f"User Request: {user_message}\n"
     final_response = ""
     last_intent = "chat"
@@ -297,7 +287,6 @@ async def run_agent_step(
     tool_repetition_counts = {}
 
     # Build type-aware set of always-allowed tools
-    agent_type = active_agent.get("type", "conversational")
     always_allowed = set(DEFAULT_TOOLS_BY_TYPE.get("all_types", set()))
     always_allowed |= set(DEFAULT_TOOLS_BY_TYPE.get(agent_type, set()))
 
@@ -324,13 +313,19 @@ async def run_agent_step(
 
             yield {"type": "thinking", "message": "Analyzing your request..."}
 
+            # Rebuild system prompt each turn so turns_remaining is always accurate
+            turns_remaining = max_turns - turn  # after this turn starts, turns_remaining decreases
+            active_sys_prompt = build_system_prompt(
+                agent_system_template, tools_json, session_id,
+                _get_session_state, server_module.memory_store, agent_id=agent_id_for_session,
+                turns_remaining=turns_remaining, max_turns=max_turns,
+            )
+
             # Determine prompt
             if turn == 0:
-                active_sys_prompt = system_prompt_text
                 active_prompt = user_message
                 active_history = recent_history_messages
             else:
-                active_sys_prompt = system_prompt_text
                 active_prompt = current_context_text
                 active_history = []
 
@@ -388,6 +383,24 @@ async def run_agent_step(
                 print(f"DEBUG: 🔧 Tool Call: {tool_name}")
                 print(f"DEBUG: 📥 Args: {json.dumps(tool_args, indent=2, default=str)[:1000]}")
 
+                # ── sequentialthinking hard cap (1 call per task) ──────────────────
+                # sequentialthinking changes `thoughtNumber` on every call so the
+                # identical-args guard below never fires.  Limit it to a single
+                # planning call so the LLM cannot spin in an infinite think loop.
+                if tool_name == "sequentialthinking":
+                    _seq_count = tool_repetition_counts.get("__sequentialthinking__", 0) + 1
+                    tool_repetition_counts["__sequentialthinking__"] = _seq_count
+                    if _seq_count > 1:
+                        _seq_msg = (
+                            "sequentialthinking has already been called once this task. "
+                            "You MUST now call a real action tool (browser, search, data tool, etc.) "
+                            "to make progress. Do NOT call sequentialthinking again."
+                        )
+                        print(f"DEBUG: 🔁 sequentialthinking cap hit (call #{_seq_count}) — blocked", flush=True)
+                        current_context_text += f"\nSystem: {_seq_msg}\n"
+                        yield {"type": "tool_result", "tool_name": tool_name, "preview": "Blocked: sequentialthinking already used (call a real tool now)"}
+                        continue
+
                 # Loop guard
                 current_tool_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
                 tool_repetition_counts[current_tool_signature] = tool_repetition_counts.get(current_tool_signature, 0) + 1
@@ -425,7 +438,6 @@ async def run_agent_step(
                         print(f"DEBUG: 📤 Tool Result ({tool_name}): {raw_output}")
                         current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
                         tools_used_summary.append(f"{tool_name}: use_search={use_search}")
-                        _store_tool_in_memory(server_module.memory_store, session_id, tool_name, tool_args, raw_output, agent_id_for_session)
                         yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Decision: {result['approach']}"}
                         last_intent = "query_decision"
                         last_data = result
@@ -489,50 +501,10 @@ async def run_agent_step(
                     continue
 
                 if tool_name == "query_past_conversations":
-                    try:
-                        query = ""
-                        if isinstance(tool_args, dict):
-                            query = str(tool_args.get("query") or "").strip()
-                        n_results = 5
-                        scope = "all"
-                        if isinstance(tool_args, dict):
-                            if tool_args.get("n_results") is not None:
-                                try:
-                                    n_results = int(tool_args["n_results"])
-                                except Exception:
-                                    n_results = 5
-                            if tool_args.get("scope") in ("all", "session"):
-                                scope = tool_args["scope"]
-
-                        if not query:
-                            raw_output = json.dumps({"memories": [], "error": "missing_query"})
-                            current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
-                            tools_used_summary.append(f"{tool_name}: {raw_output}")
-                            last_intent = "memory_query"
-                            last_data = {"memories": [], "error": "missing_query"}
-                            continue
-
-                        if not server_module.memory_store:
-                            raw_output = json.dumps({"memories": [], "error": "memory_disabled"})
-                            current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
-                            tools_used_summary.append(f"{tool_name}: {raw_output}")
-                            last_intent = "memory_query"
-                            last_data = {"memories": [], "error": "memory_disabled"}
-                            continue
-
-                        where = {"session_id": session_id} if scope == "session" else None
-                        memories = server_module.memory_store.query_memory(query, n_results=n_results, where=where)
-                        raw_output = json.dumps({"memories": memories, "scope": scope})
-                        print(f"DEBUG: 📤 Tool Result ({tool_name}): {raw_output[:500]}{'...(truncated)' if len(raw_output) > 500 else ''}")
-                        current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
-                        tools_used_summary.append(f"{tool_name}: {raw_output[:500]}...")
-                        yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Found {len(memories)} memories"}
-                        last_intent = "memory_query"
-                        last_data = {"memories": memories, "scope": scope}
-                        continue
-                    except Exception as e:
-                        current_context_text += f"\nSystem: Error executing internal tool {tool_name}: {str(e)}\n"
-                        continue
+                    # Tool has been removed — inform the LLM
+                    current_context_text += f"\nSystem: The 'query_past_conversations' tool is no longer available. Use the current conversation context instead.\n"
+                    yield {"type": "tool_result", "tool_name": tool_name, "preview": "Tool removed"}
+                    continue
 
                 # ===== CUSTOM TOOLS (Webhook) =====
 
@@ -586,10 +558,9 @@ async def run_agent_step(
                                         raw_output = _handle_report_auto_embed(
                                             server_module.memory_store, session_id, raw_output, target_tool, tool_name,
                                         )
-                                    else:
-                                        _store_tool_in_memory(server_module.memory_store, session_id, tool_name, tool_args, raw_output, agent_id_for_session)
+                                    # Non-report custom tools: no longer embedded in ChromaDB
                                 except Exception as e:
-                                    print(f"DEBUG: Error storing custom tool in memory: {e}")
+                                    print(f"DEBUG: Error in report auto-embed: {e}")
 
                             # Vault large outputs
                             raw_output = maybe_vault(tool_name, raw_output)
@@ -719,7 +690,7 @@ async def run_agent_step(
                         current_context_text += f"\nTool '{tool_name}' Output: {display_output}\n"
                         print(f"DEBUG: 📤 Tool Result ({tool_name}): {display_output[:500]}{'...(truncated)' if len(display_output) > 500 else ''}")
 
-                    _store_tool_in_memory(server_module.memory_store, session_id, tool_name, tool_args, raw_output, agent_id_for_session)
+                    # MCP tool results are no longer embedded in ChromaDB
                     preview = raw_output[:100] + "..." if len(raw_output) > 100 else raw_output
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
                     tools_used_summary.append(f"{tool_name}: {raw_output[:200]}...")
@@ -737,20 +708,18 @@ async def run_agent_step(
     if not final_response:
         final_response = "I completed the requested actions."
 
-    # Save to memory
-    if server_module.memory_store and final_response:
+    # Persist conversation turn to JSON session file (skip for orchestrator agents)
+    if not is_orchestrator:
         try:
-            server_module.memory_store.add_memory("user", user_message, metadata={"session_id": session_id, "agent_id": agent_id_for_session})
-            server_module.memory_store.add_memory("assistant", final_response, metadata={"session_id": session_id, "agent_id": agent_id_for_session})
+            _save_conversation_turn(
+                session_id=session_id,
+                agent_id=agent_id_for_session,
+                user=user_message,
+                assistant=final_response,
+                tools=tools_used_summary,
+            )
         except Exception as mem_err:
-            print(f"WARNING: Memory save failed (non-fatal): {mem_err}")
-
-    # Save to short-term history
-    _get_conversation_history(session_id, agent_id=agent_id_for_session).append({
-        "user": user_message,
-        "assistant": final_response,
-        "tools": tools_used_summary,
-    })
+            print(f"WARNING: Session save failed (non-fatal): {mem_err}")
 
     yield {"type": "final", "response": final_response, "intent": last_intent, "data": last_data, "tool_name": tool_name}
 

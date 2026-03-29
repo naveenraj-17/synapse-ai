@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X } from 'lucide-react';
 
 import { SettingsModal } from '@/components/SettingsModal';
 import { AuthPrompt } from '@/components/AuthPrompt';
@@ -83,9 +83,9 @@ function StepDivider({ stepName, stepType }: { stepName: string; stepType?: stri
 // ─── Orchestration Info Banner ───────────────────────────────────────────────
 function OrchBanner({ content, variant }: { content: string; variant: 'start' | 'complete' | 'error' }) {
   const styles: Record<string, string> = {
-    start:    'border-purple-900/50 bg-purple-950/20 text-purple-400',
+    start: 'border-purple-900/50 bg-purple-950/20 text-purple-400',
     complete: 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400',
-    error:    'border-red-900/50 bg-red-950/20 text-red-400',
+    error: 'border-red-900/50 bg-red-950/20 text-red-400',
   };
   return (
     <div className="flex justify-center my-2">
@@ -154,11 +154,44 @@ function AgentStepResult({ msg, onEmailClick, onSummarizeFile, onLocateFile, onO
   );
 }
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+type SessionSummary = {
+  session_id: string;
+  agent_id: string;
+  last_response: string | null;
+  last_updated: string | null;
+  turn_count: number;
+  first_user_message: string | null;
+};
+
+type SessionTurn = {
+  user: string;
+  assistant: string;
+  tools: string[];
+  timestamp: string;
+};
+
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export default function Home() {
   const [sessionId, setSessionId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('synapseSessionId') || (() => {
+        const c: any = (globalThis as any).crypto;
+        return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      })();
+    }
     const c: any = (globalThis as any).crypto;
-    if (c?.randomUUID) return c.randomUUID();
-    return `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   });
 
   const [messages, setMessages] = useState<Message[]>([
@@ -173,6 +206,9 @@ export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [streamingActivity, setStreamingActivity] = useState<string | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Accumulate LLM thoughts per active step during streaming
@@ -185,6 +221,55 @@ export default function Home() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Save current session to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('synapseSessionId', sessionId);
+      if (currentAgentId) localStorage.setItem('synapseAgentId', currentAgentId);
+    }
+  }, [sessionId, currentAgentId]);
+
+  // Fetch sessions list
+  const fetchSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await fetch('/api/sessions');
+      if (res.ok) setSessions(await res.json());
+    } catch (e) { console.error('[Sessions] fetch error', e); }
+    finally { setSessionsLoading(false); }
+  }, []);
+
+  // Restore a session into the chat UI
+  const restoreSession = useCallback(async (sid: string, agentId: string | null) => {
+    try {
+      const url = `/api/sessions/${sid}/history${agentId ? `?agent_id=${agentId}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      const turns: SessionTurn[] = data.turns || [];
+      if (turns.length === 0) return;
+      const restored: Message[] = [{ role: 'assistant', content: 'System Internal v1.0. Ready for input.' }];
+      for (const t of turns) {
+        restored.push({ role: 'user', content: t.user });
+        restored.push({ role: 'assistant', content: t.assistant });
+      }
+      setMessages(restored);
+      setSessionId(sid);
+      if (agentId) setCurrentAgentId(agentId);
+    } catch (e) { console.error('[Sessions] restore error', e); }
+  }, []);
+
+  // Auto-restore last session on page load
+  useEffect(() => {
+    const savedSession = typeof window !== 'undefined' ? localStorage.getItem('synapseSessionId') : null;
+    const savedAgent = typeof window !== 'undefined' ? localStorage.getItem('synapseAgentId') : null;
+    if (savedSession) {
+      restoreSession(savedSession, savedAgent);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   // Helper to refresh status
   const refreshSystemStatus = () => {
@@ -231,6 +316,38 @@ export default function Home() {
     setSessionId(newSessionId);
     setMessages([{ role: 'assistant', content: 'System Internal v1.0. Ready for input.' }]);
     setStreamingActivity(null);
+  };
+
+  const handleRefresh = () => {
+    refreshSystemStatus();
+    if (isHistoryOpen) fetchSessions();
+  };
+
+  const handleOpenHistory = () => {
+    setIsHistoryOpen(true);
+    fetchSessions();
+  };
+
+  const handleSelectSession = async (s: SessionSummary) => {
+    setIsHistoryOpen(false);
+    await restoreSession(s.session_id, s.agent_id);
+    // Switch agent if needed
+    if (s.agent_id && s.agent_id !== currentAgentId) {
+      try {
+        await fetch('/api/agents/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent_id: s.agent_id }),
+        });
+        refreshSystemStatus();
+      } catch { }
+    }
+  };
+
+  const handleDeleteSession = async (e: React.MouseEvent, s: SessionSummary) => {
+    e.stopPropagation();
+    await fetch(`/api/sessions/${s.session_id}?agent_id=${s.agent_id}`, { method: 'DELETE' });
+    setSessions(prev => prev.filter(x => x.session_id !== s.session_id));
   };
 
   const handleSwitchAgent = async (agentId: string) => {
@@ -791,6 +908,110 @@ export default function Home() {
         credentials={credentials}
       />
 
+      {/* ── History Drawer ────────────────────────────────────────────────── */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setIsHistoryOpen(false)}
+          />
+          {/* Panel */}
+          <div className="relative z-10 w-80 max-w-full h-full bg-zinc-950 border-r border-zinc-800 flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-zinc-400" />
+                <span className="text-xs font-bold uppercase tracking-widest text-zinc-300">Chat History</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={fetchSessions}
+                  disabled={sessionsLoading}
+                  className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white transition-colors"
+                  title="Refresh sessions"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", sessionsLoading && "animate-spin")} />
+                </button>
+                <button
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Session List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {sessionsLoading && sessions.length === 0 && (
+                <div className="flex items-center justify-center py-10 text-zinc-500 text-xs">Loading...</div>
+              )}
+              {!sessionsLoading && sessions.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <Clock className="h-8 w-8 text-zinc-700" />
+                  <span className="text-xs text-zinc-500">No chat history yet</span>
+                </div>
+              )}
+              {sessions.map(s => (
+                <div
+                  key={`${s.agent_id}_${s.session_id}`}
+                  onClick={() => handleSelectSession(s)}
+                  className={cn(
+                    "group relative px-4 py-3 border-b border-zinc-900 cursor-pointer hover:bg-zinc-900/60 transition-colors",
+                    s.session_id === sessionId && "bg-zinc-900"
+                  )}
+                >
+                  {/* Active indicator */}
+                  {s.session_id === sessionId && (
+                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                  )}
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-mono truncate">
+                      {s.agent_id || 'default'}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] text-zinc-600 font-mono">
+                        {formatRelativeTime(s.last_updated)}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteSession(e, s)}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 text-zinc-600 transition-all"
+                        title="Delete session"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[12px] text-zinc-300 leading-5 line-clamp-2">
+                    {s.first_user_message || '(no messages)'}
+                  </p>
+                  {s.last_response && (
+                    <p className="text-[11px] text-zinc-500 mt-1 truncate">
+                      ↩ {s.last_response.slice(0, 80)}{s.last_response.length > 80 ? '…' : ''}
+                    </p>
+                  )}
+                  <div className="text-[10px] text-zinc-700 mt-1 font-mono">
+                    {s.turn_count} turn{s.turn_count !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer — new chat shortcut */}
+            <div className="px-4 py-3 border-t border-zinc-800 shrink-0">
+              <button
+                onClick={() => { setIsHistoryOpen(false); handleNewChat(); }}
+                className="w-full flex items-center justify-center gap-2 py-2 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white text-xs uppercase tracking-widest transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col w-full border-x border-zinc-800 shadow-2xl relative">
         {/* Header */}
         <header className="h-14 border-b border-zinc-800 bg-zinc-950 px-6 shrink-0 z-10">
@@ -808,10 +1029,10 @@ export default function Home() {
                   <span className="text-zinc-400">Provider:</span>
                   <span className={cn("font-bold",
                     systemStatus?.provider === 'ollama' ? "text-green-400" :
-                    systemStatus?.provider === 'gemini' ? "text-blue-400" :
-                    systemStatus?.provider === 'anthropic' ? "text-amber-400" :
-                    systemStatus?.provider === 'openai' ? "text-emerald-400" :
-                    "text-purple-400"
+                      systemStatus?.provider === 'gemini' ? "text-blue-400" :
+                        systemStatus?.provider === 'anthropic' ? "text-amber-400" :
+                          systemStatus?.provider === 'openai' ? "text-emerald-400" :
+                            "text-purple-400"
                   )}>
                     {systemStatus?.provider ? systemStatus.provider.charAt(0).toUpperCase() + systemStatus.provider.slice(1) : 'Loading...'}
                   </span>
@@ -846,7 +1067,7 @@ export default function Home() {
                           )}>
                           <div className="flex items-center gap-2">
                             <div className={cn("h-1.5 w-1.5 rounded-full", status === 'online' ? "bg-green-500 shadow-[0_0_5px_#22c55e]" : "bg-red-500")}></div>
-                            <span className="truncate max-w-[120px]">{name}</span>
+                            <span className="truncate max-w-[200px]">{name}</span>
                           </div>
                           {isActive && <div className="h-1.5 w-1.5 bg-white rounded-full animate-pulse"></div>}
                         </button>
@@ -865,6 +1086,14 @@ export default function Home() {
                 title="New Chat"
               >
                 <Plus className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={handleOpenHistory}
+                className="p-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
+                title="Chat History"
+              >
+                <History className="h-4 w-4" />
               </button>
 
               <button

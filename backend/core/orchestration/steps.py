@@ -18,6 +18,74 @@ if TYPE_CHECKING:
     from .engine import OrchestrationEngine
 
 
+async def _reset_sequential_thinking(server_module) -> None:
+    """Restart the Sequential Thinking MCP subprocess to get a clean state.
+
+    The ``@modelcontextprotocol/server-sequential-thinking`` server only exposes
+    one tool (``sequentialthinking``) — there is no reset/clear API.  State
+    (thoughtHistory + branches) lives inside a JS class instance on the child
+    process, so the only real way to clear it is to kill the process and start
+    a fresh one.
+
+    This replaces the old session in ``server_module.agent_sessions`` and
+    re-registers the tool in ``server_module.tool_router`` so all subsequent
+    calls transparently use a clean subprocess.
+
+    Non-fatal: if anything goes wrong the old (dirty) session is left in place
+    and a warning is printed.
+    """
+    import shutil
+    from contextlib import AsyncExitStack
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    from datetime import timedelta
+
+    SESSION_KEY = "Sequential Thinking"
+    TOOL_NAME = "sequentialthinking"
+
+    if server_module.agent_sessions.get(SESSION_KEY) is None:
+        return  # server was never connected — nothing to do
+
+    try:
+        print("DEBUG: 🔄 Restarting Sequential Thinking subprocess for clean state...", flush=True)
+
+        if not shutil.which("npx"):
+            print("DEBUG: ⚠️ npx not found — cannot restart Sequential Thinking", flush=True)
+            return
+
+        server_params = StdioServerParameters(
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-sequential-thinking"],
+        )
+
+        # Bring up the new subprocess FIRST so we always have a working session.
+        fresh_stack = AsyncExitStack()
+        read, write = await fresh_stack.enter_async_context(stdio_client(server_params))
+        new_session = await fresh_stack.enter_async_context(
+            ClientSession(read, write, read_timeout_seconds=timedelta(seconds=60))
+        )
+        await new_session.initialize()
+
+        # Close the previous per-step stack (if any) to release its subprocess.
+        old_stack = getattr(server_module, "_seq_thinking_stack", None)
+        if old_stack is not None:
+            try:
+                await old_stack.aclose()
+            except Exception:
+                pass  # best-effort
+
+        # Track the new stack so the next reset (or shutdown) can clean it up.
+        server_module._seq_thinking_stack = fresh_stack
+
+        # Swap into the shared registry
+        server_module.agent_sessions[SESSION_KEY] = new_session
+        server_module.tool_router[TOOL_NAME] = SESSION_KEY
+
+        print("DEBUG: 🧹 Sequential Thinking restarted — fresh state for next agent step", flush=True)
+    except Exception as exc:
+        print(f"DEBUG: ⚠️ Could not restart Sequential Thinking: {exc}", flush=True)
+
+
 def _build_step_prompt(
     step: StepConfig,
     shared_state: dict,
@@ -119,6 +187,11 @@ class AgentStepExecutor:
             raise
         finally:
             agent_log.run_end(_log_status)
+            # Reset sequential thinking history so the next agent in the
+            # orchestration starts with a clean slate.  The server keeps
+            # all thoughts in a single in-process list shared across every
+            # caller, so we must clear it after every agent step.
+            await _reset_sequential_thinking(engine.server_module)
 
         if step.output_key and final_response:
             run.shared_state[step.output_key] = final_response

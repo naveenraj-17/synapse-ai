@@ -38,6 +38,7 @@ from core.routes.db_configs import router as db_configs_router
 from core.routes.orchestrations import router as orchestrations_router
 from core.routes.logs import router as logs_router
 from core.routes.messaging import router as messaging_router
+from core.routes.sessions import router as sessions_router
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -314,6 +315,15 @@ async def lifespan(app: FastAPI):
             print("Initializing Memory Store...")
             global memory_store
             memory_store = _init_memory_store(load_settings())
+            # Clear the legacy chat_history ChromaDB collection — chat turns are
+            # now persisted as JSON files. The collection may still contain stale
+            # data from before this refactor; clear it once at startup.
+            if memory_store:
+                try:
+                    memory_store.clear_memory()
+                    print("INFO: Cleared legacy ChromaDB chat_history collection (chat history is now JSON-persisted).")
+                except Exception as _clr_err:
+                    print(f"WARNING: Could not clear ChromaDB chat_history: {_clr_err}")
 
         print("All agents connected.")
 
@@ -375,6 +385,7 @@ app.include_router(db_configs_router)
 app.include_router(orchestrations_router)
 app.include_router(logs_router)
 app.include_router(messaging_router)
+app.include_router(sessions_router)
 
 if __name__ == "__main__":
     import uvicorn
