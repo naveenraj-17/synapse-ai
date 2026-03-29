@@ -59,7 +59,6 @@ if _settings.get("ollama_base_url"):
 TOOLS_LIST = {
     "time": str(TOOLS_DIR / "time.py"),
     "sql": str(TOOLS_DIR / "sql_agent.py"),
-    "maps": str(TOOLS_DIR / "map_details.py"),
     "personal_details": str(TOOLS_DIR / "personal_details.py"),
     "collect_data": str(TOOLS_DIR / "collect_data.py"),
     "pdf_parser": str(TOOLS_DIR / "pdf_parser.py"),

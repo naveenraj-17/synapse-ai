@@ -2,7 +2,7 @@
 Pydantic models and data classes used across the backend.
 Extracted from server.py for better readability.
 """
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 
@@ -42,7 +42,7 @@ class Agent(BaseModel):
     description: str
     avatar: str = "default"
     type: str = "conversational"  # conversational | analysis | workflow | code | orchestrator
-    tools: list[str] # ["all"] or ["search_codebase", "get_map_details"]
+    tools: list[str] # ["all"] or ["search_codebase", "get_weather"]
     repos: list[str] = [] # list of repo IDs for code agents
     db_configs: list[str] = [] # list of db config IDs for code agents
     system_prompt: str
@@ -74,7 +74,6 @@ class Settings(BaseModel):
     openai_key: str = ""
     anthropic_key: str = ""
     gemini_key: str = ""
-    google_maps_api_key: str = ""  # Google Maps Platform API key
     bedrock_api_key: str = ""  # e.g. ABSK... (Amazon Bedrock API key)
     # Optional: required for some Bedrock models that don't support on-demand throughput.
     # Can be an inference profile ID or full ARN.
@@ -112,24 +111,6 @@ class PersonalDetails(BaseModel):
     email: str = ""
     phone_number: str = ""
     address: PersonalAddress = PersonalAddress()
-
-
-class _MapsPoint(BaseModel):
-    address: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-
-
-class MapsDetailsRequest(BaseModel):
-    # Accept either addresses or lat/lng (or mixed).
-    origin_address: Optional[str] = None
-    origin_lat: Optional[float] = None
-    origin_lng: Optional[float] = None
-    destination_address: Optional[str] = None
-    destination_lat: Optional[float] = None
-    destination_lng: Optional[float] = None
-    travel_mode: Literal["driving", "walking", "bicycling", "transit"] = "driving"
-    units: Literal["metric", "imperial"] = "metric"
 
 
 class AddMCPServerRequest(BaseModel):

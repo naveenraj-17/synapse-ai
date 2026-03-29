@@ -18,7 +18,6 @@ def load_settings():
         "openai_key": "",
         "anthropic_key": "",
         "gemini_key": "",
-        "google_maps_api_key": "",
         "bedrock_api_key": "",
         "bedrock_inference_profile": "",
         "embedding_model": "",

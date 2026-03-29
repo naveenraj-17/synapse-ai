@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, Plus, Trash, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, User, ExternalLink } from 'lucide-react';
+import { Shield, CheckCircle2, XCircle, RefreshCw, ChevronDown, ChevronUp, User, ExternalLink } from 'lucide-react';
 
 interface CredInfo {
     has_credentials: boolean;
@@ -14,16 +14,12 @@ interface CredInfo {
 interface IntegrationsTabProps {
     n8nUrl: string; setN8nUrl: (v: string) => void;
     n8nApiKey: string; setN8nApiKey: (v: string) => void;
-    googleMapsApiKey: string; setGoogleMapsApiKey: (v: string) => void;
-    globalConfig: { id: string; key: string; value: string }[];
-    setGlobalConfig: (v: { id: string; key: string; value: string }[]) => void;
     onSave: () => void;
 }
 
 export const IntegrationsTab = ({
     n8nUrl, setN8nUrl, n8nApiKey, setN8nApiKey,
-    googleMapsApiKey, setGoogleMapsApiKey,
-    globalConfig, setGlobalConfig, onSave
+    onSave
 }: IntegrationsTabProps) => {
     const [credInfo, setCredInfo] = useState<CredInfo | null>(null);
     const [loading, setLoading] = useState(true);
@@ -355,64 +351,6 @@ export const IntegrationsTab = ({
                         <p className="text-xs text-zinc-600">Used server-side to list workflows and derive webhook URLs.</p>
                     </div>
 
-                    <div className="space-y-4 pt-4 border-t border-zinc-800">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h4 className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Global Configuration Variables</h4>
-                                <p className="text-xs text-zinc-600 mt-1">These values are synced to the &apos;global_config&apos; data table in n8n.</p>
-                            </div>
-                            <button
-                                onClick={() => setGlobalConfig([...globalConfig, { id: Math.random().toString(36).substr(2, 9), key: '', value: '' }])}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] font-bold uppercase transition-colors"
-                            >
-                                <Plus className="h-3 w-3" /> Add Variable
-                            </button>
-                        </div>
-
-                        <div className="space-y-2">
-                            {globalConfig.length === 0 ? (
-                                <div className="text-center py-4 bg-zinc-950 border border-zinc-800 border-dashed text-zinc-600 text-xs italic">
-                                    No global variables configured.
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {globalConfig.map((item, idx) => (
-                                        <div key={item.id} className="flex gap-2 items-start animate-in fade-in slide-in-from-left-2 duration-200">
-                                            <input
-                                                type="text"
-                                                value={item.key}
-                                                onChange={(e) => {
-                                                    const newConfig = [...globalConfig];
-                                                    newConfig[idx].key = e.target.value;
-                                                    setGlobalConfig(newConfig);
-                                                }}
-                                                placeholder="Key (e.g. USER_ID)"
-                                                className="flex-1 bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-white focus:outline-none font-mono placeholder:text-zinc-700"
-                                            />
-                                            <input
-                                                type="text"
-                                                value={item.value}
-                                                onChange={(e) => {
-                                                    const newConfig = [...globalConfig];
-                                                    newConfig[idx].value = e.target.value;
-                                                    setGlobalConfig(newConfig);
-                                                }}
-                                                placeholder="Value"
-                                                className="flex-[2] bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-white focus:outline-none font-mono placeholder:text-zinc-700"
-                                            />
-                                            <button
-                                                onClick={() => setGlobalConfig(globalConfig.filter(i => i.id !== item.id))}
-                                                className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-900 transition-colors"
-                                                title="Remove variable"
-                                            >
-                                                <Trash className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
                     <div className="pt-2 flex justify-end">
                         <button
                             onClick={onSave}
@@ -424,39 +362,6 @@ export const IntegrationsTab = ({
                 </div>
             </div>
 
-            {/* ── Google Maps ──────────────────────────────────────────── */}
-            <div className="bg-zinc-900 border border-zinc-800 overflow-hidden">
-                <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className={`h-2 w-2 ${googleMapsApiKey ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className="text-sm font-bold text-zinc-400">Google Maps</span>
-                    </div>
-                    <span className={`text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 ${googleMapsApiKey ? 'text-green-400' : 'text-zinc-500'}`}>
-                        {googleMapsApiKey ? 'CONFIGURED' : 'NOT CONFIGURED'}
-                    </span>
-                </div>
-                <div className="p-6 space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Maps API Key</label>
-                        <input
-                            type="password"
-                            value={googleMapsApiKey}
-                            onChange={(e) => setGoogleMapsApiKey(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
-                            placeholder="AIza..."
-                        />
-                        <p className="text-xs text-zinc-600">Used server-side for map distance calculations (Distance Matrix API).</p>
-                    </div>
-                    <div className="pt-2 flex justify-end">
-                        <button
-                            onClick={onSave}
-                            className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
-                        >
-                            Save Changes
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };

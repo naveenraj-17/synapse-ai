@@ -61,8 +61,6 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [loadingInferenceProfiles, setLoadingInferenceProfiles] = useState(false);
     const [sqlConnectionString, setSqlConnectionString] = useState('');
 
-    // Integrations: Google Maps
-    const [googleMapsApiKey, setGoogleMapsApiKey] = useState('');
 
     // Personal Details
     const [pdFirstName, setPdFirstName] = useState('');
@@ -78,7 +76,6 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     // Integrations: n8n
     const [n8nUrl, setN8nUrl] = useState('http://localhost:5678');
     const [n8nApiKey, setN8nApiKey] = useState('');
-    const [globalConfig, setGlobalConfig] = useState<{ id: string, key: string, value: string }[]>([]);
 
     // Agents State
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -162,16 +159,11 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             anthropic_key: anthropicKey,
             gemini_key: geminiKey,
             bedrock_api_key: bedrockApiKey,
-            google_maps_api_key: googleMapsApiKey,
             bedrock_inference_profile: bedrockInferenceProfile,
             aws_region: awsRegion,
             sql_connection_string: sqlConnectionString,
             n8n_url: n8nUrl,
             n8n_api_key: n8nApiKey,
-            global_config: globalConfig.reduce((acc, curr) => {
-                if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
-                return acc;
-            }, {} as Record<string, string>),
             vault_enabled: vaultEnabled,
             vault_threshold: vaultThreshold,
             allow_db_write: allowDbWrite,
@@ -374,7 +366,6 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 setAnthropicKey(data.anthropic_key || '');
                 setGeminiKey(data.gemini_key || '');
                 setBedrockApiKey(data.bedrock_api_key || '');
-                setGoogleMapsApiKey(data.google_maps_api_key || '');
                 setAwsRegion(data.aws_region || 'us-east-1');
                 setBedrockInferenceProfile(data.bedrock_inference_profile || '');
                 setSqlConnectionString(data.sql_connection_string || '');
@@ -385,16 +376,6 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 setAllowDbWrite(data.allow_db_write || false);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
-                if (data.global_config) {
-                    const configArray = Object.entries(data.global_config).map(([k, v]) => ({
-                        id: Math.random().toString(36).substr(2, 9),
-                        key: k,
-                        value: v as string
-                    }));
-                    setGlobalConfig(configArray);
-                } else {
-                    setGlobalConfig([]);
-                }
             });
 
         // Personal details
@@ -845,8 +826,6 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                         <IntegrationsTab
                             n8nUrl={n8nUrl} setN8nUrl={setN8nUrl}
                             n8nApiKey={n8nApiKey} setN8nApiKey={setN8nApiKey}
-                            googleMapsApiKey={googleMapsApiKey} setGoogleMapsApiKey={setGoogleMapsApiKey}
-                            globalConfig={globalConfig} setGlobalConfig={setGlobalConfig}
                             onSave={handleSaveSection}
                         />
                     )}

@@ -1,17 +1,15 @@
 """
-Settings, personal details, Google Maps, and config endpoints.
+Settings, personal details, and config endpoints.
 """
 import os
 import json
-from typing import Optional, Tuple
-from urllib.parse import quote
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-import httpx
 
 from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE, TOKEN_FILE
-from core.models import Settings, PersonalDetails, MapsDetailsRequest
+from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
 from core.json_store import JsonStore
@@ -39,28 +37,6 @@ def _init_memory_store(settings: dict):
         return None
 
     return _MemoryStore(model="nomic-embed-text", embed_fn=None)
-
-
-def _normalize_point(address: Optional[str], lat: Optional[float], lng: Optional[float]) -> Tuple[str, dict]:
-    """Return (distance-matrix-string, meta) or raise HTTPException for invalid input."""
-    addr = (address or "").strip()
-    has_coords = lat is not None and lng is not None
-    if addr and has_coords:
-        return f"{lat},{lng}", {"type": "latlng", "address": addr, "location": {"lat": lat, "lng": lng}}
-    if has_coords:
-        return f"{lat},{lng}", {"type": "latlng", "location": {"lat": lat, "lng": lng}}
-    if addr:
-        return addr, {"type": "address", "address": addr}
-    raise HTTPException(status_code=422, detail="Both origin and destination must be provided as an address or as lat/lng.")
-
-
-def _build_directions_url(origin: str, destination: str, travel_mode: str) -> str:
-    return (
-        "https://www.google.com/maps/dir/?api=1"
-        f"&origin={quote(origin)}"
-        f"&destination={quote(destination)}"
-        f"&travelmode={quote(travel_mode)}"
-    )
 
 
 # --- Status & Settings ---
@@ -153,75 +129,6 @@ async def get_personal_details_api():
 async def update_personal_details_api(details: PersonalDetails):
     data = details.dict()
     return save_personal_details(data)
-
-
-# --- Maps ---
-
-@router.post("/api/maps/details")
-async def get_maps_details(request: MapsDetailsRequest):
-    """Compute distance and duration between two points using Google Distance Matrix API."""
-    settings = load_settings()
-    api_key = (settings.get("google_maps_api_key") or os.environ.get("GOOGLE_MAPS_API_KEY") or "").strip()
-    if not api_key:
-        raise HTTPException(status_code=400, detail="google_maps_api_key is not configured")
-
-    origin_str, origin_meta = _normalize_point(request.origin_address, request.origin_lat, request.origin_lng)
-    dest_str, dest_meta = _normalize_point(request.destination_address, request.destination_lat, request.destination_lng)
-
-    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
-    params = {
-        "origins": origin_str,
-        "destinations": dest_str,
-        "mode": request.travel_mode,
-        "units": request.units,
-        "key": api_key,
-    }
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=params)
-
-    try:
-        data = resp.json()
-    except Exception:
-        raise HTTPException(status_code=502, detail=f"Google Maps API returned non-JSON response (status {resp.status_code})")
-
-    api_status = data.get("status")
-    if api_status != "OK":
-        message = data.get("error_message") or api_status or "Unknown error"
-        raise HTTPException(status_code=502, detail=f"Google Distance Matrix error: {message}")
-
-    rows = data.get("rows") or []
-    elements = (rows[0].get("elements") if rows and isinstance(rows[0], dict) else None) or []
-    element = elements[0] if elements else {}
-    element_status = element.get("status")
-    if element_status != "OK":
-        raise HTTPException(status_code=502, detail=f"No route found: {element_status}")
-
-    distance = element.get("distance") or {}
-    duration = element.get("duration") or {}
-    distance_m = distance.get("value")
-    duration_s = duration.get("value")
-
-    directions_url = _build_directions_url(origin_str, dest_str, request.travel_mode)
-
-    return {
-        "provider": "google_distance_matrix",
-        "travel_mode": request.travel_mode,
-        "units": request.units,
-        "origin": origin_meta,
-        "destination": dest_meta,
-        "distance": {
-            "meters": distance_m,
-            "kilometers": (distance_m / 1000.0) if isinstance(distance_m, (int, float)) else None,
-            "text": distance.get("text"),
-        },
-        "duration": {
-            "seconds": duration_s,
-            "minutes": (duration_s / 60.0) if isinstance(duration_s, (int, float)) else None,
-            "text": duration.get("text"),
-        },
-        "directions_url": directions_url,
-    }
 
 
 # --- Google Credentials & Config ---
