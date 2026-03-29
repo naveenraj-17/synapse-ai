@@ -773,7 +773,7 @@ async def run_react_loop(request, server_module):
                     orch = Orchestration.model_validate(orch_data)
                     engine = OrchestrationEngine(orch, server_module)
                     run_id = f"run_{orch_id}_{int(time.time() * 1000)}"
-                    async for event in engine.run(user_message, run_id):
+                    async for event in engine.run(user_message, run_id, session_id=session_id):
                         yield event
                     return
                 else:

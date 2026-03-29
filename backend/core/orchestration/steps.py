@@ -157,10 +157,12 @@ class AgentStepExecutor:
 
         agent_id = step.agent_id or "default"
         agent_name = engine.agent_names.get(agent_id, agent_id)
+        # Group sub-agent logs under the same session as the orchestration
+        session_id = run.session_id or f"orch_{run.run_id}"
         agent_log = AgentLogger(
             agent_id=agent_id,
             agent_name=agent_name,
-            session_id=f"orch_{run.run_id}_{step.id}",
+            session_id=session_id,
             source=f"orchestration:{run.run_id}",
             user_message=prompt,
         )
@@ -173,7 +175,7 @@ class AgentStepExecutor:
             async for event in run_agent_step(
                 message=prompt,
                 agent_id=step.agent_id,
-                session_id=f"orch_{run.run_id}_{step.id}",
+                session_id=session_id,
                 server_module=engine.server_module,
                 max_turns=step.max_turns,
                 allowed_tools_override=step.allowed_tools,

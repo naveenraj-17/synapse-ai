@@ -12,10 +12,10 @@ router = APIRouter()
 # ── Agent Logs ─────────────────────────────────────────────────────
 
 @router.get("/api/logs/agents")
-async def list_agent_logs(limit: int = 50):
+async def list_agent_logs(limit: int = 100, offset: int = 0):
     """List recent agent run logs (summary only)."""
     from core.agent_logger import AgentLogger
-    return AgentLogger.list_logs(limit=limit)
+    return AgentLogger.list_logs(limit=limit, offset=offset)
 
 
 @router.get("/api/logs/agents/{run_id}")
@@ -40,10 +40,10 @@ async def delete_agent_log(run_id: str):
 # ── Orchestration Logs ─────────────────────────────────────────────
 
 @router.get("/api/logs/orchestrations")
-async def list_orchestration_logs(limit: int = 20):
+async def list_orchestration_logs(limit: int = 100, offset: int = 0):
     """List recent orchestration run logs (summary only)."""
     from core.orchestration.logger import OrchestrationLogger
-    return OrchestrationLogger.list_logs(limit=limit)
+    return OrchestrationLogger.list_logs(limit=limit, offset=offset)
 
 
 @router.get("/api/logs/orchestrations/{run_id}")

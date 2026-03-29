@@ -100,6 +100,7 @@ class OrchestrationRun(BaseModel):
     """A single execution instance of an orchestration."""
     run_id: str
     orchestration_id: str
+    session_id: str | None = None
     status: str = "running"  # running | paused | completed | failed | cancelled
     shared_state: dict[str, Any] = {}
     step_history: list[dict[str, Any]] = []

@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #09090b;
+  --foreground: #fafafa;
+
+  /* Scrollbar Default */
+  --sb-track: #09090b;
+  --sb-thumb: #27272a;
+  --sb-thumb-hover: #3f3f46;
 }
 
 @theme inline {
@@ -13,230 +18,171 @@
   --font-inter: var(--font-inter), 'Inter', system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.light-mode {
+  --background: #ffffff;
+  --foreground: #09090b;
+
+  /* --- ZINC PALETTE INVERSION --- */
+  --color-zinc-950: #fafafa;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-400: #52525b;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-200: #27272a;
+  --color-zinc-100: #18181b;
+  --color-zinc-50: #09090b;
+
+  /* --- SLATE/GRAY/NEUTRAL PALETTE INVERSION (if used) --- */
+  --color-slate-950: #f8fafc;
+  --color-slate-900: #f1f5f9;
+  --color-slate-800: #e2e8f0;
+  --color-slate-700: #cbd5e1;
+  --color-slate-400: #475569;
+  --color-slate-300: #334155;
+  --color-slate-200: #1e293b;
+  --color-slate-100: #0f172a;
+
+  /* --- RED PALETTE INVERSION (for errors/warnings) --- */
+  --color-red-950: #fef2f2;
+  --color-red-900: #fee2e2;
+  --color-red-800: #fecaca;
+  --color-red-700: #f97316;
+  /* adjust */
+  --color-red-400: #b91c1c;
+  --color-red-200: #7f1d1d;
+
+  /* --- BLUE/SKY PALETTE INVERSION (for Telegram/Teams) --- */
+  --color-sky-950: #f0f9ff;
+  --color-sky-900: #e0f2fe;
+  --color-sky-800: #bae6fd;
+  --color-sky-400: #0369a1;
+
+  /* --- INDIGO PALETTE INVERSION (for Discord) --- */
+  --color-indigo-950: #f5f3ff;
+  --color-indigo-900: #ede9fe;
+  --color-indigo-800: #ddd6fe;
+  --color-indigo-400: #4338ca;
+
+  /* --- GREEN/EMERALD PALETTE INVERSION (for Slack/WhatsApp) --- */
+  --color-green-950: #f0fdf4;
+  --color-green-900: #dcfce7;
+  --color-green-800: #bbf7d0;
+  --color-green-400: #15803d;
+
+  --color-emerald-950: #ecfdf5;
+  --color-emerald-900: #d1fae5;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-400: #047857;
+
+  /* --- AMBER/YELLOW PALETTE INVERSION (for warnings) --- */
+  --color-amber-950: #fffbeb;
+  --color-amber-900: #fef3c7;
+  --color-amber-800: #fde68a;
+  --color-amber-400: #92400e;
+  --color-amber-300: #78350f;
+
+  /* --- BLUE PALETTE INVERSION (for badges/links) --- */
+  --color-blue-950: #eff6ff;
+  --color-blue-900: #dbeafe;
+  --color-blue-800: #bfdbfe;
+  --color-blue-600: #2563eb;
+  --color-blue-400: #1d4ed8;
+
+  /* --- PURPLE/VIOLET PALETTE INVERSION (for orchestration) --- */
+  --color-purple-950: #faf5ff;
+  --color-purple-900: #f3e8ff;
+  --color-purple-800: #e9d5ff;
+  --color-purple-600: #7e22ce;
+  --color-purple-400: #6b21a8;
+  --color-purple-300: #581c87;
+
+  --color-violet-950: #f5f3ff;
+  --color-violet-900: #ede9fe;
+  --color-violet-800: #ddd6fe;
+  --color-violet-600: #4c1d95;
+  --color-violet-400: #4338ca;
+  --color-violet-300: #3730a3;
+
+  /* --- CORE COLORS INVERSION --- */
+  --color-black: #ffffff;
+  --color-white: #09090b;
+
+  /* --- SCROLLBAR LIGHT --- */
+  --sb-track: #fafafa;
+  --sb-thumb: #e4e4e7;
+  --sb-thumb-hover: #d4d4d8;
+}
+
+/* Force white text on colorful primary buttons in light mode */
+.light-mode .bg-blue-600, 
+.light-mode .bg-purple-600, 
+.light-mode .bg-violet-600,
+.light-mode .bg-green-600, 
+.light-mode .bg-red-600,
+.light-mode .bg-blue-500,
+.light-mode .bg-purple-500,
+.light-mode .bg-green-500,
+.light-mode .bg-red-500 {
+  color: #ffffff !important;
+}
+
+/* Image filter utility for light mode icons */
+.light-mode .light-mode-invert {
+  filter: brightness(0);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 @layer utilities {
 
-  /* Chrome, Safari, Edge, Opera */
+  /* Scrollbar override */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #09090b;
-    /* zinc-950 */
-    border-left: 1px solid #18181b;
-    /* zinc-900 */
+    background: var(--sb-track);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #27272a;
-    /* zinc-800 */
+    background: var(--sb-thumb);
     border-radius: 9999px;
-    border: 2px solid #09090b;
-    /* Padding effect */
+    border: 2px solid var(--sb-track);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
-    /* zinc-700 */
+    background: var(--sb-thumb-hover);
   }
 }
 
-/* Light Mode Overrides */
-.light-mode.bg-black,
-.light-mode .bg-black {
+/* React Flow Light Theme Adjustments */
+.light-mode .react-flow__background {
   background-color: #ffffff;
 }
 
-.light-mode.text-white,
-.light-mode .text-white {
-  color: #000000;
+.light-mode .react-flow__edge-path {
+  stroke: #d4d4d8;
 }
 
-/* Invert White/Black for Buttons (e.g., Save Button) */
-.light-mode.bg-white,
-.light-mode .bg-white {
-  background-color: #18181b;
+.light-mode .react-flow__controls button {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e4e4e7 !important;
+  color: #18181b !important;
 }
 
-/* Invert to dark (zinc-900) */
-.light-mode.text-black,
-.light-mode .text-black {
-  color: #ffffff;
+.light-mode .react-flow__controls button:hover {
+  background-color: #f4f4f5 !important;
 }
 
-.light-mode.bg-zinc-950,
-.light-mode .bg-zinc-950 {
-  background-color: #fafafa;
-}
-
-/* zinc-50 */
-.light-mode.bg-zinc-900,
-.light-mode .bg-zinc-900 {
-  background-color: #f4f4f5;
-}
-
-/* zinc-100 */
-.light-mode.bg-zinc-800,
-.light-mode .bg-zinc-800 {
-  background-color: #e4e4e7;
-}
-
-/* zinc-200 */
-
-.light-mode.border-zinc-900,
-.light-mode .border-zinc-900 {
-  border-color: #e4e4e7;
-}
-
-/* zinc-200 */
-.light-mode.border-zinc-800,
-.light-mode .border-zinc-800 {
-  border-color: #e4e4e7;
-}
-
-/* zinc-200 */
-.light-mode.border-zinc-700,
-.light-mode .border-zinc-700 {
-  border-color: #d4d4d8;
-}
-
-/* zinc-300 */
-.light-mode.border-white,
-.light-mode .border-white {
-  border-color: #000000;
-}
-
-/* Modal specific borders */
-.light-mode .border-white\/20 {
-  border-color: rgba(0, 0, 0, 0.2);
-}
-
-/* Text Color Mappings */
-.light-mode.text-zinc-100,
-.light-mode .text-zinc-100 {
-  color: #18181b;
-}
-
-/* zinc-900 */
-.light-mode.text-zinc-300,
-.light-mode .text-zinc-300 {
-  color: #3f3f46;
-}
-
-/* zinc-700 */
-.light-mode.text-zinc-400,
-.light-mode .text-zinc-400 {
-  color: #52525b;
-}
-
-/* zinc-600 */
-.light-mode.text-zinc-500,
-.light-mode .text-zinc-500 {
-  color: #71717a;
-}
-
-/* zinc-500 */
-.light-mode.text-zinc-600,
-.light-mode .text-zinc-600 {
-  color: #a1a1aa;
-}
-
-/* zinc-400 */
-
-/* Warnings (Red) Mappings */
-.light-mode .bg-red-950\/20 {
-  background-color: #fef2f2;
-}
-
-/* red-50 */
-.light-mode .border-red-900\/50 {
-  border-color: #fca5a5;
-}
-
-/* red-300 */
-.light-mode .text-red-200 {
-  color: #b91c1c;
-}
-
-/* red-700 */
-.light-mode .text-red-400 {
-  color: #ef4444;
-}
-
-/* red-500 */
-.light-mode .bg-red-950\/30 {
-  background-color: #fee2e2;
-}
-
-/* red-100 */
-
-/* Specific Opacity Classes */
-.light-mode .bg-zinc-900\/50 {
-  background-color: #fafafa;
-}
-
-/* zinc-50 - Assistant Bubble */
-.light-mode .bg-zinc-900\/20 {
-  background-color: #f4f4f5;
-}
-
-/* Gradient Overrides - Resetting variables for light mode */
-.light-mode .from-black {
-  --tw-gradient-from: #ffffff;
-}
-
-.light-mode .via-black {
-  --tw-gradient-via: #ffffff;
-}
-
-/* Hover States */
-.light-mode .hover\:bg-zinc-900:hover {
-  background-color: #e4e4e7;
-}
-
-/* zinc-200 for visibility */
-.light-mode .hover\:bg-zinc-200:hover {
-  background-color: #27272a;
-}
-
-/* zinc-800 for inverted white button hover */
-.light-mode .hover\:text-white:hover {
-  color: #000000;
-}
-
-.light-mode .placeholder\:text-zinc-600::placeholder {
-  color: #a1a1aa;
-}
-
-.light-mode .placeholder\:text-zinc-700::placeholder {
-  color: #a1a1aa;
-}
-
-/* Scrollbar Overrides for Light Mode */
-.light-mode ::-webkit-scrollbar-track {
-  background: #fafafa;
-  border-left: 1px solid #f4f4f5;
-}
-
-.light-mode ::-webkit-scrollbar-thumb {
-  background: #e4e4e7;
-  border: 2px solid #fafafa;
-}
-
-.light-mode ::-webkit-scrollbar-thumb:hover {
-  background: #d4d4d8;
+.light-mode .react-flow__minimap {
+  background-color: #ffffff !important;
 }

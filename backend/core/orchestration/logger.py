@@ -28,9 +28,10 @@ def _fmt_args(args) -> str:
 class OrchestrationLogger:
     """Appends debug lines to  data/orchestration_logs/<run_id>.log"""
 
-    def __init__(self, run_id: str, orchestration_id: str, orchestration_name: str, user_input: str):
+    def __init__(self, run_id: str, orchestration_id: str, orchestration_name: str, user_input: str, session_id: str | None = None):
         _ensure_logs_dir()
         self.run_id = run_id
+        self.session_id = session_id
         self.path = LOGS_DIR / f"{run_id}.log"
         self._start_time = time.time()
 
@@ -41,6 +42,7 @@ class OrchestrationLogger:
   Run ID          : {run_id}
   Orchestration ID: {orchestration_id}
   Orchestration   : {orchestration_name}
+  Session ID      : {session_id or ''}
   Started at      : {_ts()}
   User Input      : {user_input or '(empty)'}
 {'='*80}
@@ -215,10 +217,11 @@ class OrchestrationLogger:
         return path.read_text(encoding="utf-8")
 
     @staticmethod
-    def list_logs(limit: int = 20) -> list[dict]:
+    def list_logs(limit: int = 100, offset: int = 0) -> list[dict]:
         _ensure_logs_dir()
         logs = []
-        for f in sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+        files = sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for f in files[offset : offset + limit]:
             run_id = f.stem
             # Parse header lines for summary
             try:
@@ -233,6 +236,7 @@ class OrchestrationLogger:
                     "run_id": run_id,
                     "orchestration_name": _extract("Orchestration   :"),
                     "orchestration_id": _extract("Orchestration ID:"),
+                    "session_id": _extract("Session ID      :"),
                     "started_at": _extract("Started at      :"),
                     "user_input": _extract("User Input      :")[:200],
                     "file_size_kb": round(f.stat().st_size / 1024, 1),

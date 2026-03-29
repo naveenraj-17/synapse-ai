@@ -28,20 +28,41 @@ export const LogsTab = () => {
     const [content, setContent] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [contentLoading, setContentLoading] = useState(false);
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const LIMIT = 100;
 
-    const fetchLogs = useCallback(async () => {
+    const fetchLogs = useCallback(async (isLoadMore = false) => {
         setLoading(true);
-        setSelectedId(null);
-        setContent(null);
+        if (!isLoadMore) {
+            setSelectedId(null);
+            setContent(null);
+            setOffset(0);
+            setHasMore(true);
+        }
+
+        const currentOffset = isLoadMore ? offset : 0;
+
         try {
-            const res = await fetch(`/api/logs/${logType}`);
-            if (res.ok) setLogs(await res.json());
+            const res = await fetch(`/api/logs/${logType}?limit=${LIMIT}&offset=${currentOffset}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (isLoadMore) {
+                    setLogs(prev => [...prev, ...data]);
+                } else {
+                    setLogs(data);
+                }
+                if (data.length < LIMIT) {
+                    setHasMore(false);
+                }
+                setOffset(prev => isLoadMore ? prev + data.length : data.length);
+            }
         } finally {
             setLoading(false);
         }
-    }, [logType]);
+    }, [logType, offset]);
 
-    useEffect(() => { fetchLogs(); }, [fetchLogs]);
+    useEffect(() => { fetchLogs(); }, [logType]);
 
     const fetchContent = async (runId: string) => {
         setSelectedId(runId);
@@ -63,6 +84,19 @@ export const LogsTab = () => {
             setLogs(prev => prev.filter(l => l.run_id !== runId));
         }
     };
+
+    // Group logs by session_id
+    const groupedLogs: Record<string, LogSummary[]> = {};
+    const sessionOrder: string[] = [];
+
+    logs.forEach(log => {
+        const sid = log.session_id || `nosession_${log.run_id}`;
+        if (!groupedLogs[sid]) {
+            groupedLogs[sid] = [];
+            sessionOrder.push(sid);
+        }
+        groupedLogs[sid].push(log);
+    });
 
     return (
         <div className="flex flex-col h-full overflow-hidden font-mono">
@@ -112,8 +146,8 @@ export const LogsTab = () => {
             <div className="flex flex-1 overflow-hidden">
 
                 {/* Left: log list */}
-                <div className="w-72 border-r border-white/10 overflow-y-auto shrink-0">
-                    {loading ? (
+                <div className="w-80 border-r border-white/10 overflow-y-auto shrink-0 flex flex-col">
+                    {loading && logs.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-zinc-600 text-xs">Loading...</div>
                     ) : logs.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-40 gap-3 text-zinc-700">
@@ -121,52 +155,78 @@ export const LogsTab = () => {
                             <p className="text-xs">No logs yet</p>
                         </div>
                     ) : (
-                        logs.map(log => {
-                            const isSelected = selectedId === log.run_id;
-                            const name = logType === 'agents'
-                                ? (log.agent_name || log.run_id)
-                                : (log.orchestration_name || log.run_id);
-                            const subtitle = logType === 'agents'
-                                ? log.source
-                                : log.orchestration_id;
+                        <>
+                            {sessionOrder.map(sid => {
+                                const sessionLogs = groupedLogs[sid];
+                                const hasRealSessionInput = sessionLogs.some(l => l.session_id && l.user_input);
+                                const sessionInput = sessionLogs.find(l => l.user_input)?.user_input;
+                                const sessionDisplayName = sid.startsWith('nosession_') ? 'Individual Run' : `Session: ${sid.slice(-8)}`;
 
-                            return (
-                                <div
-                                    key={log.run_id}
-                                    onClick={() => fetchContent(log.run_id)}
-                                    className={`group cursor-pointer px-4 py-3 border-b border-white/5 flex flex-col gap-1 transition-colors ${
-                                        isSelected
-                                            ? 'bg-white/10 border-l-2 border-l-white'
-                                            : 'hover:bg-white/5 border-l-2 border-l-transparent'
-                                    }`}
+                                return (
+                                    <div key={sid} className="border-b border-white/10 last:border-b-0">
+                                        <div className="bg-white/5 px-4 py-2 border-b border-white/5 flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{sessionDisplayName}</span>
+                                            {sessionInput && (
+                                                <span className="text-[10px] text-zinc-400 truncate italic">"{sessionInput}"</span>
+                                            )}
+                                        </div>
+                                        {sessionLogs.map(log => {
+                                            const isSelected = selectedId === log.run_id;
+                                            const name = logType === 'agents'
+                                                ? (log.agent_name || log.run_id)
+                                                : (log.orchestration_name || log.run_id);
+                                            const subtitle = logType === 'agents'
+                                                ? log.source
+                                                : log.orchestration_id;
+
+                                            return (
+                                                <div
+                                                    key={log.run_id}
+                                                    onClick={() => fetchContent(log.run_id)}
+                                                    className={`group cursor-pointer px-4 py-3 border-b border-white/5 last:border-b-0 flex flex-col gap-1 transition-colors ${
+                                                        isSelected
+                                                            ? 'bg-white/10 border-l-2 border-l-white'
+                                                            : 'hover:bg-white/5 border-l-2 border-l-transparent'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <span className="text-xs text-white font-semibold leading-tight truncate">{name}</span>
+                                                        <button
+                                                            onClick={(e) => deleteLog(log.run_id, e)}
+                                                            className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-600 hover:text-red-400 transition-all shrink-0 mt-0.5"
+                                                            title="Delete log"
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
+                                                    {subtitle && (
+                                                        <span className="text-[10px] text-zinc-500 truncate">{subtitle}</span>
+                                                    )}
+                                                    <div className="flex items-center justify-between">
+                                                        {log.started_at && (
+                                                            <span className="text-[10px] text-zinc-600">{log.started_at}</span>
+                                                        )}
+                                                        {log.file_size_kb !== undefined && (
+                                                            <span className="text-[10px] text-zinc-700">{log.file_size_kb}KB</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })}
+                            
+                            {hasMore && (
+                                <button
+                                    onClick={() => fetchLogs(true)}
+                                    disabled={loading}
+                                    className="w-full py-4 text-xs text-zinc-500 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
                                 >
-                                    <div className="flex items-start justify-between gap-2">
-                                        <span className="text-xs text-white font-semibold leading-tight truncate">{name}</span>
-                                        <button
-                                            onClick={(e) => deleteLog(log.run_id, e)}
-                                            className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-600 hover:text-red-400 transition-all shrink-0 mt-0.5"
-                                            title="Delete log"
-                                        >
-                                            <Trash2 className="h-3 w-3" />
-                                        </button>
-                                    </div>
-                                    {subtitle && (
-                                        <span className="text-[10px] text-zinc-500 truncate">{subtitle}</span>
-                                    )}
-                                    <div className="flex items-center justify-between">
-                                        {log.started_at && (
-                                            <span className="text-[10px] text-zinc-600">{log.started_at}</span>
-                                        )}
-                                        {log.file_size_kb !== undefined && (
-                                            <span className="text-[10px] text-zinc-700">{log.file_size_kb}KB</span>
-                                        )}
-                                    </div>
-                                    {log.user_input && (
-                                        <p className="text-[10px] text-zinc-600 truncate">{log.user_input}</p>
-                                    )}
-                                </div>
-                            );
-                        })
+                                    {loading ? 'Loading more...' : 'Load More'}
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
 

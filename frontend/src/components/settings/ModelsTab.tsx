@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
 
 const OllamaIcon = ({ className }: BrandIconProps) => (
-    <img src="/ollama-icon.svg" className={`${className} dark:invert`} alt="Ollama" />
+    <img src="/ollama-icon.svg" className={`${className} light-mode-invert`} alt="Ollama" />
 );
 
 const GeminiIcon = ({ className }: BrandIconProps) => (

@@ -33,13 +33,14 @@ class OrchestrationEngine:
         except Exception:
             return {}
 
-    async def run(self, initial_input: str, run_id: str) -> AsyncGenerator[dict, None]:
+    async def run(self, initial_input: str, run_id: str, session_id: str | None = None) -> AsyncGenerator[dict, None]:
         """Execute the orchestration from the entry step. Yields SSE-compatible events."""
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         run = OrchestrationRun(
             run_id=run_id,
             orchestration_id=self.orch.id,
+            session_id=session_id,
             shared_state=self._init_state(initial_input),
             current_step_id=self.orch.entry_step_id,
             started_at=now,
@@ -51,6 +52,7 @@ class OrchestrationEngine:
             orchestration_id=self.orch.id,
             orchestration_name=self.orch.name,
             user_input=initial_input,
+            session_id=session_id,
         )
 
         yield {
@@ -279,6 +281,7 @@ class OrchestrationEngine:
             orchestration_id=run.orchestration_id,
             orchestration_name=orch.name,
             user_input=f"(resumed) human_response={human_response}",
+            session_id=run.session_id,
         )
 
         # Write human response to shared state

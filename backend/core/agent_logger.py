@@ -149,10 +149,11 @@ class AgentLogger:
         return path.read_text(encoding="utf-8")
 
     @staticmethod
-    def list_logs(limit: int = 50) -> list[dict]:
+    def list_logs(limit: int = 100, offset: int = 0) -> list[dict]:
         _ensure_logs_dir()
         logs = []
-        for f in sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+        files = sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for f in files[offset : offset + limit]:
             run_id = f.stem
             try:
                 head = f.read_text(encoding="utf-8", errors="replace")[:1000]

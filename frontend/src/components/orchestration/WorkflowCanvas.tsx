@@ -294,11 +294,11 @@ export function WorkflowCanvas({
                 nodeTypes={nodeTypes}
                 fitView
                 proOptions={{ hideAttribution: true }}
-                className="bg-zinc-900"
+                className="bg-zinc-950"
                 defaultEdgeOptions={{ type: 'smoothstep' }}
             >
-                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#333" />
-                <Controls className="!bg-zinc-800 !border-zinc-700 !shadow-lg [&>button]:!bg-zinc-700 [&>button]:!border-zinc-600 [&>button]:!text-zinc-300 [&>button:hover]:!bg-zinc-600" />
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-zinc-950" />
+                <Controls className="!bg-zinc-800 !border-zinc-700 !shadow-lg [&>button]:!bg-zinc-700 [&>button]:!border-zinc-600 [&>button]:!text-zinc-200 [&>button:hover]:!bg-zinc-600" />
                 <MiniMap
                     className="!bg-zinc-800 !border-zinc-700"
                     nodeColor={(node: any) => {
