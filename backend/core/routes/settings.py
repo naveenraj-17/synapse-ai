@@ -13,7 +13,6 @@ from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
 from core.json_store import JsonStore
-from services.n8n_sync import sync_global_config, fetch_global_config
 
 router = APIRouter()
 
@@ -75,10 +74,6 @@ async def get_status():
 @router.get("/api/settings")
 async def get_settings():
     settings = load_settings()
-    try:
-        settings = await fetch_global_config(settings)
-    except Exception as e:
-        print(f"Warning: Failed to fetch n8n config: {e}")
     return settings
 
 
@@ -94,12 +89,6 @@ async def update_settings(settings: Settings):
     existing = load_settings()
     existing.update(data)
     data = existing
-
-    # Sync with n8n if configured
-    try:
-        data = await sync_global_config(data)
-    except Exception as e:
-        print(f"Error syncing with n8n: {e}")
 
     save_settings(data)
 
