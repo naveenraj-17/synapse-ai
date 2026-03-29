@@ -8,8 +8,10 @@ export { DataLabTab } from './DataLabTab';
 export { ModelsTab } from './ModelsTab';
 export { IntegrationsTab } from './IntegrationsTab';
 export { McpServersTab } from './McpServersTab';
+export { UsageTab } from './UsageTab';
 export { ConfirmationModal } from './ConfirmationModal';
 export { ToastNotification } from './ToastNotification';
 export { N8nFullscreenOverlay } from './N8nFullscreenOverlay';
 export { CAPABILITIES } from './types';
 export type { SettingsModalProps, Tab } from './types';
+

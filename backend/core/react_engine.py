@@ -218,6 +218,8 @@ async def run_agent_step(
     server_module,
     max_turns=None,
     allowed_tools_override=None,
+    source: str = "chat",
+    run_id: str | None = None,
 ):
     """Lower-level single-agent ReAct execution.
 
@@ -269,6 +271,10 @@ async def run_agent_step(
             tools=tools,
             history_messages=history_messages,
             memory_context_text=memory_context_text,
+            session_id=session_id,
+            agent_id=agent_id_for_session,
+            source=source,
+            run_id=run_id,
         )
 
     # ReAct loop state

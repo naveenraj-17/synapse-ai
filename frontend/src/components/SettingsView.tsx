@@ -28,6 +28,7 @@ import { DBsTab } from './settings/DBsTab';
 import { OrchestrationTab } from './settings/OrchestrationTab';
 import { LogsTab } from './settings/LogsTab';
 import { MessagingTab } from './settings/MessagingTab';
+import { UsageTab } from './settings/UsageTab';
 
 
 export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }) => {
@@ -780,7 +781,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 <div className="flex-1 overflow-y-auto p-6 md:p-12">
                     <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
                         <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2">Messaging</h1>
+                            <h1 className="text-3xl font-bold mb-2 text-zinc-50">Messaging</h1>
                             <p className="text-zinc-500 text-sm">Connect your agents to Telegram, Discord, Slack, Teams, or WhatsApp.</p>
                         </div>
                         <MessagingTab />
@@ -788,11 +789,18 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 </div>
             )}
 
-            <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' ? 'hidden' : ''}`}>
+            {/* Usage tab: full-bleed analytics dashboard */}
+            {activeTab === 'usage' && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <UsageTab />
+                </div>
+            )}
+
+            <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' || activeTab === 'usage' ? 'hidden' : ''}`}>
                 <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
 
                     <div className="mb-8">
-                        <h1 className="text-3xl font-bold mb-2">{tabs.find(t => t.id === activeTab)?.label}</h1>
+                        <h1 className="text-3xl font-bold mb-2 text-zinc-50">{tabs.find(t => t.id === activeTab)?.label}</h1>
                         <p className="text-zinc-500 text-sm">Manage your agent's {activeTab} configuration.</p>
                     </div>
 

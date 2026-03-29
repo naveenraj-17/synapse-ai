@@ -230,6 +230,14 @@ export default function Home() {
     }
   }, [sessionId, currentAgentId]);
 
+  // Restore persisted theme AFTER hydration (avoids SSR className mismatch)
+  useEffect(() => {
+    const saved = localStorage.getItem('synapseTheme') as 'dark' | 'light' | null;
+    if (saved) setTheme(saved);
+  }, []);
+
+
+
   // Fetch sessions list
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -1058,7 +1066,11 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+                onClick={() => setTheme(prev => {
+                  const next = prev === 'dark' ? 'light' : 'dark';
+                  localStorage.setItem('synapseTheme', next);
+                  return next;
+                })}
                 className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
                 title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
               >

@@ -305,16 +305,16 @@ export const McpServersTab = ({
             <div className="pt-6 border-t border-zinc-800 space-y-6">
 
                 {/* Type toggle */}
-                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded p-1 w-fit">
+                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit">
                     <button
                         onClick={() => setServerType('stdio')}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded transition-colors ${serverType === 'stdio' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'stdio' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
                     >
                         <Terminal className="h-3 w-3" /> Local (stdio)
                     </button>
                     <button
                         onClick={() => setServerType('remote')}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded transition-colors ${serverType === 'remote' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'remote' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
                     >
                         <Globe className="h-3 w-3" /> Remote (URL)
                     </button>

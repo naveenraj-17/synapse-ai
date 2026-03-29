@@ -157,6 +157,9 @@ async def call_openai(model, messages, api_key, tools=None):
         messages: List of {"role": ..., "content": ...} dicts
         api_key: OpenAI API key
         tools: Ollama-format tool list (forwarded as OpenAI function definitions)
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
     """
     OPENAI_TIMEOUT = 180.0
     MAX_RETRIES = 5
@@ -187,17 +190,22 @@ async def call_openai(model, messages, api_key, tools=None):
                     continue
             resp.raise_for_status()
             data = resp.json()
+            # Extract actual token usage from the API response
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
             # Handle tool_calls response
             choice = data["choices"][0]
             msg = choice.get("message", {})
             if msg.get("tool_calls"):
                 tc = msg["tool_calls"][0]
-                return json.dumps({
+                text = json.dumps({
                     "tool": tc["function"]["name"],
                     "arguments": json.loads(tc["function"].get("arguments", "{}"))
                 })
+                return text, input_tokens, output_tokens
             print(f"DEBUG: ✅ OpenAI call complete (attempt {attempt})", flush=True)
-            return msg.get("content", "")
+            return msg.get("content", ""), input_tokens, output_tokens
         except httpx.TimeoutException:
             last_error = f"Request timed out ({OPENAI_TIMEOUT}s)"
             print(f"DEBUG: ⏱️ OpenAI timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
@@ -280,6 +288,9 @@ async def call_anthropic(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: Anthropic API key
         tools: Ollama-format tool list (converted to Anthropic tool definitions)
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
     """
     import anthropic
 
@@ -327,7 +338,10 @@ async def call_anthropic(model, messages, system, api_key, tools=None):
             print(f"DEBUG: 🔄 Anthropic call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
             response = await client.messages.create(**kwargs)
             print(f"DEBUG: ✅ Anthropic call complete (attempt {attempt})", flush=True)
-            return _extract_anthropic_response(response)
+            # Extract actual token usage from the SDK response object
+            input_tokens = getattr(getattr(response, 'usage', None), 'input_tokens', 0) or 0
+            output_tokens = getattr(getattr(response, 'usage', None), 'output_tokens', 0) or 0
+            return _extract_anthropic_response(response), input_tokens, output_tokens
         except anthropic.APITimeoutError:
             last_error = f"Request timed out ({ANTHROPIC_TIMEOUT}s)"
             print(f"DEBUG: ⏱️ Anthropic timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
@@ -476,6 +490,9 @@ async def call_gemini(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: Gemini API key
         tools: Ollama-format tool list (converted to Gemini FunctionDeclarations)
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
     """
     global _gemini_client
     from google import genai
@@ -528,7 +545,17 @@ async def call_gemini(model, messages, system, api_key, tools=None):
                 response = await _call(config_no_tools, "no-tools retry")
                 result = _extract_gemini_response(response)
 
-            return result
+            # Extract actual token usage from Gemini response metadata
+            input_tokens = 0
+            output_tokens = 0
+            try:
+                um = getattr(response, 'usage_metadata', None)
+                if um:
+                    input_tokens = getattr(um, 'prompt_token_count', 0) or 0
+                    output_tokens = getattr(um, 'candidates_token_count', 0) or 0
+            except Exception:
+                pass
+            return result, input_tokens, output_tokens
 
         # except asyncio.TimeoutError:
         #     last_error = f"Request timed out ({GEMINI_TIMEOUT}s)"
@@ -558,6 +585,9 @@ async def call_grok(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: xAI API key (starts with 'xai-')
         tools: Ollama-format tool list (Grok is OpenAI-compatible for function calling)
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
     """
     GROK_TIMEOUT = 180.0
     MAX_RETRIES = 5
@@ -593,16 +623,20 @@ async def call_grok(model, messages, system, api_key, tools=None):
                     continue
             resp.raise_for_status()
             data = resp.json()
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
             choice = data["choices"][0]
             msg = choice.get("message", {})
             if msg.get("tool_calls"):
                 tc = msg["tool_calls"][0]
-                return json.dumps({
+                text = json.dumps({
                     "tool": tc["function"]["name"],
                     "arguments": json.loads(tc["function"].get("arguments", "{}"))
                 })
+                return text, input_tokens, output_tokens
             print(f"DEBUG: ✅ Grok call complete (attempt {attempt})", flush=True)
-            return msg.get("content", "")
+            return msg.get("content", ""), input_tokens, output_tokens
         except httpx.TimeoutException:
             last_error = f"Request timed out ({GROK_TIMEOUT}s)"
             print(f"DEBUG: ⏱️ Grok timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
@@ -638,6 +672,9 @@ async def call_deepseek(model, messages, system, api_key, tools=None):
         api_key: DeepSeek API key
         tools: Ollama-format tool list (deepseek-chat supports function calling;
                deepseek-reasoner does NOT — tools are silently dropped for it)
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
     """
     DEEPSEEK_TIMEOUT = 180.0
     MAX_RETRIES = 5
@@ -674,16 +711,20 @@ async def call_deepseek(model, messages, system, api_key, tools=None):
                     continue
             resp.raise_for_status()
             data = resp.json()
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
             choice = data["choices"][0]
             msg = choice.get("message", {})
             if msg.get("tool_calls"):
                 tc = msg["tool_calls"][0]
-                return json.dumps({
+                text = json.dumps({
                     "tool": tc["function"]["name"],
                     "arguments": json.loads(tc["function"].get("arguments", "{}"))
                 })
+                return text, input_tokens, output_tokens
             print(f"DEBUG: ✅ DeepSeek call complete (attempt {attempt})", flush=True)
-            return msg.get("content", "")
+            return msg.get("content", ""), input_tokens, output_tokens
         except httpx.TimeoutException:
             last_error = f"Request timed out ({DEEPSEEK_TIMEOUT}s)"
             print(f"DEBUG: ⏱️ DeepSeek timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
@@ -887,14 +928,35 @@ async def generate_response(
     tools=None,
     history_messages=None,
     memory_context_text: str = "",
+    # Usage tracking context — passed by react_engine & orchestration steps
+    session_id: str | None = None,
+    agent_id: str | None = None,
+    source: str = "chat",
+    run_id: str | None = None,
 ):
     """
     Unified LLM dispatch function. Routes to the appropriate provider
-    based on mode and current_model.
+    based on mode and current_model. Logs token usage and cost after
+    every successful call via usage_tracker.
     """
+    import time as _time
+    from core import usage_tracker
+
     augmented_system = (sys_prompt or "").strip()
     if memory_context_text and memory_context_text.strip():
         augmented_system = f"{augmented_system}\n\n{memory_context_text.strip()}".strip()
+
+    # Build the full context string for char-count tracking
+    _all_msgs = []
+    if history_messages:
+        _all_msgs.extend(history_messages)
+    _all_msgs.append({"role": "user", "content": prompt_msg})
+    context_chars = sum(len(str(m.get("content", ""))) for m in _all_msgs) + len(augmented_system)
+
+    _t0 = _time.time()
+    result_text = ""
+    input_tokens = 0
+    output_tokens = 0
 
     if mode in ["cloud", "bedrock"]:
         try:
@@ -905,14 +967,14 @@ async def generate_response(
             messages.append({"role": "user", "content": prompt_msg})
 
             if current_model.startswith("gpt"):
-                return await call_openai(
+                result_text, input_tokens, output_tokens = await call_openai(
                     current_model,
                     [{"role": "system", "content": augmented_system}] + messages,
                     current_settings.get("openai_key"),
                     tools=tools,
                 )
             elif current_model.startswith("claude"):
-                return await call_anthropic(
+                result_text, input_tokens, output_tokens = await call_anthropic(
                     current_model,
                     messages,
                     augmented_system,
@@ -920,7 +982,7 @@ async def generate_response(
                     tools=tools,
                 )
             elif current_model.startswith("gemini"):
-                return await call_gemini(
+                result_text, input_tokens, output_tokens = await call_gemini(
                     current_model,
                     messages,
                     augmented_system,
@@ -928,15 +990,20 @@ async def generate_response(
                     tools=tools,
                 )
             elif current_model.startswith("bedrock"):
-                return await call_bedrock(
+                result_text = await call_bedrock(
                     current_model,
                     messages,
                     augmented_system,
                     current_settings.get("aws_region"),
                     current_settings,
                 )
+                # Bedrock does not surface token counts the same way — fall back to heuristic
+                input_tokens = usage_tracker.estimate_tokens_from_text(
+                    augmented_system + " ".join(str(m.get("content", "")) for m in messages)
+                )
+                output_tokens = usage_tracker.estimate_tokens_from_text(result_text)
             elif current_model.startswith("grok"):
-                return await call_grok(
+                result_text, input_tokens, output_tokens = await call_grok(
                     current_model,
                     messages,
                     augmented_system,
@@ -944,7 +1011,7 @@ async def generate_response(
                     tools=tools,
                 )
             elif current_model.startswith("deepseek"):
-                return await call_deepseek(
+                result_text, input_tokens, output_tokens = await call_deepseek(
                     current_model,
                     messages,
                     augmented_system,
@@ -960,70 +1027,100 @@ async def generate_response(
         except Exception as e:
             return f"Cloud API Error: {str(e)}"
     
-    # Local Ollama
-    async with httpx.AsyncClient() as client:
-        try:
-            # Try specific Ollama Tool Call format if tools are provided
-            if tools:
-                print(f"DEBUG: Calling Ollama /api/chat with tools...", flush=True)
-                
-                # Construct full message history
-                # 1. System Prompt
-                messages = [{"role": "system", "content": augmented_system}]
-                
-                # 2. History (if available)
-                if history_messages:
-                    messages.extend(history_messages)
-                    
-                # 3. Current User Message
-                messages.append({"role": "user", "content": prompt_msg})
+    else:
+        # Local Ollama
+        async with httpx.AsyncClient() as client:
+            try:
+                # Try specific Ollama Tool Call format if tools are provided
+                if tools:
+                    print(f"DEBUG: Calling Ollama /api/chat with tools...", flush=True)
 
-                response = await client.post(
-                    f"{_ollama_base_url()}/api/chat",
-                    json={
-                        "model": current_model,
-                        "messages": messages,
-                        "tools": tools,
-                        "stream": False
-                    },
-                    timeout=180.0
-                )
-                response.raise_for_status()
-                data = response.json()
-                msg = data.get("message", {})
+                    # Construct full message history
+                    # 1. System Prompt
+                    messages = [{"role": "system", "content": augmented_system}]
 
-                # Check for native tool calls
-                if "tool_calls" in msg and msg["tool_calls"]:
-                    # Convert Ollama native tool call to our internal JSON format
-                    tc = msg["tool_calls"][0]
-                    print(f"DEBUG: Native Tool Call received: {tc['function']['name']}", flush=True)
-                    return json.dumps({
-                        "tool": tc["function"]["name"],
-                        "arguments": tc["function"]["arguments"]
-                    })
+                    # 2. History (if available)
+                    if history_messages:
+                        messages.extend(history_messages)
 
-                return msg.get("content", "")
+                    # 3. Current User Message
+                    messages.append({"role": "user", "content": prompt_msg})
 
-            # Fallback to generate if no tools or tools failed (Old behavior)
-            print(f"DEBUG: Calling Ollama /api/generate (Legacy Mode)...", flush=True)
+                    response = await client.post(
+                        f"{_ollama_base_url()}/api/chat",
+                        json={
+                            "model": current_model,
+                            "messages": messages,
+                            "tools": tools,
+                            "stream": False
+                        },
+                        timeout=180.0
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    msg = data.get("message", {})
 
-            prompt_for_generate = prompt_msg
-            if history_messages:
-                prior = _messages_to_transcript(history_messages)
-                if prior:
-                    prompt_for_generate = f"Conversation so far:\n{prior}\n\nUser: {prompt_msg}".strip()
+                    # Check for native tool calls
+                    if "tool_calls" in msg and msg["tool_calls"]:
+                        # Convert Ollama native tool call to our internal JSON format
+                        tc = msg["tool_calls"][0]
+                        print(f"DEBUG: Native Tool Call received: {tc['function']['name']}", flush=True)
+                        result_text = json.dumps({
+                            "tool": tc["function"]["name"],
+                            "arguments": tc["function"]["arguments"]
+                        })
+                    else:
+                        result_text = msg.get("content", "")
 
-            response = await client.post(
-                f"{_ollama_base_url()}/api/generate",
-                json={
-                    "model": current_model,
-                    "prompt": prompt_for_generate,
-                    "system": augmented_system,
-                    "stream": False
-                },
-                timeout=180.0
-            )
-            response.raise_for_status()
-            return response.json().get("response", "")
-        except Exception as e:
-            return f"Local Agent Error: {e}"
+                    # Ollama eval_count / prompt_eval_count (available when stream=False)
+                    input_tokens = data.get("prompt_eval_count", 0) or usage_tracker.estimate_tokens_from_text(prompt_msg)
+                    output_tokens = data.get("eval_count", 0) or usage_tracker.estimate_tokens_from_text(result_text)
+
+                else:
+                    # Fallback to generate if no tools or tools failed (Old behavior)
+                    print(f"DEBUG: Calling Ollama /api/generate (Legacy Mode)...", flush=True)
+
+                    prompt_for_generate = prompt_msg
+                    if history_messages:
+                        prior = _messages_to_transcript(history_messages)
+                        if prior:
+                            prompt_for_generate = f"Conversation so far:\n{prior}\n\nUser: {prompt_msg}".strip()
+
+                    response = await client.post(
+                        f"{_ollama_base_url()}/api/generate",
+                        json={
+                            "model": current_model,
+                            "prompt": prompt_for_generate,
+                            "system": augmented_system,
+                            "stream": False
+                        },
+                        timeout=180.0
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    result_text = data.get("response", "")
+                    input_tokens = data.get("prompt_eval_count", 0) or usage_tracker.estimate_tokens_from_text(prompt_for_generate)
+                    output_tokens = data.get("eval_count", 0) or usage_tracker.estimate_tokens_from_text(result_text)
+
+            except Exception as e:
+                return f"Local Agent Error: {e}"
+
+    # ── Log usage (fire-and-forget, never raises) ────────────────────────────
+    try:
+        provider = detect_provider_from_model(current_model)
+        usage_tracker.log_usage(
+            model=current_model,
+            provider=provider,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            context_chars=context_chars,
+            session_id=session_id,
+            agent_id=agent_id,
+            source=source,
+            run_id=run_id,
+            latency_seconds=_time.time() - _t0,
+        )
+    except Exception as _track_err:
+        print(f"DEBUG usage_tracker: log_usage failed (non-fatal): {_track_err}", flush=True)
+
+    return result_text

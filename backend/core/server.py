@@ -39,6 +39,7 @@ from core.routes.orchestrations import router as orchestrations_router
 from core.routes.logs import router as logs_router
 from core.routes.messaging import router as messaging_router
 from core.routes.sessions import router as sessions_router
+from core.routes.usage import router as usage_router
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -383,6 +384,7 @@ app.include_router(orchestrations_router)
 app.include_router(logs_router)
 app.include_router(messaging_router)
 app.include_router(sessions_router)
+app.include_router(usage_router)
 
 if __name__ == "__main__":
     import uvicorn

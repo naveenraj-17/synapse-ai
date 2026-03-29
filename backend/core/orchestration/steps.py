@@ -111,6 +111,8 @@ class AgentStepExecutor:
                 server_module=engine.server_module,
                 max_turns=step.max_turns,
                 allowed_tools_override=step.allowed_tools,
+                source="orchestration",
+                run_id=run.run_id,
             ):
                 agent_log.log_event(event)
                 yield {**event, "orch_step_id": step.id, "step_name": step.name}
@@ -206,6 +208,10 @@ class EvaluatorStepExecutor:
                 mode=eval_mode,
                 current_model=eval_model,
                 current_settings=settings,
+                session_id=run.session_id,
+                agent_id=step.agent_id or "evaluator",
+                source="orchestration",
+                run_id=run.run_id,
             )
             print(f"DEBUG: 🔀 Evaluator LLM response: {response[:500]}")
 
@@ -680,6 +686,10 @@ class LLMStepExecutor:
                 mode=mode,
                 current_model=model,
                 current_settings=settings,
+                session_id=run.session_id,
+                agent_id=step.agent_id or "llm_step",
+                source="orchestration",
+                run_id=run.run_id,
             )
         except Exception as e:
             from core.llm_providers import LLMError

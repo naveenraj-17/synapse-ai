@@ -1,5 +1,5 @@
 "use client";
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, DollarSign } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -16,7 +16,8 @@ const tabs = [
     { id: 'messaging', label: 'Messaging', icon: MessageSquare },
     { id: 'workspace', label: 'Integrations', icon: Cloud },
     { id: 'memory', label: 'Memory', icon: Trash },
-    { id: 'logs', label: 'Logs', icon: ScrollText }
+    { id: 'logs', label: 'Logs', icon: ScrollText },
+    { id: 'usage', label: 'Usage', icon: DollarSign },
 ];
 
 export default function SettingsLayout({
@@ -31,13 +32,20 @@ export default function SettingsLayout({
 
     const [messagingEnabled, setMessagingEnabled] = useState(false);
     const [codingEnabled, setCodingEnabled] = useState(false);
+    const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+    // Read persisted theme AFTER hydration to avoid SSR mismatch
+    useEffect(() => {
+        const saved = localStorage.getItem('synapseTheme') as 'dark' | 'light' | null;
+        if (saved) setTheme(saved);
+    }, []);
 
     useEffect(() => {
         // Quick fetch just to conditionally render tabs, or we can just render all tabs locally
         fetch('/api/settings').then(r => r.json()).then(data => {
             setMessagingEnabled(data.messaging_enabled || false);
             setCodingEnabled(data.coding_agent_enabled || false);
-        }).catch(() => {});
+        }).catch(() => { });
         // Close on escape
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === 'Escape') router.push('/');
@@ -53,9 +61,9 @@ export default function SettingsLayout({
     });
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 font-mono">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200 font-mono${theme === 'light' ? ' light-mode' : ''}`}>
             <div className="w-full h-full bg-black shadow-2xl flex flex-col md:flex-row overflow-hidden relative">
-                
+
                 {/* Header (Mobile) / Close Button */}
                 <button
                     onClick={() => router.push('/')}
@@ -65,10 +73,10 @@ export default function SettingsLayout({
                 </button>
 
                 {/* Sidebar */}
-                <div className="w-full md:w-64 bg-zinc-950 border-b md:border-b-0 md:border-r border-white/10 flex flex-col shrink-0">
-                    <div className="p-6 border-b border-white/10 md:mb-2">
-                        <h2 className="text-xl font-bold flex items-center gap-3 tracking-wider">
-                            <Settings className="h-5 w-5 text-white" />
+                <div className="w-full md:w-64 bg-zinc-950 border-b md:border-b-0 md:border-r border-zinc-800 flex flex-col shrink-0">
+                    <div className="p-6 border-b border-zinc-800 md:mb-2">
+                        <h2 className="text-xl font-bold flex items-center gap-3 tracking-wider text-zinc-50">
+                            <Settings className="h-5 w-5" />
                             SETTINGS
                         </h2>
                     </div>
@@ -83,19 +91,19 @@ export default function SettingsLayout({
                                     onClick={() => router.push(`/settings/${tab.id}`)}
                                     className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200 whitespace-nowrap md:whitespace-normal
                                         ${isActive
-                                            ? 'bg-white text-black shadow-lg rounded-sm'
-                                            : 'text-zinc-400 hover:text-white hover:bg-white/5 rounded-sm'
+                                            ? 'bg-zinc-50 text-zinc-950 shadow-lg'
+                                            : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
                                         }`}
                                 >
-                                    <Icon className={`h-4 w-4 ${isActive ? 'text-black' : 'text-zinc-500 group-hover:text-white'}`} />
+                                    <Icon className={`h-4 w-4 ${isActive ? 'text-zinc-950' : 'text-zinc-500'}`} />
                                     {tab.label}
                                 </button>
                             );
                         })}
                     </nav>
 
-                    <div className="p-4 border-t border-white/10 hidden md:block">
-                        <div className="text-[10px] text-zinc-600 font-mono text-center">
+                    <div className="p-4 border-t border-zinc-800 hidden md:block">
+                        <div className="text-[10px] text-zinc-500 font-mono text-center">
                             Synapse v1.0
                         </div>
                     </div>
