@@ -10,6 +10,7 @@ interface AgentsTabProps {
     draftAgent: any;
     setDraftAgent: (agent: any) => void;
     availableCapabilities: any[];
+    loadingCapabilities?: boolean;
     customTools: any[];
     onSaveAgent: () => void;
     onDeleteAgent: (id: string) => void;
@@ -21,7 +22,7 @@ import React, { useState, useEffect } from 'react';
 
 export const AgentsTab = ({
     agents, selectedAgentId, setSelectedAgentId,
-    draftAgent, setDraftAgent, availableCapabilities, customTools,
+    draftAgent, setDraftAgent, availableCapabilities, loadingCapabilities = false, customTools,
     onSaveAgent, onDeleteAgent, providers, defaultModel
 }: AgentsTabProps) => {
     const [repos, setRepos] = useState<any[]>([]);
@@ -416,7 +417,20 @@ export const AgentsTab = ({
 
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-bold text-zinc-500 uppercase">Capabilities (Tools)</label>
-                                        {(() => {
+                                        {loadingCapabilities ? (
+                                            /* ── Skeleton loader ── */
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {Array.from({ length: 8 }).map((_, i) => (
+                                                    <div key={i} className="border border-zinc-800 bg-black p-4 space-y-2 animate-pulse">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-3 h-3 rounded-sm bg-zinc-800" />
+                                                            <div className="h-2.5 bg-zinc-800 rounded w-24" />
+                                                        </div>
+                                                        <div className="h-2 bg-zinc-800/70 rounded w-32 ml-5" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (() => {
                                             const agentType = draftAgent.type || 'conversational';
                                             const autoTools = new Set([
                                                 ...(AUTO_TOOLS_BY_TYPE.all_types || []),
@@ -495,7 +509,7 @@ export const AgentsTab = ({
 
                                                                 {!isExpanded && (
                                                                     <div className="px-4 pb-3 -mt-1">
-                                                                        <p className="text-[9px] text-zinc-500 pl-5 truncate">
+                                                                        <p className="text-[9px] text-zinc-500 pl-5 line-clamp-2">
                                                                             {isAutoGroup ? `Included by default for ${agentType} agents` : cap.description}
                                                                         </p>
                                                                     </div>
@@ -525,7 +539,7 @@ export const AgentsTab = ({
                                                                                     <div className="min-w-0 flex-1">
                                                                                         <div className="text-[10px] font-mono text-zinc-300">{tool.name}</div>
                                                                                         {tool.description && (
-                                                                                            <p className="text-[9px] text-zinc-600 mt-0.5 leading-tight">{tool.description}</p>
+                                                                                            <p className="text-[9px] text-zinc-600 mt-0.5 leading-tight line-clamp-2">{tool.description}</p>
                                                                                         )}
                                                                                     </div>
                                                                                 </div>

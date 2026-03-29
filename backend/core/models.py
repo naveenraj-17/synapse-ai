@@ -117,9 +117,14 @@ class PersonalDetails(BaseModel):
 
 class AddMCPServerRequest(BaseModel):
     name: str
-    command: str
+    server_type: str = "stdio"     # "stdio" | "remote"
+    # stdio fields
+    command: str = ""
     args: List[str] = []
     env: Dict[str, str] = {}
+    # remote fields
+    url: str = ""
+    token: str = ""                # pre-auth bearer token (PAT); empty = start OAuth
 
 
 class GeneratePromptRequest(BaseModel):

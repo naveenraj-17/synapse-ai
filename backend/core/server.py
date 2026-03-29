@@ -122,8 +122,6 @@ def _get_google_oauth_env() -> dict[str, str]:
                     env["USER_GOOGLE_EMAIL"] = email
             except Exception as e:
                 print(f"Warning: Could not read user email from token.json: {e}")
-        
-        print("env", env)
 
         return env
     except Exception as e:

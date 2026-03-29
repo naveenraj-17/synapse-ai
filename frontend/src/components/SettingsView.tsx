@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -99,13 +99,37 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [isConnectingMcp, setIsConnectingMcp] = useState(false);
     const [lastMcpConnected, setLastMcpConnected] = useState<boolean | null>(null);
     const [mcpToast, setMcpToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
-    const [draftMcpServer, setDraftMcpServer] = useState<{ name: string, command: string, args: string, env: { key: string, value: string }[] }>({
-        name: '', command: '', args: '', env: []
-    });
+    const [pendingMcpServerName, setPendingMcpServerName] = useState<string | null>(null);
+    const [draftMcpServer, setDraftMcpServer] = useState<{
+        name: string; server_type: 'stdio' | 'remote';
+        command: string; args: string; env: { key: string; value: string }[];
+        url: string; token: string;
+    }>({ name: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
 
     const [availableCapabilities, setAvailableCapabilities] = useState<any[]>([]);
+    const [loadingCapabilities, setLoadingCapabilities] = useState(true);
     const [messagingEnabled, setMessagingEnabled] = useState(false);
     const [codingEnabled, setCodingEnabled] = useState(false);
+
+    // Persistent OAuth postMessage listener — lives here so it survives settings tab switches
+    const handleMcpOAuthMessage = useCallback((event: MessageEvent) => {
+        if (event.data?.type !== 'MCP_OAUTH_COMPLETE') return;
+        if (event.data.success) {
+            const name = event.data.name as string;
+            dispatch(updateMcpServerStatus({ name, status: 'connected' }));
+            setMcpToast({ show: true, message: `✓ ${name} connected via OAuth!`, type: 'success' });
+            setPendingMcpServerName(null);
+            setTimeout(() => setMcpToast(null), 5000);
+        } else {
+            setMcpToast({ show: true, message: `OAuth failed: ${event.data.error}`, type: 'error' });
+            setTimeout(() => setMcpToast(null), 6000);
+        }
+    }, [dispatch]);
+
+    useEffect(() => {
+        window.addEventListener('message', handleMcpOAuthMessage);
+        return () => window.removeEventListener('message', handleMcpOAuthMessage);
+    }, [handleMcpOAuthMessage]);
 
     const refreshBedrockModels = async () => {
         setLoadingModels(true);
@@ -407,6 +431,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
         refreshModels();
 
         // Get Available Capabilities (Dynamic Tools + MCP)
+        setLoadingCapabilities(true);
         fetch('/api/tools/available')
             .then(res => res.json())
             .then(data => {
@@ -454,7 +479,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
                 const dynamicCaps = Object.values(groups);
                 setAvailableCapabilities(dynamicCaps);
-            });
+            })
+            .finally(() => setLoadingCapabilities(false));
     }, [initialized, rModels, dispatch]);
 
     // Refresh Bedrock models dynamically when switching into bedrock mode.
@@ -483,14 +509,23 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     }, [activeTab, dispatch, initialized]);
 
     const handleAddMcpServer = async () => {
-        if (!draftMcpServer.name || !draftMcpServer.command) {
-            setMcpToast({ show: true, message: 'Name and Command are required.', type: 'error' });
+        if (!draftMcpServer.name) {
+            setMcpToast({ show: true, message: 'Server name is required.', type: 'error' });
+            setTimeout(() => setMcpToast(null), 4000);
+            return;
+        }
+        if (draftMcpServer.server_type === 'stdio' && !draftMcpServer.command) {
+            setMcpToast({ show: true, message: 'Command is required for local servers.', type: 'error' });
+            setTimeout(() => setMcpToast(null), 4000);
+            return;
+        }
+        if (draftMcpServer.server_type === 'remote' && !draftMcpServer.url) {
+            setMcpToast({ show: true, message: 'URL is required for remote servers.', type: 'error' });
             setTimeout(() => setMcpToast(null), 4000);
             return;
         }
 
         const argsList = draftMcpServer.args.match(/(?:[^\s"]+|"[^"]*")+/g)?.map(s => s.replace(/^"|"$/g, '')) || [];
-
         const envObj = draftMcpServer.env.reduce((acc, curr) => {
             if (curr.key) acc[curr.key] = curr.value;
             return acc;
@@ -503,29 +538,32 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: draftMcpServer.name,
+                    server_type: draftMcpServer.server_type,
                     command: draftMcpServer.command,
                     args: argsList,
-                    env: envObj
+                    env: envObj,
+                    url: draftMcpServer.url,
+                    token: draftMcpServer.token,
                 })
             });
             if (res.ok) {
                 const data = await res.json();
-                // Optimistically add to Redux state
                 dispatch(addMcpServer(data.config));
-                setDraftMcpServer({ name: '', command: '', args: '', env: [] });
+                setDraftMcpServer({ name: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
 
-                if (data.connected) {
+                if (data.status === 'oauth_pending') {
+                    setLastMcpConnected(false);
+                    setPendingMcpServerName(draftMcpServer.name);
+                    setMcpToast({ show: true, message: '🔑 OAuth required — opening browser. Return here once authorised.', type: 'warning' });
+                    if (data.auth_url) window.open(data.auth_url, '_blank');
+                } else if (data.connected) {
                     setLastMcpConnected(true);
                     setMcpToast({ show: true, message: '✓ Server connected and saved!', type: 'success' });
                 } else {
                     setLastMcpConnected(false);
-                    setMcpToast({ 
-                        show: true, 
-                        message: '⚠ Config saved. Connection pending — complete OAuth in the browser, then click Retry.', 
-                        type: 'warning' 
-                    });
+                    setMcpToast({ show: true, message: '⚠ Config saved. Use Retry to reconnect.', type: 'warning' });
                 }
-                setTimeout(() => setMcpToast(null), 6000);
+                setTimeout(() => setMcpToast(null), 7000);
             } else {
                 const err = await res.json();
                 setMcpToast({ show: true, message: `Error: ${err.detail || 'Unknown error'}`, type: 'error' });
@@ -798,6 +836,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             draftAgent={draftAgent}
                             setDraftAgent={setDraftAgent}
                             availableCapabilities={availableCapabilities}
+                            loadingCapabilities={loadingCapabilities}
                             customTools={customTools}
                             onSaveAgent={handleSaveAgent}
                             onDeleteAgent={handleDeleteAgent}
@@ -888,6 +927,9 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             isConnecting={isConnectingMcp}
                             lastConnected={lastMcpConnected}
                             mcpToast={mcpToast}
+                            setMcpToast={setMcpToast}
+                            pendingServerName={pendingMcpServerName}
+                            onPendingResolved={() => setPendingMcpServerName(null)}
                             draftMcpServer={draftMcpServer}
                             setDraftMcpServer={setDraftMcpServer}
                             onAddServer={handleAddMcpServer}
