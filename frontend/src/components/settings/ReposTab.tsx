@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, FolderGit2, RefreshCw } from 'lucide-react';
+import { ConfirmationModal } from './ConfirmationModal';
 
 export interface Repo {
     id: string;
@@ -17,6 +18,7 @@ export function ReposTab() {
     const [repos, setRepos] = useState<Repo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [draftRepo, setDraftRepo] = useState<Partial<Repo> | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchRepos();
@@ -235,7 +237,7 @@ export function ReposTab() {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if(window.confirm('Delete this repo and its index?')) handleDeleteRepo(repo.id);
+                                            setConfirmDeleteId(repo.id);
                                         }}
                                         className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
                                         title="Delete"
@@ -259,6 +261,17 @@ export function ReposTab() {
                     ))}
                 </div>
             )}
+
+            <ConfirmationModal
+                isOpen={!!confirmDeleteId}
+                title="Delete Repository"
+                message="Are you sure you want to delete this repository and its index? This action cannot be undone."
+                onConfirm={() => {
+                    if (confirmDeleteId) handleDeleteRepo(confirmDeleteId);
+                    setConfirmDeleteId(null);
+                }}
+                onClose={() => setConfirmDeleteId(null)}
+            />
         </div>
     );
 }

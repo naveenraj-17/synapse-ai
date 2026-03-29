@@ -93,6 +93,9 @@ class Settings(BaseModel):
     vault_enabled: bool = True
     vault_threshold: int = 15000
     allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
+    report_agent_enabled: bool = True
+    coding_agent_enabled: bool = True
+    messaging_enabled: bool = True
 
 
 class PersonalAddress(BaseModel):

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Database, RefreshCw } from 'lucide-react';
+import { ConfirmationModal } from './ConfirmationModal';
 
 export interface DBConfig {
     id: string;
@@ -20,6 +21,7 @@ export function DBsTab() {
     const [isLoading, setIsLoading] = useState(true);
     const [draftConfig, setDraftConfig] = useState<Partial<DBConfig> | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchConfigs();
@@ -256,7 +258,7 @@ export function DBsTab() {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if (window.confirm('Delete this database config?')) handleDeleteConfig(config.id);
+                                            setConfirmDeleteId(config.id);
                                         }}
                                         className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
                                         title="Delete"
@@ -284,6 +286,17 @@ export function DBsTab() {
                     ))}
                 </div>
             )}
+
+            <ConfirmationModal
+                isOpen={!!confirmDeleteId}
+                title="Delete Database Config"
+                message="Are you sure you want to delete this database connection? This action cannot be undone."
+                onConfirm={() => {
+                    if (confirmDeleteId) handleDeleteConfig(confirmDeleteId);
+                    setConfirmDeleteId(null);
+                }}
+                onClose={() => setConfirmDeleteId(null)}
+            />
         </div>
     );
 }

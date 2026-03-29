@@ -109,7 +109,15 @@ async def get_settings():
 @router.post("/api/settings")
 async def update_settings(settings: Settings):
     print(f"DEBUG: update_settings called with: {settings.dict()}")
-    data = settings.dict()
+    # Get the latest payload and strip unset values to avoid overwriting existing properties with defaults
+    try:
+        data = settings.dict(exclude_unset=True)
+    except Exception:
+        data = settings.dict()
+        
+    existing = load_settings()
+    existing.update(data)
+    data = existing
 
     # Sync with n8n if configured
     try:

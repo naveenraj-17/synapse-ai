@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X } from 'lucide-react';
 
-import { SettingsModal } from '@/components/SettingsModal';
+import { useRouter } from 'next/navigation';
 import { AuthPrompt } from '@/components/AuthPrompt';
 import { EmailList } from '@/components/EmailList';
 import { EmailRenderer } from '@/components/EmailRenderer';
@@ -200,7 +200,7 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [agentName, setAgentName] = useState('Loading...');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const router = useRouter();
   const [credentials, setCredentials] = useState(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -381,36 +381,7 @@ export default function Home() {
     }
   };
 
-  const handleUpdateSettings = async (name: string, model: string, mode: string, keys: any) => {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent_name: name,
-        model: model,
-        mode: mode,
-        openai_key: keys.openai_key,
-        anthropic_key: keys.anthropic_key,
-        gemini_key: keys.gemini_key,
-        bedrock_api_key: keys.bedrock_api_key,
-        bedrock_inference_profile: keys.bedrock_inference_profile,
-        aws_access_key_id: keys.aws_access_key_id,
-        aws_secret_access_key: keys.aws_secret_access_key,
-        aws_session_token: keys.aws_session_token,
-        aws_region: keys.aws_region,
-        sql_connection_string: keys.sql_connection_string,
-        n8n_url: keys.n8n_url,
-        n8n_api_key: keys.n8n_api_key,
-        google_maps_api_key: keys.google_maps_api_key,
-        global_config: keys.global_config,
-        vault_enabled: keys.vault_enabled,
-        vault_threshold: keys.vault_threshold,
-      })
-    });
-    setAgentName(name);
-    // Refresh status to update header
-    fetch('/api/status').then(r => r.json()).then(d => setSystemStatus(d));
-  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -864,7 +835,7 @@ export default function Home() {
               {msg.intent === 'read_email' && <EmailRenderer email={msg.data} />}
               {msg.intent === 'list_files' && <DriveList files={msg.data?.files || msg.data} />}
               {msg.intent === 'list_events' && <EventList events={msg.data?.events || msg.data} />}
-              {msg.intent === 'request_auth' && <AuthPrompt onOpenSettings={() => setIsSettingsOpen(true)} credentials={credentials} />}
+              {msg.intent === 'request_auth' && <AuthPrompt onOpenSettings={() => router.push('/settings/general')} credentials={credentials} />}
               {msg.intent === 'list_local_files' && <LocalFileList files={msg.data?.files || msg.data} onSummarizeFile={handleSummarizeFile} onLocateFile={handleLocateFile} onOpenFile={handleOpenFile} />}
               {msg.intent === 'render_local_file' && (
                 <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto text-zinc-300">
@@ -897,16 +868,6 @@ export default function Home() {
 
   return (
     <main className={cn("flex h-screen bg-black text-white font-mono overflow-hidden", theme === 'light' ? 'light-mode' : '')}>
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => {
-          setIsSettingsOpen(false);
-          refreshSystemStatus();
-        }}
-        onSave={handleUpdateSettings}
-        credentials={credentials}
-      />
 
       {/* ── History Drawer ────────────────────────────────────────────────── */}
       {isHistoryOpen && (
@@ -1105,7 +1066,7 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => setIsSettingsOpen(true)}
+                onClick={() => router.push('/settings/general')}
                 className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
               >
                 <Settings className="h-4 w-4" />

@@ -9,6 +9,7 @@ import { StateSchemaEditor } from '../orchestration/StateSchemaEditor';
 import type { Orchestration, StepConfig, StepType } from '@/types/orchestration';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ConfirmationModal } from './ConfirmationModal';
 
 const EMPTY_ORCHESTRATION: Orchestration = {
     id: '',
@@ -62,6 +63,7 @@ export function OrchestrationTab() {
     const [humanContext, setHumanContext] = useState<string | null>(null);
     const [humanResponse, setHumanResponse] = useState('');
     const abortRef = useRef<AbortController | null>(null);
+    const [confirmDeleteOrchId, setConfirmDeleteOrchId] = useState<string | null>(null);
 
     // --- Active runs (for reconnect banner) ---
     const [activeRuns, setActiveRuns] = useState<Array<{
@@ -251,14 +253,20 @@ export function OrchestrationTab() {
     };
 
     // --- Delete orchestration ---
-    const handleDelete = async () => {
+    const handleDelete = () => {
         if (!draft) return;
-        if (!confirm(`Delete orchestration "${draft.name}"?`)) return;
+        setConfirmDeleteOrchId(draft.id);
+    };
+
+    const confirmDeleteOrchestration = async () => {
+        if (!confirmDeleteOrchId) return;
         try {
-            await fetch(`/api/orchestrations/${draft.id}`, { method: 'DELETE' });
-            setOrchestrations(orchestrations.filter(o => o.id !== draft.id));
-            setDraft(null);
-            setSelectedOrchId(null);
+            await fetch(`/api/orchestrations/${confirmDeleteOrchId}`, { method: 'DELETE' });
+            setOrchestrations(orchestrations.filter(o => o.id !== confirmDeleteOrchId));
+            if (draft?.id === confirmDeleteOrchId) {
+                setDraft(null);
+                setSelectedOrchId(null);
+            }
         } catch { /* ignore */ }
     };
 
@@ -733,6 +741,17 @@ export function OrchestrationTab() {
                     </div>
                 </div>
             )}
+
+            <ConfirmationModal
+                isOpen={!!confirmDeleteOrchId}
+                title="Delete Orchestration"
+                message="Are you sure you want to delete this orchestration? This action cannot be undone."
+                onConfirm={() => {
+                    confirmDeleteOrchestration();
+                    setConfirmDeleteOrchId(null);
+                }}
+                onClose={() => setConfirmDeleteOrchId(null)}
+            />
         </div>
     );
 }

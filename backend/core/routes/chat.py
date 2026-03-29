@@ -68,10 +68,10 @@ async def chat_stream(request: ChatRequest):
                     # Sub-agent step final (inside orchestration) → agent_step_result
                     # Distinguished by the presence of orch_step_id (added by AgentStepExecutor)
                     if event.get("orch_step_id"):
-                        yield f"data: {json.dumps({'type': 'agent_step_result', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name', ''), 'content': event['response'], 'intent': event['intent'], 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+                        yield f"data: {json.dumps({'type': 'agent_step_result', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name', ''), 'content': event.get('response', ''), 'intent': event.get('intent', 'chat'), 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
                     else:
                         # Top-level final (single agent or orchestration summary) → response + done
-                        yield f"data: {json.dumps({'type': 'response', 'content': event['response'], 'intent': event['intent'], 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+                        yield f"data: {json.dumps({'type': 'response', 'content': event.get('response', ''), 'intent': event.get('intent', 'chat'), 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
                         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
                 elif etype == "error":

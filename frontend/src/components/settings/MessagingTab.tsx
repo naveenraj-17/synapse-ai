@@ -5,6 +5,7 @@ import {
     ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle,
     Loader2, Info, RefreshCw,
 } from 'lucide-react';
+import { ConfirmationModal } from './ConfirmationModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,7 @@ export const MessagingTab = () => {
     // WhatsApp sub-mode UI state
     const [waMode, setWaMode] = useState<'meta_api' | 'unofficial'>('meta_api');
     const [waRiskAck, setWaRiskAck] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const showToast = (msg: string) => {
         setToastMsg(msg);
@@ -260,8 +262,9 @@ export const MessagingTab = () => {
         await fetchChannels();
     };
 
-    const deleteChannel = async (ch: Channel) => {
-        if (!ch.id || !confirm(`Delete channel "${ch.name}"?`)) return;
+    const deleteChannel = async (id: string) => {
+        const ch = channels.find(c => c.id === id);
+        if (!ch || !ch.id) return;
         await fetch(`/api/messaging/channels/${ch.id}`, { method: 'DELETE' });
         if (selectedId === ch.id) { setSelectedId(null); setDraft(null); }
         await fetchChannels();
@@ -347,7 +350,7 @@ export const MessagingTab = () => {
                                         {ch.status === 'running' ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                                     </button>
                                     <button
-                                        onClick={e => { e.stopPropagation(); deleteChannel(ch); }}
+                                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(ch.id || null); }}
                                         className="p-1 text-zinc-600 hover:text-red-400 transition-colors"
                                     >
                                         <Trash className="h-3 w-3" />
@@ -607,6 +610,17 @@ export const MessagingTab = () => {
                     </div>
                 )}
             </div>
+
+            <ConfirmationModal
+                isOpen={!!confirmDeleteId}
+                title="Delete Channel"
+                message="Are you sure you want to delete this messaging channel? This will permanently remove its configuration and stop it if it is running."
+                onConfirm={() => {
+                    if (confirmDeleteId) deleteChannel(confirmDeleteId);
+                    setConfirmDeleteId(null);
+                }}
+                onClose={() => setConfirmDeleteId(null)}
+            />
         </div>
     );
 };
