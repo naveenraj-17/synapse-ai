@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Check, X as XIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
 
 const OllamaIcon = ({ className }: BrandIconProps) => (
-    <img src="/ollama-icon.svg" className={`${className} light-mode-invert`} alt="Ollama" />
+    <img src="/ollama-icon.svg" className={`${className} theme-adaptive-icon`} alt="Ollama" />
 );
 
 const GeminiIcon = ({ className }: BrandIconProps) => (
@@ -24,6 +24,16 @@ const AWSIcon = ({ className }: BrandIconProps) => (
     <img src="/aws-bedrock-icon.svg" className={className} alt="AWS Bedrock" />
 );
 
+// xAI Grok — inline SVG X lettermark matching xAI brand
+const GrokIcon = ({ className }: BrandIconProps) => (
+    <img src="/grok-icon.svg" className={className} alt="Grok" />
+);
+
+// DeepSeek — inline SVG whale/wave mark
+const DeepSeekIcon = ({ className }: BrandIconProps) => (
+    <img src="/deepseek-logo-icon.svg" className={className} alt="DeepSeek" />
+);
+
 interface ProviderInfo {
     available: boolean;
     models: string[];
@@ -35,6 +45,8 @@ interface ModelsTabProps {
     openaiKey: string; setOpenaiKey: (v: string) => void;
     anthropicKey: string; setAnthropicKey: (v: string) => void;
     geminiKey: string; setGeminiKey: (v: string) => void;
+    grokKey: string; setGrokKey: (v: string) => void;
+    deepseekKey: string; setDeepseekKey: (v: string) => void;
     bedrockApiKey: string; setBedrockApiKey: (v: string) => void;
     awsRegion: string; setAwsRegion: (v: string) => void;
     bedrockInferenceProfile: string; setBedrockInferenceProfile: (v: string) => void;
@@ -48,18 +60,87 @@ interface ModelsTabProps {
     filteredModels: string[];
 }
 
-const PROVIDER_META: Record<string, { label: string; icon: React.FC<BrandIconProps>; color: string; description: string; keyPlaceholder?: string }> = {
-    ollama: { label: 'Ollama (Local)', icon: OllamaIcon, color: '#22c55e', description: 'Runs locally on your machine. Private, free, no API key needed.' },
-    gemini: { label: 'Google Gemini', icon: GeminiIcon, color: '#4285f4', description: 'Google AI models. Fast and capable.', keyPlaceholder: 'AIza...' },
-    anthropic: { label: 'Anthropic Claude', icon: AnthropicIcon, color: '#d97706', description: 'Advanced reasoning and analysis.', keyPlaceholder: 'sk-ant-...' },
-    openai: { label: 'OpenAI', icon: OpenAIIcon, color: '#10b981', description: 'GPT-4o and latest OpenAI models.', keyPlaceholder: 'sk-...' },
-    bedrock: { label: 'AWS Bedrock', icon: AWSIcon, color: '#f59e0b', description: 'Enterprise-grade models via AWS.', keyPlaceholder: 'ABSK...' },
+interface ProviderMeta {
+    label: string;
+    icon: React.FC<BrandIconProps>;
+    color: string;
+    description: string;
+    keyPlaceholder?: string;
+    /** Short link label and URL for getting an API key */
+    keyLink?: { label: string; url: string };
+    /** Extra human-readable note about the key */
+    keyNote?: string;
+}
+
+const PROVIDER_META: Record<string, ProviderMeta> = {
+    ollama: {
+        label: 'Ollama (Local)',
+        icon: OllamaIcon,
+        color: '#22c55e',
+        description: 'Runs locally on your machine. Private, free, no API key needed.',
+    },
+    gemini: {
+        label: 'Google Gemini',
+        icon: GeminiIcon,
+        color: '#4285f4',
+        description: 'Google AI models. Fast and capable, with a generous free tier.',
+        keyPlaceholder: 'AIza...',
+        keyLink: { label: 'Get a free key at Google AI Studio →', url: 'https://aistudio.google.com/app/apikey' },
+        keyNote: 'Free tier available. Key starts with AIza...',
+    },
+    anthropic: {
+        label: 'Anthropic Claude',
+        icon: AnthropicIcon,
+        color: '#d97706',
+        description: 'Advanced reasoning and analysis via Claude models.',
+        keyPlaceholder: 'sk-ant-...',
+        keyLink: { label: 'Get your key at Anthropic Console →', url: 'https://console.anthropic.com/settings/keys' },
+        keyNote: 'Key starts with sk-ant-api03-...',
+    },
+    openai: {
+        label: 'OpenAI',
+        icon: OpenAIIcon,
+        color: '#10b981',
+        description: 'GPT-4o and latest OpenAI models.',
+        keyPlaceholder: 'sk-...',
+        keyLink: { label: 'Get your key at OpenAI Platform →', url: 'https://platform.openai.com/api-keys' },
+        keyNote: 'Key starts with sk-proj-... or sk-...',
+    },
+    grok: {
+        label: 'xAI Grok',
+        icon: GrokIcon,
+        color: '#e5e7eb',
+        description: "Grok-3 and frontier reasoning models from Elon Musk's AI lab, xAI.",
+        keyPlaceholder: 'xai-...',
+        keyLink: { label: 'Get your key at xAI Console →', url: 'https://console.x.ai/' },
+        keyNote: 'Key starts with xai-...',
+    },
+    deepseek: {
+        label: 'DeepSeek',
+        icon: DeepSeekIcon,
+        color: '#4f6ef7',
+        description: 'DeepSeek-V3 (chat + tools) and DeepSeek-R1 (powerful chain-of-thought reasoning).',
+        keyPlaceholder: 'sk-...',
+        keyLink: { label: 'Get your key at DeepSeek Platform →', url: 'https://platform.deepseek.com/api_keys' },
+        keyNote: 'Note: deepseek-reasoner (R1) does not support tool/function calling.',
+    },
+    bedrock: {
+        label: 'AWS Bedrock',
+        icon: AWSIcon,
+        color: '#f59e0b',
+        description: 'Enterprise-grade models via AWS, including Claude, Llama, and Titan.',
+        keyPlaceholder: 'ABSK...',
+        keyLink: { label: 'Set up Bedrock API keys in AWS Console →', url: 'https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-console' },
+        keyNote: 'Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.',
+    },
 };
 
 export const ModelsTab = ({
     providers, selectedModel, setSelectedModel,
     openaiKey, setOpenaiKey, anthropicKey, setAnthropicKey,
-    geminiKey, setGeminiKey, bedrockApiKey, setBedrockApiKey,
+    geminiKey, setGeminiKey, grokKey, setGrokKey,
+    deepseekKey, setDeepseekKey,
+    bedrockApiKey, setBedrockApiKey,
     awsRegion, setAwsRegion, bedrockInferenceProfile, setBedrockInferenceProfile,
     bedrockInferenceProfiles, loadingInferenceProfiles, loadingModels,
     onSave, mode, setMode, localModels, cloudModels, filteredModels
@@ -77,6 +158,8 @@ export const ModelsTab = ({
             case 'openai': return openaiKey;
             case 'anthropic': return anthropicKey;
             case 'gemini': return geminiKey;
+            case 'grok': return grokKey;
+            case 'deepseek': return deepseekKey;
             case 'bedrock': return bedrockApiKey;
             default: return '';
         }
@@ -87,6 +170,8 @@ export const ModelsTab = ({
             case 'openai': setOpenaiKey(value); break;
             case 'anthropic': setAnthropicKey(value); break;
             case 'gemini': setGeminiKey(value); break;
+            case 'grok': setGrokKey(value); break;
+            case 'deepseek': setDeepseekKey(value); break;
             case 'bedrock': setBedrockApiKey(value); break;
         }
     };
@@ -142,9 +227,9 @@ export const ModelsTab = ({
                                     <div className="px-4 pb-4 space-y-3 border-t border-zinc-800/50 pt-3">
                                         <p className="text-[10px] text-zinc-500">{meta.description}</p>
 
-                                        {/* API Key input (not for Ollama) */}
+                                        {/* API Key input (not for Ollama or Bedrock — Bedrock has its own block) */}
                                         {key !== 'ollama' && key !== 'bedrock' && (
-                                            <div className="space-y-1">
+                                            <div className="space-y-1.5">
                                                 <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
                                                 <input
                                                     type="password"
@@ -153,17 +238,45 @@ export const ModelsTab = ({
                                                     className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors"
                                                     placeholder={meta.keyPlaceholder}
                                                 />
+                                                {/* Key instructions */}
+                                                {meta.keyNote && (
+                                                    <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
+                                                )}
+                                                {meta.keyLink && (
+                                                    <a
+                                                        href={meta.keyLink.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                    >
+                                                        <ExternalLink className="h-2.5 w-2.5" />
+                                                        {meta.keyLink.label}
+                                                    </a>
+                                                )}
                                             </div>
                                         )}
 
                                         {/* Bedrock-specific fields */}
                                         {key === 'bedrock' && (
                                             <div className="space-y-3">
-                                                <div className="space-y-1">
+                                                <div className="space-y-1.5">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
                                                     <input type="password" value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
                                                         className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK..." />
-                                                    <p className="text-[10px] text-zinc-600">Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.</p>
+                                                    {meta.keyNote && (
+                                                        <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
+                                                    )}
+                                                    {meta.keyLink && (
+                                                        <a
+                                                            href={meta.keyLink.url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                        >
+                                                            <ExternalLink className="h-2.5 w-2.5" />
+                                                            {meta.keyLink.label}
+                                                        </a>
+                                                    )}
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">AWS Region</label>
@@ -195,11 +308,22 @@ export const ModelsTab = ({
 
                                         {/* Ollama info */}
                                         {key === 'ollama' && (
-                                            <div className="text-[10px] text-zinc-500">
-                                                {providerData.available
-                                                    ? `Detected ${modelCount} local model${modelCount !== 1 ? 's' : ''}: ${providerData.models.slice(0, 5).join(', ')}${modelCount > 5 ? '...' : ''}`
-                                                    : 'Ollama is not running. Start it to use local models.'
-                                                }
+                                            <div className="space-y-1.5">
+                                                <div className="text-[10px] text-zinc-500">
+                                                    {providerData.available
+                                                        ? `Detected ${modelCount} local model${modelCount !== 1 ? 's' : ''}: ${providerData.models.slice(0, 5).join(', ')}${modelCount > 5 ? '...' : ''}`
+                                                        : 'Ollama is not running. Start it to use local models.'
+                                                    }
+                                                </div>
+                                                <a
+                                                    href="https://ollama.com/download"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                >
+                                                    <ExternalLink className="h-2.5 w-2.5" />
+                                                    Download Ollama →
+                                                </a>
                                             </div>
                                         )}
 

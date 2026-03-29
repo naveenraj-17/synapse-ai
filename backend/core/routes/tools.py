@@ -107,16 +107,50 @@ async def add_mcp_server(req: AddMCPServerRequest):
     if not _server.mcp_manager:
         raise HTTPException(status_code=500, detail="MCP Manager not initialized")
     try:
-        config = await _server.mcp_manager.add_server(req.name, req.command, req.args, req.env)
-        # Register the new session and tools immediately
-        session = _server.mcp_manager.sessions.get(req.name)
-        if session:
-            agent_key = f"ext_mcp_{req.name}"
-            _server.agent_sessions[agent_key] = session
-            tools = await session.list_tools()
-            for tool in tools.tools:
-                _server.tool_router[tool.name] = agent_key
-        return {"status": "success", "config": config}
+        result = await _server.mcp_manager.add_server(req.name, req.command, req.args, req.env)
+        config = result["config"]
+        connected = result["connected"]
+        # Register the session and tools if connection succeeded
+        if connected:
+            session = _server.mcp_manager.sessions.get(req.name)
+            if session:
+                agent_key = f"ext_mcp_{req.name}"
+                _server.agent_sessions[agent_key] = session
+                tools = await session.list_tools()
+                for tool in tools.tools:
+                    _server.tool_router[tool.name] = agent_key
+        return {
+            "status": "success" if connected else "saved",
+            "config": config,
+            "connected": connected,
+            "message": "Server connected and saved." if connected else (
+                "Server config saved but connection failed. "
+                "If this server requires OAuth (e.g. mcp-remote), "
+                "complete the browser auth flow then click Retry."
+            )
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/mcp/servers/{name}/reconnect")
+async def reconnect_mcp_server(name: str):
+    import core.server as _server
+    if not _server.mcp_manager:
+        raise HTTPException(status_code=500, detail="MCP Manager not initialized")
+    try:
+        connected = await _server.mcp_manager.reconnect_server(name)
+        if connected:
+            session = _server.mcp_manager.sessions.get(name)
+            if session:
+                agent_key = f"ext_mcp_{name}"
+                _server.agent_sessions[agent_key] = session
+                tools = await session.list_tools()
+                for tool in tools.tools:
+                    _server.tool_router[tool.name] = agent_key
+            return {"status": "success", "connected": True, "message": "Server reconnected successfully."}
+        else:
+            return {"status": "failed", "connected": False, "message": "Could not reconnect. Check that OAuth is complete and try again."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

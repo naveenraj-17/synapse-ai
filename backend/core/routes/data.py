@@ -62,11 +62,15 @@ async def get_models():
     ANTHROPIC_FALLBACK = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
     OPENAI_FALLBACK = ["gpt-4o", "gpt-4-turbo", "gpt-4o-mini"]
     BEDROCK_FALLBACK = ["bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0", "bedrock.anthropic.claude-3-sonnet-20240229-v1:0"]
+    GROK_FALLBACK = ["grok-3", "grok-3-mini", "grok-2-1212", "grok-2-vision-1212"]
+    DEEPSEEK_FALLBACK = ["deepseek-chat", "deepseek-reasoner"]
 
     # --- Check API keys ---
     gemini_key = (settings.get("gemini_key") or "").strip()
     anthropic_key = (settings.get("anthropic_key") or "").strip()
     openai_key = (settings.get("openai_key") or "").strip()
+    grok_key = (settings.get("grok_key") or "").strip()
+    deepseek_key = (settings.get("deepseek_key") or "").strip()
     bedrock_available = bool((settings.get("bedrock_api_key") or "").strip() or
                              (settings.get("aws_access_key_id") or "").strip())
 
@@ -150,15 +154,57 @@ async def get_models():
             print(f"Error fetching Gemini models: {e}")
         return True, GEMINI_FALLBACK  # Key present, assume available
 
+    async def fetch_grok() -> tuple[bool, list[str]]:
+        if not grok_key:
+            return False, GROK_FALLBACK
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    "https://api.x.ai/v1/models",
+                    headers={"Authorization": f"Bearer {grok_key}"},
+                    timeout=5.0,
+                )
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    models = sorted(set(
+                        m["id"] for m in data if m.get("id", "").startswith("grok")
+                    ), reverse=True)
+                    return True, models if models else GROK_FALLBACK
+        except Exception as e:
+            print(f"Error fetching Grok models: {e}")
+        return True, GROK_FALLBACK  # Key present, assume available
+
+    async def fetch_deepseek() -> tuple[bool, list[str]]:
+        if not deepseek_key:
+            return False, DEEPSEEK_FALLBACK
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    "https://api.deepseek.com/v1/models",
+                    headers={"Authorization": f"Bearer {deepseek_key}"},
+                    timeout=5.0,
+                )
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    models = sorted(set(
+                        m["id"] for m in data if m.get("id", "").startswith("deepseek")
+                    ), reverse=True)
+                    return True, models if models else DEEPSEEK_FALLBACK
+        except Exception as e:
+            print(f"Error fetching DeepSeek models: {e}")
+        return True, DEEPSEEK_FALLBACK  # Key present, assume available
+
     # Run all fetches concurrently
-    ollama_result, openai_result, anthropic_result, gemini_result = await asyncio.gather(
-        fetch_ollama(), fetch_openai(), fetch_anthropic(), fetch_gemini()
+    ollama_result, openai_result, anthropic_result, gemini_result, grok_result, deepseek_result = await asyncio.gather(
+        fetch_ollama(), fetch_openai(), fetch_anthropic(), fetch_gemini(), fetch_grok(), fetch_deepseek()
     )
 
     ollama_available, local_models = ollama_result
     openai_avail, openai_models = openai_result
     anthropic_avail, anthropic_models = anthropic_result
     gemini_avail, gemini_models = gemini_result
+    grok_avail, grok_models = grok_result
+    deepseek_avail, deepseek_models = deepseek_result
 
     # --- Build provider map ---
     providers = {
@@ -166,6 +212,8 @@ async def get_models():
         "gemini": {"available": gemini_avail, "models": gemini_models},
         "anthropic": {"available": anthropic_avail, "models": anthropic_models},
         "openai": {"available": openai_avail, "models": openai_models},
+        "grok": {"available": grok_avail, "models": grok_models},
+        "deepseek": {"available": deepseek_avail, "models": deepseek_models},
         "bedrock": {"available": bedrock_available, "models": BEDROCK_FALLBACK},
     }
 
@@ -176,7 +224,7 @@ async def get_models():
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_models + anthropic_models + openai_models + BEDROCK_FALLBACK
+    cloud_models = gemini_models + anthropic_models + openai_models + grok_models + deepseek_models + BEDROCK_FALLBACK
 
     return {
         "providers": providers,

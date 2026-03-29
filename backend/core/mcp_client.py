@@ -76,14 +76,24 @@ class MCPClientManager:
     async def connect_all(self):
         """Connect to all configured servers."""
         for config in self.servers_config:
+            name = config.get("name")
             # Avoid duplicate connections
-            if config["name"] in self.sessions:
+            if name in self.sessions:
                 continue
-            await self.connect_server(config)
+            session = await self.connect_server(config)
+            if session:
+                for s in self.servers_config:
+                    if s["name"] == name:
+                        s["status"] = "connected"
+                        break
         return self.sessions
 
     async def add_server(self, name: str, command: str, args: List[str], env: Dict[str, str] = None):
-        """Add a new server configuration and connect to it."""
+        """Add a new server configuration and try to connect to it.
+        
+        The config is saved immediately regardless of connection success.
+        Returns a dict with 'config' and 'connected' keys.
+        """
         import shutil
         
         # Check if exists
@@ -104,17 +114,45 @@ class MCPClientManager:
             "name": name,
             "command": command,
             "args": args,
-            "env": env or {}
+            "env": env or {},
+            "status": "disconnected"
         }
         
-        # Try connecting first to validate
+        # Save config immediately — connection attempt is best-effort
+        self.servers_config.append(new_config)
+        self.save_servers()
+        
+        # Try connecting (may fail for OAuth flows like mcp-remote)
         session = await self.connect_server(new_config)
         if session:
-            self.servers_config.append(new_config)
+            new_config["status"] = "connected"
+            # Update saved status
+            for s in self.servers_config:
+                if s["name"] == name:
+                    s["status"] = "connected"
+                    break
             self.save_servers()
-            return new_config
+            return {"config": new_config, "connected": True}
         else:
-            raise RuntimeError(f"Could not connect to server '{name}'. Check command and arguments.")
+            # Config is already saved; return with connection failure info
+            return {"config": new_config, "connected": False}
+
+    async def reconnect_server(self, name: str):
+        """Try to reconnect a previously saved server by name."""
+        config = self.get_server_config(name)
+        if not config:
+            raise ValueError(f"Server '{name}' not found in configuration.")
+        
+        session = await self.connect_server(config)
+        if session:
+            for s in self.servers_config:
+                if s["name"] == name:
+                    s["status"] = "connected"
+                    break
+            self.save_servers()
+            return True
+        else:
+            return False
 
     async def remove_server(self, name: str):
         """Remove a server configuration."""

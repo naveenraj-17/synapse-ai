@@ -8,7 +8,7 @@ import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wren
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/store';
-import { fetchAllSettingsData, removeAgent, removeMcpServer, removeCustomTool, addAgent, updateAgent, updateCustomTool, addCustomTool } from '@/store/settingsSlice';
+import { fetchAllSettingsData, removeAgent, removeMcpServer, removeCustomTool, addAgent, updateAgent, updateCustomTool, addCustomTool, addMcpServer, updateMcpServerStatus } from '@/store/settingsSlice';
 
 import type { Tab } from './settings/types';
 import { GeneralTab } from './settings/GeneralTab';
@@ -54,6 +54,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [openaiKey, setOpenaiKey] = useState('');
     const [anthropicKey, setAnthropicKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
+    const [grokKey, setGrokKey] = useState('');
+    const [deepseekKey, setDeepseekKey] = useState('');
     const [bedrockApiKey, setBedrockApiKey] = useState('');
     const [awsRegion, setAwsRegion] = useState('us-east-1');
     const [bedrockInferenceProfile, setBedrockInferenceProfile] = useState('');
@@ -94,6 +96,9 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
     // MCP Servers State
     const [loadingMcp, setLoadingMcp] = useState(false);
+    const [isConnectingMcp, setIsConnectingMcp] = useState(false);
+    const [lastMcpConnected, setLastMcpConnected] = useState<boolean | null>(null);
+    const [mcpToast, setMcpToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
     const [draftMcpServer, setDraftMcpServer] = useState<{ name: string, command: string, args: string, env: { key: string, value: string }[] }>({
         name: '', command: '', args: '', env: []
     });
@@ -158,6 +163,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             openai_key: openaiKey,
             anthropic_key: anthropicKey,
             gemini_key: geminiKey,
+            grok_key: grokKey,
+            deepseek_key: deepseekKey,
             bedrock_api_key: bedrockApiKey,
             bedrock_inference_profile: bedrockInferenceProfile,
             aws_region: awsRegion,
@@ -365,6 +372,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 setOpenaiKey(data.openai_key || '');
                 setAnthropicKey(data.anthropic_key || '');
                 setGeminiKey(data.gemini_key || '');
+                setGrokKey(data.grok_key || '');
+                setDeepseekKey(data.deepseek_key || '');
                 setBedrockApiKey(data.bedrock_api_key || '');
                 setAwsRegion(data.aws_region || 'us-east-1');
                 setBedrockInferenceProfile(data.bedrock_inference_profile || '');
@@ -475,7 +484,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
     const handleAddMcpServer = async () => {
         if (!draftMcpServer.name || !draftMcpServer.command) {
-            alert("Name and Command are required.");
+            setMcpToast({ show: true, message: 'Name and Command are required.', type: 'error' });
+            setTimeout(() => setMcpToast(null), 4000);
             return;
         }
 
@@ -486,6 +496,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             return acc;
         }, {} as Record<string, string>);
 
+        setIsConnectingMcp(true);
         try {
             const res = await fetch('/api/mcp/servers', {
                 method: 'POST',
@@ -498,16 +509,53 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 })
             });
             if (res.ok) {
-                // To keep it perfectly synchronized, dispatch refresh
-                dispatch(fetchAllSettingsData());
+                const data = await res.json();
+                // Optimistically add to Redux state
+                dispatch(addMcpServer(data.config));
                 setDraftMcpServer({ name: '', command: '', args: '', env: [] });
-                alert("Server added successfully!");
+
+                if (data.connected) {
+                    setLastMcpConnected(true);
+                    setMcpToast({ show: true, message: '✓ Server connected and saved!', type: 'success' });
+                } else {
+                    setLastMcpConnected(false);
+                    setMcpToast({ 
+                        show: true, 
+                        message: '⚠ Config saved. Connection pending — complete OAuth in the browser, then click Retry.', 
+                        type: 'warning' 
+                    });
+                }
+                setTimeout(() => setMcpToast(null), 6000);
             } else {
                 const err = await res.json();
-                alert(`Error adding server: ${err.detail || 'Unknown error'}`);
+                setMcpToast({ show: true, message: `Error: ${err.detail || 'Unknown error'}`, type: 'error' });
+                setTimeout(() => setMcpToast(null), 5000);
             }
-        } catch (e) {
-            alert("Failed to connect to server.");
+        } catch {
+            setMcpToast({ show: true, message: 'Failed to reach backend. Is it running?', type: 'error' });
+            setTimeout(() => setMcpToast(null), 5000);
+        } finally {
+            setIsConnectingMcp(false);
+        }
+    };
+
+    const handleReconnectMcpServer = async (name: string) => {
+        try {
+            dispatch(updateMcpServerStatus({ name, status: 'connecting' }));
+            const res = await fetch(`/api/mcp/servers/${name}/reconnect`, { method: 'POST' });
+            const data = await res.json();
+            if (data.connected) {
+                dispatch(updateMcpServerStatus({ name, status: 'connected' }));
+                setMcpToast({ show: true, message: `✓ ${name} reconnected!`, type: 'success' });
+            } else {
+                dispatch(updateMcpServerStatus({ name, status: 'disconnected' }));
+                setMcpToast({ show: true, message: `Could not connect to ${name}. Complete OAuth first.`, type: 'warning' });
+            }
+            setTimeout(() => setMcpToast(null), 5000);
+        } catch {
+            dispatch(updateMcpServerStatus({ name, status: 'disconnected' }));
+            setMcpToast({ show: true, message: 'Reconnect failed.', type: 'error' });
+            setTimeout(() => setMcpToast(null), 5000);
         }
     };
 
@@ -811,6 +859,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             openaiKey={openaiKey} setOpenaiKey={setOpenaiKey}
                             anthropicKey={anthropicKey} setAnthropicKey={setAnthropicKey}
                             geminiKey={geminiKey} setGeminiKey={setGeminiKey}
+                            grokKey={grokKey} setGrokKey={setGrokKey}
+                            deepseekKey={deepseekKey} setDeepseekKey={setDeepseekKey}
                             bedrockApiKey={bedrockApiKey} setBedrockApiKey={setBedrockApiKey}
                             awsRegion={awsRegion} setAwsRegion={setAwsRegion}
                             bedrockInferenceProfile={bedrockInferenceProfile}
@@ -835,10 +885,14 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                         <McpServersTab
                             mcpServers={mcpServers}
                             loadingMcp={loadingMcp}
+                            isConnecting={isConnectingMcp}
+                            lastConnected={lastMcpConnected}
+                            mcpToast={mcpToast}
                             draftMcpServer={draftMcpServer}
                             setDraftMcpServer={setDraftMcpServer}
                             onAddServer={handleAddMcpServer}
                             onDeleteServer={handleDeleteMcpServer}
+                            onReconnectServer={handleReconnectMcpServer}
                         />
                     )}
 

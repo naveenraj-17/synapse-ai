@@ -25,7 +25,7 @@ async def chat(request: ChatRequest):
         if event["type"] == "final":
             final_event = event
         elif event["type"] == "error":
-            raise HTTPException(status_code=500, detail=event["message"])
+            return ChatResponse(response=event["message"], intent="chat", data=None, tool_name=None)
 
     if not final_event:
         return ChatResponse(response="I completed the requested actions.", intent="chat", data=None, tool_name=None)

@@ -1,6 +1,11 @@
 """
-LLM provider API callers (OpenAI, Anthropic, Gemini, Bedrock, Ollama).
+LLM provider API callers (OpenAI, Anthropic, Gemini, Bedrock, Ollama, Grok, DeepSeek).
 Extracted from server.py to eliminate duplication between chat() and chat_stream().
+
+All cloud providers follow the same failsafe pattern:
+  - 5 attempts max
+  - Exponential backoff: [5, 10, 20, 40, 80] seconds
+  - Raises LLMError on final failure (never returns error strings silently)
 """
 import os
 import json
@@ -29,8 +34,8 @@ OLLAMA_MODEL = "llama3"
 def detect_mode_from_model(model_name: str) -> str:
     """Detect the provider mode from a model name prefix.
 
-    Returns 'cloud' for OpenAI/Anthropic/Gemini models, 'bedrock' for Bedrock,
-    and 'local' for anything else (assumed to be Ollama).
+    Returns 'cloud' for OpenAI/Anthropic/Gemini/Grok/DeepSeek models,
+    'bedrock' for Bedrock, and 'local' for anything else (assumed to be Ollama).
     """
     if not model_name:
         return "local"
@@ -43,6 +48,10 @@ def detect_mode_from_model(model_name: str) -> str:
         return "cloud"
     if m.startswith("bedrock"):
         return "bedrock"
+    if m.startswith("grok"):
+        return "cloud"
+    if m.startswith("deepseek"):
+        return "cloud"
     return "local"
 
 
@@ -59,6 +68,10 @@ def detect_provider_from_model(model_name: str) -> str:
         return "gemini"
     if m.startswith("bedrock"):
         return "bedrock"
+    if m.startswith("grok"):
+        return "grok"
+    if m.startswith("deepseek"):
+        return "deepseek"
     return "ollama"
 
 
@@ -136,16 +149,78 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     return boto3.client(**kwargs)
 
 
-async def call_openai(model, messages, api_key):
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages},
-            timeout=180.0
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+async def call_openai(model, messages, api_key, tools=None):
+    """Call OpenAI with 5-attempt exponential backoff retry loop.
+
+    Args:
+        model: GPT model name (e.g. 'gpt-4o')
+        messages: List of {"role": ..., "content": ...} dicts
+        api_key: OpenAI API key
+        tools: Ollama-format tool list (forwarded as OpenAI function definitions)
+    """
+    OPENAI_TIMEOUT = 180.0
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
+    payload: dict = {"model": model, "messages": messages}
+    if tools:
+        # OpenAI uses the same format as our internal Ollama tool spec
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            print(f"DEBUG: 🔄 OpenAI call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
+            async with httpx.AsyncClient(timeout=OPENAI_TIMEOUT) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=payload,
+                )
+            if resp.status_code in (429, 499, 500, 502, 503, 529):
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"DEBUG: ⏳ OpenAI {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(backoff)
+                    continue
+            resp.raise_for_status()
+            data = resp.json()
+            # Handle tool_calls response
+            choice = data["choices"][0]
+            msg = choice.get("message", {})
+            if msg.get("tool_calls"):
+                tc = msg["tool_calls"][0]
+                return json.dumps({
+                    "tool": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"].get("arguments", "{}"))
+                })
+            print(f"DEBUG: ✅ OpenAI call complete (attempt {attempt})", flush=True)
+            return msg.get("content", "")
+        except httpx.TimeoutException:
+            last_error = f"Request timed out ({OPENAI_TIMEOUT}s)"
+            print(f"DEBUG: ⏱️ OpenAI timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+        except httpx.HTTPStatusError as e:
+            last_error = f"HTTP {e.response.status_code}: {str(e)[:200]}"
+            print(f"DEBUG: ❌ OpenAI HTTP error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES and e.response.status_code in (429, 499, 500, 502, 503, 529):
+                await asyncio.sleep(backoff)
+                continue
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ OpenAI error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+
+    error_msg = f"OpenAI LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
 
 def _convert_tools_for_anthropic(ollama_tools: list[dict] | None) -> list[dict] | None:
     """Convert Ollama-format tool list to Anthropic tool format.
@@ -474,29 +549,190 @@ async def call_gemini(model, messages, system, api_key, tools=None):
     print(f"DEBUG: ❌ {error_msg}", flush=True)
     raise LLMError(error_msg)
 
+async def call_grok(model, messages, system, api_key, tools=None):
+    """Call xAI Grok via its OpenAI-compatible API with 5-attempt exponential backoff.
+
+    Args:
+        model: Grok model name (e.g. 'grok-3', 'grok-3-mini')
+        messages: List of {"role": ..., "content": ...} dicts
+        system: System instruction text
+        api_key: xAI API key (starts with 'xai-')
+        tools: Ollama-format tool list (Grok is OpenAI-compatible for function calling)
+    """
+    GROK_TIMEOUT = 180.0
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
+    # Build full messages list with system prompt
+    full_messages = []
+    if system and str(system).strip():
+        full_messages.append({"role": "system", "content": str(system).strip()})
+    full_messages.extend(messages or [])
+
+    payload: dict = {"model": model, "messages": full_messages, "max_tokens": 4096}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            print(f"DEBUG: 🔄 Grok call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
+            async with httpx.AsyncClient(timeout=GROK_TIMEOUT) as client:
+                resp = await client.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=payload,
+                )
+            if resp.status_code in (429, 499, 500, 502, 503, 529):
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"DEBUG: ⏳ Grok {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(backoff)
+                    continue
+            resp.raise_for_status()
+            data = resp.json()
+            choice = data["choices"][0]
+            msg = choice.get("message", {})
+            if msg.get("tool_calls"):
+                tc = msg["tool_calls"][0]
+                return json.dumps({
+                    "tool": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"].get("arguments", "{}"))
+                })
+            print(f"DEBUG: ✅ Grok call complete (attempt {attempt})", flush=True)
+            return msg.get("content", "")
+        except httpx.TimeoutException:
+            last_error = f"Request timed out ({GROK_TIMEOUT}s)"
+            print(f"DEBUG: ⏱️ Grok timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+        except httpx.HTTPStatusError as e:
+            last_error = f"HTTP {e.response.status_code}: {str(e)[:200]}"
+            print(f"DEBUG: ❌ Grok HTTP error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES and e.response.status_code in (429, 499, 500, 502, 503, 529):
+                await asyncio.sleep(backoff)
+                continue
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ Grok error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+
+    error_msg = f"Grok LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
+
+
+async def call_deepseek(model, messages, system, api_key, tools=None):
+    """Call DeepSeek via its OpenAI-compatible API with 5-attempt exponential backoff.
+
+    Args:
+        model: DeepSeek model name (e.g. 'deepseek-chat', 'deepseek-reasoner')
+        messages: List of {"role": ..., "content": ...} dicts
+        system: System instruction text
+        api_key: DeepSeek API key
+        tools: Ollama-format tool list (deepseek-chat supports function calling;
+               deepseek-reasoner does NOT — tools are silently dropped for it)
+    """
+    DEEPSEEK_TIMEOUT = 180.0
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
+    # Build full messages list with system prompt
+    full_messages = []
+    if system and str(system).strip():
+        full_messages.append({"role": "system", "content": str(system).strip()})
+    full_messages.extend(messages or [])
+
+    payload: dict = {"model": model, "messages": full_messages, "max_tokens": 4096}
+    # DeepSeek-Reasoner does not support function calling
+    if tools and "reasoner" not in model.lower():
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            print(f"DEBUG: 🔄 DeepSeek call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
+            async with httpx.AsyncClient(timeout=DEEPSEEK_TIMEOUT) as client:
+                resp = await client.post(
+                    "https://api.deepseek.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=payload,
+                )
+            if resp.status_code in (429, 499, 500, 502, 503, 529):
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"DEBUG: ⏳ DeepSeek {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(backoff)
+                    continue
+            resp.raise_for_status()
+            data = resp.json()
+            choice = data["choices"][0]
+            msg = choice.get("message", {})
+            if msg.get("tool_calls"):
+                tc = msg["tool_calls"][0]
+                return json.dumps({
+                    "tool": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"].get("arguments", "{}"))
+                })
+            print(f"DEBUG: ✅ DeepSeek call complete (attempt {attempt})", flush=True)
+            return msg.get("content", "")
+        except httpx.TimeoutException:
+            last_error = f"Request timed out ({DEEPSEEK_TIMEOUT}s)"
+            print(f"DEBUG: ⏱️ DeepSeek timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+        except httpx.HTTPStatusError as e:
+            last_error = f"HTTP {e.response.status_code}: {str(e)[:200]}"
+            print(f"DEBUG: ❌ DeepSeek HTTP error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES and e.response.status_code in (429, 499, 500, 502, 503, 529):
+                await asyncio.sleep(backoff)
+                continue
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ DeepSeek error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+
+    error_msg = f"DeepSeek LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
+
+
 async def call_bedrock(model_id, messages, system, region, settings):
+    """Call AWS Bedrock with 5-attempt exponential backoff retry loop.
+
+    Prefers the Converse API (standardized); falls back to InvokeModel for older models.
+    Raises LLMError on final failure after all retries.
+    """
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
     # Bedrock requires the exact model ID (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0)
     # We strip the 'bedrock.' prefix if present
     real_model_id = model_id.replace("bedrock.", "")
 
     # Some Bedrock models require an inference profile (no on-demand throughput).
-    # If provided, we invoke using the inference profile ID/ARN as modelId.
     invocation_model_id = real_model_id
     inference_profile = (settings.get("bedrock_inference_profile") or "").strip()
     if inference_profile:
-        # Users may paste it with a bedrock. prefix from the UI list.
         if inference_profile.startswith("bedrock."):
             inference_profile = inference_profile.replace("bedrock.", "", 1)
         invocation_model_id = inference_profile
-    
-    # Convert messages to Bedrock Converse API format or InvokeModel
-    # Using Converse API (standardized) is preferred for newer models
-    
+
     bedrock = _make_aws_client("bedrock-runtime", region, settings)
 
-    # Normalize messages to a content-block list.
-    # For Bedrock Converse, content blocks are like: {"text": "..."}
-    # For Anthropic InvokeModel, blocks are like: {"type": "text", "text": "..."}
+    # Normalize messages to Bedrock Converse content-block format
     normalized_messages = []
     for m in (messages or []):
         role = m.get("role")
@@ -506,7 +742,6 @@ async def call_bedrock(model_id, messages, system, region, settings):
         if isinstance(content, str):
             normalized_messages.append({"role": role, "content": [{"text": content}]})
         elif isinstance(content, list):
-            # Best effort: if caller already provided blocks, keep them but coerce to Converse schema
             blocks = []
             for b in content:
                 if isinstance(b, dict) and "text" in b:
@@ -531,27 +766,21 @@ async def call_bedrock(model_id, messages, system, region, settings):
                 system=system_blocks,
                 inferenceConfig={"maxTokens": 4096},
             )
-
         return await asyncio.to_thread(_run)
 
     async def _invoke_model_call():
-        # InvokeModel using Anthropic Messages schema
         anthropic_messages = []
         for m in normalized_messages:
-            anthropic_messages.append(
-                {
-                    "role": m["role"],
-                    "content": [{"type": "text", "text": b.get("text", "")} for b in (m.get("content") or [])],
-                }
-            )
-
+            anthropic_messages.append({
+                "role": m["role"],
+                "content": [{"type": "text", "text": b.get("text", "")} for b in (m.get("content") or [])],
+            })
         payload = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 4096,
             "system": str(system or ""),
             "messages": anthropic_messages,
         }
-
         def _run():
             return bedrock.invoke_model(
                 body=json.dumps(payload).encode("utf-8"),
@@ -559,45 +788,59 @@ async def call_bedrock(model_id, messages, system, region, settings):
                 accept="application/json",
                 contentType="application/json",
             )
-
         return await asyncio.to_thread(_run)
 
-    # Prefer Converse if available; it avoids many per-model JSON schema mismatches.
-    try:
-        if hasattr(bedrock, "converse"):
-            resp = await _converse_call()
-            msg = (((resp or {}).get("output") or {}).get("message") or {})
-            content = msg.get("content") or []
-            if content and isinstance(content, list) and isinstance(content[0], dict):
-                return content[0].get("text", "")
-            return ""
-    except Exception as e:
-        message = str(e)
-        if "on-demand throughput isn't supported" in message or "on-demand throughput isn't supported" in message:
-            raise RuntimeError(
-                "Bedrock model requires an inference profile (no on-demand throughput). "
-                "Set settings.bedrock_inference_profile to an inference profile ID/ARN that includes this model, "
-                "or pick a different Bedrock model that supports on-demand throughput."
-            )
-        # Fall back to InvokeModel; keep original exception in server logs.
-        print(f"Bedrock converse failed, falling back to invoke_model: {e}")
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            print(f"DEBUG: 🔄 Bedrock call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
+            if hasattr(bedrock, "converse"):
+                try:
+                    resp = await _converse_call()
+                    msg = (((resp or {}).get("output") or {}).get("message") or {})
+                    content = msg.get("content") or []
+                    if content and isinstance(content, list) and isinstance(content[0], dict):
+                        print(f"DEBUG: ✅ Bedrock (converse) complete (attempt {attempt})", flush=True)
+                        return content[0].get("text", "")
+                    return ""
+                except Exception as converse_err:
+                    msg_str = str(converse_err)
+                    if "on-demand throughput isn't supported" in msg_str:
+                        raise LLMError(
+                            "Bedrock model requires an inference profile (no on-demand throughput). "
+                            "Set Bedrock Inference Profile in settings, or pick a different model."
+                        )
+                    print(f"DEBUG: Bedrock converse failed (attempt {attempt}), falling back to invoke_model: {converse_err}")
+                    # Fall through to InvokeModel
+                    resp = await _invoke_model_call()
+                    response_body = json.loads(resp.get("body").read()) if resp and resp.get("body") else {}
+                    content = response_body.get("content") or []
+                    if content and isinstance(content, list) and isinstance(content[0], dict):
+                        print(f"DEBUG: ✅ Bedrock (invoke_model) complete (attempt {attempt})", flush=True)
+                        return content[0].get("text", "")
+                    return ""
+            else:
+                resp = await _invoke_model_call()
+                response_body = json.loads(resp.get("body").read()) if resp and resp.get("body") else {}
+                content = response_body.get("content") or []
+                if content and isinstance(content, list) and isinstance(content[0], dict):
+                    print(f"DEBUG: ✅ Bedrock (invoke_model) complete (attempt {attempt})", flush=True)
+                    return content[0].get("text", "")
+                return ""
+        except LLMError:
+            raise  # Non-retryable (config error)
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ Bedrock error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                print(f"DEBUG: ⏳ Retrying Bedrock in {backoff}s...", flush=True)
+                await asyncio.sleep(backoff)
+                continue
 
-    try:
-        resp = await _invoke_model_call()
-        response_body = json.loads(resp.get("body").read()) if resp and resp.get("body") else {}
-        content = response_body.get("content") or []
-        if content and isinstance(content, list) and isinstance(content[0], dict):
-            return content[0].get("text", "")
-        return ""
-    except Exception as e:
-        message = str(e)
-        if "on-demand throughput isn't supported" in message or "on-demand throughput isn't supported" in message:
-            raise RuntimeError(
-                "Bedrock model requires an inference profile (no on-demand throughput). "
-                "Set settings.bedrock_inference_profile to an inference profile ID/ARN that includes this model, "
-                "or pick a different Bedrock model that supports on-demand throughput."
-            )
-        raise
+    error_msg = f"Bedrock LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
 
 
 def _messages_to_transcript(messages: list[dict] | None) -> str:
@@ -666,6 +909,7 @@ async def generate_response(
                     current_model,
                     [{"role": "system", "content": augmented_system}] + messages,
                     current_settings.get("openai_key"),
+                    tools=tools,
                 )
             elif current_model.startswith("claude"):
                 return await call_anthropic(
@@ -690,6 +934,22 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("aws_region"),
                     current_settings,
+                )
+            elif current_model.startswith("grok"):
+                return await call_grok(
+                    current_model,
+                    messages,
+                    augmented_system,
+                    current_settings.get("grok_key"),
+                    tools=tools,
+                )
+            elif current_model.startswith("deepseek"):
+                return await call_deepseek(
+                    current_model,
+                    messages,
+                    augmented_system,
+                    current_settings.get("deepseek_key"),
+                    tools=tools,
                 )
             else:
                 return "Error: Unknown cloud model selected."

@@ -117,10 +117,10 @@
 }
 
 /* Force white text on colorful primary buttons in light mode */
-.light-mode .bg-blue-600, 
-.light-mode .bg-purple-600, 
+.light-mode .bg-blue-600,
+.light-mode .bg-purple-600,
 .light-mode .bg-violet-600,
-.light-mode .bg-green-600, 
+.light-mode .bg-green-600,
 .light-mode .bg-red-600,
 .light-mode .bg-blue-500,
 .light-mode .bg-purple-500,
@@ -129,9 +129,14 @@
   color: #ffffff !important;
 }
 
-/* Image filter utility for light mode icons */
-.light-mode .light-mode-invert {
-  filter: brightness(0);
+/* Default state (Dark Theme): Invert the black icon to white */
+.theme-adaptive-icon {
+  filter: invert(1);
+}
+
+/* Light Theme: Remove the filter so the icon stays its native black */
+.light-mode .theme-adaptive-icon {
+  filter: none;
 }
 
 body {

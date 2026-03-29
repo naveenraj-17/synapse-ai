@@ -52,6 +52,11 @@ export const settingsSlice = createSlice({
         },
         
         setMcpServers: (state, action: PayloadAction<any[]>) => { state.mcpServers = action.payload; },
+        addMcpServer: (state, action: PayloadAction<any>) => { state.mcpServers.push(action.payload); },
+        updateMcpServerStatus: (state, action: PayloadAction<{ name: string; status: string }>) => {
+            const server = state.mcpServers.find(s => s.name === action.payload.name);
+            if (server) server.status = action.payload.status;
+        },
         removeMcpServer: (state, action: PayloadAction<string>) => {
             state.mcpServers = state.mcpServers.filter(s => s.name !== action.payload);
         },
@@ -87,7 +92,7 @@ export const settingsSlice = createSlice({
 
 export const { 
     setAgents, addAgent, updateAgent, removeAgent, 
-    setMcpServers, removeMcpServer, 
+    setMcpServers, addMcpServer, updateMcpServerStatus, removeMcpServer, 
     setCustomTools, addCustomTool, updateCustomTool, removeCustomTool 
 } = settingsSlice.actions;
 

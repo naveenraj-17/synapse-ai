@@ -74,6 +74,8 @@ class Settings(BaseModel):
     openai_key: str = ""
     anthropic_key: str = ""
     gemini_key: str = ""
+    grok_key: str = ""  # xAI Grok API key (starts with 'xai-')
+    deepseek_key: str = ""  # DeepSeek API key
     bedrock_api_key: str = ""  # e.g. ABSK... (Amazon Bedrock API key)
     # Optional: required for some Bedrock models that don't support on-demand throughput.
     # Can be an inference profile ID or full ARN.
