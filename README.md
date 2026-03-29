@@ -1,5 +1,7 @@
 # Synapse AI — A Multi-Agent Orchestrator
 
+[![SafeSkill 64/100](https://img.shields.io/badge/SafeSkill-64%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/naveenraj-17-synapse-ai)
+
 **Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can wrap in an MCP server or n8n workflow.
 
 ---
