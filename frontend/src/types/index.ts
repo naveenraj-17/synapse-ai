@@ -55,6 +55,8 @@ export interface Message {
     stepType?: string;
     orchStepId?: string;
     thoughts?: string[];
+    // Attached images (base64 data URIs) — user messages only
+    images?: string[];
 }
 
 export interface SystemStatus {

@@ -220,6 +220,7 @@ async def run_agent_step(
     allowed_tools_override=None,
     source: str = "chat",
     run_id: str | None = None,
+    images: list[str] | None = None,
 ):
     """Lower-level single-agent ReAct execution.
 
@@ -261,7 +262,7 @@ async def run_agent_step(
     from core.llm_providers import detect_mode_from_model
     mode = detect_mode_from_model(current_model)
 
-    async def generate_response(prompt_msg, sys_prompt, tools=None, history_messages=None, memory_context_text=""):
+    async def generate_response(prompt_msg, sys_prompt, tools=None, history_messages=None, memory_context_text="", images_for_turn=None):
         return await llm_generate_response(
             prompt_msg=prompt_msg,
             sys_prompt=sys_prompt,
@@ -275,6 +276,7 @@ async def run_agent_step(
             agent_id=agent_id_for_session,
             source=source,
             run_id=run_id,
+            images=images_for_turn,
         )
 
     # ReAct loop state
@@ -351,6 +353,7 @@ async def run_agent_step(
                     active_prompt, active_sys_prompt,
                     tools=ollama_tools, history_messages=active_history,
                     memory_context_text=memory_context,
+                    images_for_turn=images if turn == 0 else None,  # images only on first turn
                 )
             except Exception as llm_err:
                 _llm_duration = round(time.time() - _llm_start, 1)
@@ -808,6 +811,7 @@ async def run_react_loop(request, server_module):
             agent_id=active_agent.get("id"),
             session_id=session_id,
             server_module=server_module,
+            images=getattr(request, 'images', None) or None,
         ):
             _agent_log.log_event(event)
             yield event

@@ -16,6 +16,8 @@ class ChatRequest(BaseModel):
     agent_id: str | None = None
     # Optional ephemeral client-side state we want the server/agent to reuse.
     client_state: dict[str, Any] | None = None
+    # Base64 data-URI images (e.g. "data:image/png;base64,..."). Max 5 per request.
+    images: list[str] = []
 
 class ChatResponse(BaseModel):
     response: str

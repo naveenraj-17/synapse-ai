@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X } from 'lucide-react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { AuthPrompt } from '@/components/AuthPrompt';
@@ -210,6 +210,11 @@ export default function Home() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Attached images (max 5)
+  const [attachedImages, setAttachedImages] = useState<{ preview: string; base64: string }[]>([]);
 
   // Accumulate LLM thoughts per active step during streaming
   const pendingThoughtsRef = useRef<string[]>([]);
@@ -393,13 +398,17 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
 
-    const userMessage = input.trim();
+    const userMessage = input.trim() || (attachedImages.length > 0 ? '[Images attached]' : '');
+    const imagesToSend = attachedImages.map(img => img.base64);
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setAttachedImages([]);
+    // Reset textarea height
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setMessages(prev => [...prev, { role: 'user', content: userMessage, images: imagesToSend.length > 0 ? imagesToSend : undefined }]);
 
-    await processMessage(userMessage);
+    await processMessage(userMessage, imagesToSend);
   };
 
   const handleEmailClick = async (emailId: string) => {
@@ -450,18 +459,18 @@ export default function Home() {
   };
 
   // Refactor duplicate fetch logic into helper
-  const processMessage = async (content: string) => {
+  const processMessage = async (content: string, images?: string[]) => {
     setIsLoading(true);
     setStreamingActivity(null);
     pendingThoughtsRef.current = [];
 
     // Try SSE streaming first
     try {
-      await processMessageSSE(content);
+      await processMessageSSE(content, images);
     } catch (sseError) {
       console.error('[SSE] SSE failed, falling back to HTTP:', sseError);
       // Fallback to HTTP
-      await processMessageHTTP(content);
+      await processMessageHTTP(content, images);
     } finally {
       setIsLoading(false);
       setStreamingActivity(null);
@@ -470,7 +479,7 @@ export default function Home() {
   };
 
   // SSE Streaming implementation
-  const processMessageSSE = async (content: string) => {
+  const processMessageSSE = async (content: string, images?: string[]) => {
     return new Promise<void>((resolve, reject) => {
       // Track state local to this SSE stream
       let currentStepThoughts: string[] = [];
@@ -480,7 +489,7 @@ export default function Home() {
       fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, session_id: sessionId, agent_id: currentAgentId }),
+        body: JSON.stringify({ message: content, session_id: sessionId, agent_id: currentAgentId, images: images || [] }),
       })
         .then(async (response) => {
           if (!response.ok) {
@@ -696,12 +705,12 @@ export default function Home() {
   };
 
   // HTTP fallback implementation (original logic)
-  const processMessageHTTP = async (content: string) => {
+  const processMessageHTTP = async (content: string, images?: string[]) => {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, session_id: sessionId }),
+        body: JSON.stringify({ message: content, session_id: sessionId, images: images || [] }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, {
@@ -829,6 +838,22 @@ export default function Home() {
             <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
               {renderTextContent(msg.content)}
             </div>
+
+            {/* Attached Images */}
+            {msg.images && msg.images.length > 0 && (
+              <div className="flex flex-wrap gap-3 mt-4">
+                {msg.images.map((img, imgIdx) => (
+                  <div key={imgIdx} className="relative group">
+                    <img
+                      src={img}
+                      alt={`Attached ${imgIdx + 1}`}
+                      className="h-[4.5rem] w-[4.5rem] object-cover border border-zinc-700/60 rounded-xl cursor-pointer hover:border-zinc-400 hover:scale-[1.03] hover:shadow-lg transition-all"
+                      onClick={() => window.open(img, '_blank')}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* LLM Thoughts for regular responses */}
@@ -1128,26 +1153,126 @@ export default function Home() {
         {/* Input Area */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent">
           <div className="w-full md:max-w-5xl mx-auto">
+            {/* Image Preview Strip */}
+            {attachedImages.length > 0 && (
+              <div className="flex items-center gap-3 mb-3 p-3 border border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md overflow-x-auto shadow-2xl">
+                {attachedImages.map((img, idx) => (
+                  <div key={idx} className="relative group shrink-0">
+                    <img
+                      src={img.preview}
+                      alt={`Attachment ${idx + 1}`}
+                      className="h-[4rem] w-[4rem] object-cover border border-zinc-700/60 rounded-lg shadow-sm"
+                    />
+                    <button
+                      onClick={() => setAttachedImages(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-zinc-800/95 border border-zinc-600 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:scale-105 transition-all shadow-md backdrop-blur-sm"
+                    >
+                      <X className="h-3.5 w-3.5 text-zinc-300" />
+                    </button>
+                  </div>
+                ))}
+                <span className="text-[10.5px] text-zinc-500 font-mono uppercase tracking-widest shrink-0 px-2 pl-3 border-l border-zinc-800/50">
+                  {attachedImages.length} / 5
+                </span>
+              </div>
+            )}
             <form
               onSubmit={handleSubmit}
-              className="flex items-center gap-0 border border-zinc-700 bg-black shadow-2xl focus-within:border-white focus-within:ring-1 focus-within:ring-white transition-all overflow-hidden"
+              className="flex items-end gap-1.5 border border-zinc-700/70 bg-zinc-950 shadow-2xl focus-within:border-zinc-500 focus-within:ring-2 focus-within:ring-zinc-800 transition-all p-1.5"
+              onDrop={(e) => {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                if (files.length === 0) return;
+                const remaining = 5 - attachedImages.length;
+                files.slice(0, remaining).forEach(file => {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const base64 = ev.target?.result as string;
+                    setAttachedImages(prev => prev.length < 5 ? [...prev, { preview: base64, base64 }] : prev);
+                  };
+                  reader.readAsDataURL(file);
+                });
+              }}
+              onDragOver={(e) => e.preventDefault()}
             >
-              <div className="pl-4 pr-2 text-zinc-500">
+              <div className="pl-4 pr-2 py-4 text-zinc-500 shrink-0">
                 <Terminal className={cn("h-4 w-4", isLoading ? "animate-pulse text-green-500" : "")} />
               </div>
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={isLoading ? "Agent is processing..." : "Enter command..."}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  // Auto-resize
+                  const ta = e.target;
+                  ta.style.height = 'auto';
+                  ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() || attachedImages.length > 0) {
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
+                onPaste={(e) => {
+                  const items = Array.from(e.clipboardData.items);
+                  const imageItems = items.filter(item => item.type.startsWith('image/'));
+                  if (imageItems.length === 0) return;
+                  e.preventDefault();
+                  const remaining = 5 - attachedImages.length;
+                  imageItems.slice(0, remaining).forEach(item => {
+                    const file = item.getAsFile();
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const base64 = ev.target?.result as string;
+                      setAttachedImages(prev => prev.length < 5 ? [...prev, { preview: base64, base64 }] : prev);
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                }}
+                placeholder={isLoading ? "Agent is processing..." : "Enter command... (Shift+Enter for new line)"}
                 disabled={isLoading}
-                className="flex-1 bg-transparent p-4 text-sm focus:outline-none font-mono text-white placeholder:text-zinc-500"
+                className="flex-1 bg-transparent py-3 pr-2 text-[15px] focus:outline-none font-mono text-zinc-100 placeholder:text-zinc-500 resize-none min-h-[44px] max-h-[200px] leading-relaxed"
+                rows={1}
                 autoFocus
               />
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  const remaining = 5 - attachedImages.length;
+                  files.slice(0, remaining).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const base64 = ev.target?.result as string;
+                      setAttachedImages(prev => prev.length < 5 ? [...prev, { preview: base64, base64 }] : prev);
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                  e.target.value = ''; // reset so same file can be re-selected
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || attachedImages.length >= 5}
+                className="p-2.5 text-zinc-500 hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0 self-end mb-1 relative top-[1px]"
+                title={attachedImages.length >= 5 ? 'Max 5 images' : 'Attach images'}
+              >
+                <ImageIcon className="h-[18px] w-[18px]" />
+              </button>
               <button
                 type="submit"
-                disabled={isLoading || !input.trim()}
-                className="p-4 md:px-6 bg-zinc-900 border-l border-zinc-700 text-zinc-300 font-bold text-xs uppercase font-mono hover:bg-zinc-800 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                disabled={isLoading || (!input.trim() && attachedImages.length === 0)}
+                className="px-4 py-2 bg-white text-black font-semibold text-[11px] uppercase tracking-wider border border-transparent hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all self-end mb-1 shrink-0 flex items-center justify-center"
               >
                 <span className="hidden md:inline">Execute</span>
                 <Send className="h-4 w-4 md:hidden" />

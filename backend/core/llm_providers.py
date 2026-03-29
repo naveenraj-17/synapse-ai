@@ -10,9 +10,62 @@ All cloud providers follow the same failsafe pattern:
 import os
 import json
 import asyncio
+import base64
 import httpx
 import boto3
 from botocore.config import Config
+
+
+# ─── Image helpers ──────────────────────────────────────────────────────────────
+
+def _parse_data_uri(data_uri: str) -> tuple[str, str]:
+    """Parse a data URI into (mime_type, raw_base64).
+
+    Accepts:
+      - "data:image/png;base64,iVBOR..."
+      - plain base64 string (assumes image/png)
+    """
+    if data_uri.startswith("data:"):
+        header, b64 = data_uri.split(",", 1)
+        mime = header.split(";")[0].replace("data:", "")
+        return mime, b64
+    return "image/png", data_uri
+
+
+def _build_openai_image_content(text: str, images: list[str] | None) -> list[dict] | str:
+    """Build OpenAI/Grok multimodal content blocks.
+
+    If images is empty, returns plain text string.
+    Otherwise returns a list of content parts (text + image_url blocks).
+    """
+    if not images:
+        return text
+    parts: list[dict] = [{"type": "text", "text": text}]
+    for img in images[:5]:
+        mime, b64 = _parse_data_uri(img)
+        parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{b64}"}
+        })
+    return parts
+
+
+def _build_anthropic_image_content(text: str, images: list[str] | None) -> list[dict] | str:
+    """Build Anthropic multimodal content blocks.
+
+    Returns list of content parts with image + text blocks.
+    """
+    if not images:
+        return text
+    parts: list[dict] = []
+    for img in images[:5]:
+        mime, b64 = _parse_data_uri(img)
+        parts.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": mime, "data": b64}
+        })
+    parts.append({"type": "text", "text": text})
+    return parts
 
 
 class LLMError(Exception):
@@ -149,7 +202,7 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     return boto3.client(**kwargs)
 
 
-async def call_openai(model, messages, api_key, tools=None):
+async def call_openai(model, messages, api_key, tools=None, images=None):
     """Call OpenAI with 5-attempt exponential backoff retry loop.
 
     Args:
@@ -157,10 +210,20 @@ async def call_openai(model, messages, api_key, tools=None):
         messages: List of {"role": ..., "content": ...} dicts
         api_key: OpenAI API key
         tools: Ollama-format tool list (forwarded as OpenAI function definitions)
+        images: List of base64 data-URI image strings to attach to the last user message
 
     Returns:
         (response_text, input_tokens, output_tokens)
     """
+    # Inject images into the last user message
+    if images:
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                messages[i] = dict(messages[i])  # shallow copy
+                messages[i]["content"] = _build_openai_image_content(
+                    str(messages[i].get("content", "")), images
+                )
+                break
     OPENAI_TIMEOUT = 180.0
     MAX_RETRIES = 5
     BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
@@ -279,7 +342,7 @@ def _extract_anthropic_response(response) -> str:
     return "Error: Anthropic returned no usable content."
 
 
-async def call_anthropic(model, messages, system, api_key, tools=None):
+async def call_anthropic(model, messages, system, api_key, tools=None, images=None):
     """Call Anthropic using the official SDK with native tool calling.
 
     Args:
@@ -288,10 +351,20 @@ async def call_anthropic(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: Anthropic API key
         tools: Ollama-format tool list (converted to Anthropic tool definitions)
+        images: List of base64 data-URI image strings to attach to the last user message
 
     Returns:
         (response_text, input_tokens, output_tokens)
     """
+    # Inject images into the last user message
+    if images:
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                messages[i] = dict(messages[i])  # shallow copy
+                messages[i]["content"] = _build_anthropic_image_content(
+                    str(messages[i].get("content", "")), images
+                )
+                break
     import anthropic
 
     ANTHROPIC_TIMEOUT = 180.0  # seconds per attempt (Claude can take >60s for complex prompts)
@@ -420,24 +493,39 @@ def _clean_schema_for_gemini(schema: dict) -> dict:
     return cleaned
 
 
-def _convert_messages_for_gemini(messages: list[dict]):
+def _convert_messages_for_gemini(messages: list[dict], images: list[str] | None = None):
     """Convert OpenAI-style messages to Gemini Content objects.
 
     Maps roles: 'user' → 'user', 'assistant' → 'model', 'system' → skip (handled separately).
+    If images are provided, they are attached to the last user message.
     """
     from google.genai import types
 
     contents = []
-    for msg in messages:
+    # Find the index of the last user message for image injection
+    last_user_idx = -1
+    filtered = [(msg, idx) for idx, msg in enumerate(messages) if msg.get("role") != "system" and msg.get("content")]
+    if images:
+        for i, (msg, _) in enumerate(filtered):
+            if msg.get("role") == "user":
+                last_user_idx = i
+
+    for i, (msg, _) in enumerate(filtered):
         role = msg.get("role", "user")
         text = msg.get("content", "")
-        if not text or role == "system":
-            continue
         gemini_role = "model" if role == "assistant" else "user"
-        contents.append(types.Content(
-            role=gemini_role,
-            parts=[types.Part.from_text(text=text)]
-        ))
+        parts = [types.Part.from_text(text=text)]
+
+        # Attach images to the last user message
+        if images and i == last_user_idx:
+            for img in images[:5]:
+                mime, b64 = _parse_data_uri(img)
+                parts.append(types.Part.from_bytes(
+                    data=base64.b64decode(b64),
+                    mime_type=mime,
+                ))
+
+        contents.append(types.Content(role=gemini_role, parts=parts))
     return contents
 
 
@@ -481,7 +569,7 @@ def _extract_gemini_response(response) -> str:
 _gemini_client = None
 
 
-async def call_gemini(model, messages, system, api_key, tools=None):
+async def call_gemini(model, messages, system, api_key, tools=None, images=None):
     """Call Gemini using the google-genai SDK with native function calling.
 
     Args:
@@ -490,6 +578,7 @@ async def call_gemini(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: Gemini API key
         tools: Ollama-format tool list (converted to Gemini FunctionDeclarations)
+        images: List of base64 data-URI image strings to attach to the last user message
 
     Returns:
         (response_text, input_tokens, output_tokens)
@@ -508,7 +597,7 @@ async def call_gemini(model, messages, system, api_key, tools=None):
             http_options=types.HttpOptions(timeout=int((GEMINI_TIMEOUT+5) * 1000)),  # seconds
         )
 
-    contents = _convert_messages_for_gemini(messages)
+    contents = _convert_messages_for_gemini(messages, images=images)
     gemini_tools = _convert_tools_for_gemini(tools)
 
     config = types.GenerateContentConfig(
@@ -576,7 +665,7 @@ async def call_gemini(model, messages, system, api_key, tools=None):
     print(f"DEBUG: ❌ {error_msg}", flush=True)
     raise LLMError(error_msg)
 
-async def call_grok(model, messages, system, api_key, tools=None):
+async def call_grok(model, messages, system, api_key, tools=None, images=None):
     """Call xAI Grok via its OpenAI-compatible API with 5-attempt exponential backoff.
 
     Args:
@@ -585,6 +674,7 @@ async def call_grok(model, messages, system, api_key, tools=None):
         system: System instruction text
         api_key: xAI API key (starts with 'xai-')
         tools: Ollama-format tool list (Grok is OpenAI-compatible for function calling)
+        images: List of base64 data-URI image strings to attach to the last user message
 
     Returns:
         (response_text, input_tokens, output_tokens)
@@ -598,6 +688,16 @@ async def call_grok(model, messages, system, api_key, tools=None):
     if system and str(system).strip():
         full_messages.append({"role": "system", "content": str(system).strip()})
     full_messages.extend(messages or [])
+
+    # Inject images into the last user message (Grok is OpenAI-compatible)
+    if images:
+        for i in range(len(full_messages) - 1, -1, -1):
+            if full_messages[i].get("role") == "user":
+                full_messages[i] = dict(full_messages[i])
+                full_messages[i]["content"] = _build_openai_image_content(
+                    str(full_messages[i].get("content", "")), images
+                )
+                break
 
     payload: dict = {"model": model, "messages": full_messages, "max_tokens": 4096}
     if tools:
@@ -662,7 +762,7 @@ async def call_grok(model, messages, system, api_key, tools=None):
     raise LLMError(error_msg)
 
 
-async def call_deepseek(model, messages, system, api_key, tools=None):
+async def call_deepseek(model, messages, system, api_key, tools=None, images=None):
     """Call DeepSeek via its OpenAI-compatible API with 5-attempt exponential backoff.
 
     Args:
@@ -672,10 +772,14 @@ async def call_deepseek(model, messages, system, api_key, tools=None):
         api_key: DeepSeek API key
         tools: Ollama-format tool list (deepseek-chat supports function calling;
                deepseek-reasoner does NOT — tools are silently dropped for it)
+        images: List of base64 data-URI image strings (NOT SUPPORTED — silently dropped)
 
     Returns:
         (response_text, input_tokens, output_tokens)
     """
+    # DeepSeek does not support vision — drop images with a warning
+    if images:
+        print(f"DEBUG: ⚠️ DeepSeek does not support images. {len(images)} image(s) will be dropped.", flush=True)
     DEEPSEEK_TIMEOUT = 180.0
     MAX_RETRIES = 5
     BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
@@ -750,7 +854,7 @@ async def call_deepseek(model, messages, system, api_key, tools=None):
     raise LLMError(error_msg)
 
 
-async def call_bedrock(model_id, messages, system, region, settings):
+async def call_bedrock(model_id, messages, system, region, settings, images=None):
     """Call AWS Bedrock with 5-attempt exponential backoff retry loop.
 
     Prefers the Converse API (standardized); falls back to InvokeModel for older models.
@@ -775,15 +879,21 @@ async def call_bedrock(model_id, messages, system, region, settings):
 
     # Normalize messages to Bedrock Converse content-block format
     normalized_messages = []
-    for m in (messages or []):
+    # Find the last user message index for image injection
+    all_msgs = [m for m in (messages or []) if m.get("role") in ("user", "assistant")]
+    last_user_idx = -1
+    if images:
+        for idx_m, m in enumerate(all_msgs):
+            if m.get("role") == "user":
+                last_user_idx = idx_m
+
+    for idx_m, m in enumerate(all_msgs):
         role = m.get("role")
-        if role not in ("user", "assistant"):
-            continue
         content = m.get("content")
+        blocks = []
         if isinstance(content, str):
-            normalized_messages.append({"role": role, "content": [{"text": content}]})
+            blocks.append({"text": content})
         elif isinstance(content, list):
-            blocks = []
             for b in content:
                 if isinstance(b, dict) and "text" in b:
                     blocks.append({"text": str(b.get("text"))})
@@ -791,9 +901,19 @@ async def call_bedrock(model_id, messages, system, region, settings):
                     blocks.append({"text": str(b.get("text"))})
                 else:
                     blocks.append({"text": str(b)})
-            normalized_messages.append({"role": role, "content": blocks})
         else:
-            normalized_messages.append({"role": role, "content": [{"text": str(content)}]})
+            blocks.append({"text": str(content)})
+
+        # Inject images into the last user message
+        if images and idx_m == last_user_idx:
+            for img in images[:5]:
+                mime, b64 = _parse_data_uri(img)
+                # Map MIME to Bedrock format name
+                fmt_map = {"image/png": "png", "image/jpeg": "jpeg", "image/gif": "gif", "image/webp": "webp"}
+                fmt = fmt_map.get(mime, "png")
+                blocks.append({"image": {"format": fmt, "source": {"bytes": base64.b64decode(b64)}}})
+
+        normalized_messages.append({"role": role, "content": blocks})
 
     system_blocks = []
     if system and str(system).strip():
@@ -933,6 +1053,7 @@ async def generate_response(
     agent_id: str | None = None,
     source: str = "chat",
     run_id: str | None = None,
+    images: list[str] | None = None,
 ):
     """
     Unified LLM dispatch function. Routes to the appropriate provider
@@ -972,6 +1093,7 @@ async def generate_response(
                     [{"role": "system", "content": augmented_system}] + messages,
                     current_settings.get("openai_key"),
                     tools=tools,
+                    images=images,
                 )
             elif current_model.startswith("claude"):
                 result_text, input_tokens, output_tokens = await call_anthropic(
@@ -980,6 +1102,7 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("anthropic_key"),
                     tools=tools,
+                    images=images,
                 )
             elif current_model.startswith("gemini"):
                 result_text, input_tokens, output_tokens = await call_gemini(
@@ -988,6 +1111,7 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("gemini_key"),
                     tools=tools,
+                    images=images,
                 )
             elif current_model.startswith("bedrock"):
                 result_text = await call_bedrock(
@@ -996,6 +1120,7 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("aws_region"),
                     current_settings,
+                    images=images,
                 )
                 # Bedrock does not surface token counts the same way — fall back to heuristic
                 input_tokens = usage_tracker.estimate_tokens_from_text(
@@ -1009,6 +1134,7 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("grok_key"),
                     tools=tools,
+                    images=images,
                 )
             elif current_model.startswith("deepseek"):
                 result_text, input_tokens, output_tokens = await call_deepseek(
@@ -1017,6 +1143,7 @@ async def generate_response(
                     augmented_system,
                     current_settings.get("deepseek_key"),
                     tools=tools,
+                    images=images,
                 )
             else:
                 return "Error: Unknown cloud model selected."
@@ -1044,7 +1171,11 @@ async def generate_response(
                         messages.extend(history_messages)
 
                     # 3. Current User Message
-                    messages.append({"role": "user", "content": prompt_msg})
+                    user_msg: dict = {"role": "user", "content": prompt_msg}
+                    # Ollama supports images as base64 strings (no data URI prefix)
+                    if images:
+                        user_msg["images"] = [_parse_data_uri(img)[1] for img in images[:5]]
+                    messages.append(user_msg)
 
                     response = await client.post(
                         f"{_ollama_base_url()}/api/chat",
