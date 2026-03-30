@@ -284,13 +284,20 @@ class OrchestrationEngine:
             session_id=run.session_id,
         )
 
-        # Write human response to shared state
-        run.shared_state["human_response"] = human_response
+        # Move to next step after the HUMAN step
+        current_step = engine.step_map.get(run.current_step_id)
+
+        # Write human response to shared state under the step's configured output_key.
+        # Falling back to "human_response" preserves backward-compat for steps with no output_key.
+        output_key = (current_step.output_key if current_step else None) or "human_response"
+        run.shared_state[output_key] = human_response
+        # Always keep "human_response" as well so evaluators that check it still work.
+        if output_key != "human_response":
+            run.shared_state["human_response"] = human_response
+
         run.waiting_for_human = False
         run.status = "running"
 
-        # Move to next step after the HUMAN step
-        current_step = engine.step_map.get(run.current_step_id)
         if current_step:
             next_id, _ = engine._resolve_next(current_step, run)
             run.current_step_id = next_id

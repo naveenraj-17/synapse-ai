@@ -27,6 +27,26 @@ def _build_step_prompt(
     """Build the prompt for an agent step, injecting shared state context with agent attribution."""
     context_parts = []
 
+    # Always inject user_input so every step knows the original request,
+    # unless the step already lists it in input_keys (would be injected below).
+    if "user_input" in shared_state and "user_input" not in (step.input_keys or []):
+        context_parts.append(f"[user_input]:\n{shared_state['user_input']}")
+
+    # Also inject human responses (clarifications) that are not in input_keys.
+    # These are stored under the human step's output_key and also under "human_response".
+    human_keys = {"human_response"}
+    # Collect output_keys of all human steps
+    if step_map:
+        for s in step_map.values():
+            if s.type and s.type.value == "human" and s.output_key:
+                human_keys.add(s.output_key)
+    for hkey in sorted(human_keys):  # sorted for deterministic ordering
+        if hkey in shared_state and hkey not in (step.input_keys or []) and hkey != "user_input":
+            val = str(shared_state[hkey])
+            if len(val) > 5000:
+                val = val[:5000] + "...(truncated)"
+            context_parts.append(f"[{hkey}]:\n{val}")
+
     for key in step.input_keys:
         if key not in shared_state:
             continue

@@ -247,36 +247,36 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
     except Exception as e:
         print(f"DEBUG: Error injecting Google Workspace Email: {e}")
 
-    # --- TURN AWARENESS ---
-    turns_block = ""
-    if turns_remaining is not None and max_turns is not None:
-        if turns_remaining <= 0:
-            turns_block = f"""
+#     # --- TURN AWARENESS ---
+#     turns_block = ""
+#     if turns_remaining is not None and max_turns is not None:
+#         if turns_remaining <= 0:
+#             turns_block = f"""
 
-### ⚠️ TURN LIMIT REACHED — FINAL RESPONSE REQUIRED
-You have used all {max_turns} available turns. You MUST stop calling tools and provide your **final answer now** based on everything gathered so far.
-- Summarize what you did and what you found.
-- If the task is incomplete, clearly state what could not be completed and why.
-- Do NOT call any more tools.
-"""
-        elif turns_remaining == 1:
-            turns_block = f"""
+# ### ⚠️ TURN LIMIT REACHED — FINAL RESPONSE REQUIRED
+# You have used all {max_turns} available turns. You MUST stop calling tools and provide your **final answer now** based on everything gathered so far.
+# - Summarize what you did and what you found.
+# - If the task is incomplete, clearly state what could not be completed and why.
+# - Do NOT call any more tools.
+# """
+#         elif turns_remaining == 1:
+#             turns_block = f"""
 
-### ⚠️ LAST TURN — RESPOND NOW
-This is your **final turn** (Turn {max_turns}/{max_turns}). You MUST provide your final answer now. Do NOT call any more tools.
-- If you have enough information, give the complete answer.
-- If you don't have enough information, say so clearly and summarize what you were able to find.
-- Provide a brief summary of all steps taken so far.
-"""
-        else:
-            turns_block = f"""
+# ### ⚠️ LAST TURN — RESPOND NOW
+# This is your **final turn** (Turn {max_turns}/{max_turns}). You MUST provide your final answer now. Do NOT call any more tools.
+# - If you have enough information, give the complete answer.
+# - If you don't have enough information, say so clearly and summarize what you were able to find.
+# - Provide a brief summary of all steps taken so far.
+# """
+#         else:
+#             turns_block = f"""
 
-### TURN BUDGET
-You have **{turns_remaining} turn(s) remaining** out of {max_turns} total.
-- Plan your tool calls efficiently — prioritize the most impactful steps first.
-- If you cannot complete the task within the remaining turns, provide a partial answer and summarize what was accomplished so far.
-- On the last turn you MUST answer in plain text (no tool calls), even if the task is not fully complete.
-"""
+# ### TURN BUDGET
+# You have **{turns_remaining} turn(s) remaining** out of {max_turns} total.
+# - Plan your tool calls efficiently — prioritize the most impactful steps first.
+# - If you cannot complete the task within the remaining turns, provide a partial answer and summarize what was accomplished so far.
+# - On the last turn you MUST answer in plain text (no tool calls), even if the task is not fully complete.
+# """
 
     # Append tools, date/time, and instructions at the end
     system_prompt_text += f"""
@@ -306,7 +306,7 @@ Do NOT output any other text or markdown when calling a tool.
 If you do not need to use a tool, reply in plain text.
 """
 
-    system_prompt_text += turns_block
+    # system_prompt_text += turns_block
     
     # --- DYNAMIC RAG INJECTION ---
     # If we have active embeddings, force the LLM to know about them
