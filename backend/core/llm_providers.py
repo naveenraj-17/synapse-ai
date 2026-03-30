@@ -1255,3 +1255,143 @@ async def generate_response(
         print(f"DEBUG usage_tracker: log_usage failed (non-fatal): {_track_err}", flush=True)
 
     return result_text
+
+
+# ─── Embedding Helpers ──────────────────────────────────────────────────────
+
+async def embed_batch(texts: list[str], model: str, settings: dict) -> list[list[float]]:
+    """Unified embedding function that routes to the appropriate provider.
+
+    Optional settings key ``__embed_output_dim`` (int) is forwarded to
+    providers that support dimensionality control (currently Gemini).
+    """
+    provider = detect_provider_from_model(model)
+    output_dim: int | None = settings.get("__embed_output_dim")
+
+    if provider == "openai":
+        return await _embed_openai(texts, model, settings.get("openai_key", ""))
+    elif provider == "gemini":
+        kwargs = {} if output_dim is None else {"output_dim": output_dim}
+        return await _embed_gemini(texts, model, settings.get("gemini_key", ""), **kwargs)
+    elif provider == "bedrock":
+        return await _embed_bedrock(texts, model, settings)
+    elif provider == "ollama":
+        return await _embed_ollama(texts, model)
+    else:
+        print(f"DEBUG: Unknown provider '{provider}' for embedding model '{model}'")
+        return [[0.0] * 768 for _ in range(len(texts))]
+
+
+async def _embed_openai(texts: list[str], model: str, api_key: str) -> list[list[float]]:
+    if not api_key:
+        return [[0.0] * 1536 for _ in range(len(texts))]
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "input": texts},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # OpenAI returns embeddings in the same order as input
+            return [item["embedding"] for item in data["data"]]
+    except Exception as e:
+        print(f"ERROR: OpenAI embedding failed: {e}")
+        return [[0.0] * 1536 for _ in range(len(texts))]
+
+
+async def _embed_gemini(
+    texts: list[str], model: str, api_key: str, output_dim: int = 768
+) -> list[list[float]]:
+    if not api_key:
+        return [[0.0] * output_dim for _ in range(len(texts))]
+
+    from google import genai
+    from google.genai import types
+
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=api_key)
+
+    try:
+        # Specify output_dimensionality so Gemini returns exactly `output_dim` dims
+        # (uses Matryoshka truncation — the first N dims are the best N-dim representation).
+        # Without this, the API returns the full 3072-dim vector which exceeds
+        # pgvector's 2000-dim HNSW limit.
+        result = await asyncio.to_thread(
+            _gemini_client.models.embed_content,
+            model=model,
+            contents=texts,
+            config=types.EmbedContentConfig(output_dimensionality=output_dim),
+        )
+        if not result.embeddings:
+            return [[0.0] * output_dim for _ in range(len(texts))]
+        return [list(em.values) for em in result.embeddings]
+    except Exception as e:
+        print(f"ERROR: Gemini embedding failed: {e}")
+        return [[0.0] * output_dim for _ in range(len(texts))]
+
+
+async def _embed_bedrock(texts: list[str], model: str, settings: dict) -> list[list[float]]:
+    region = settings.get("aws_region", "us-east-1")
+    bedrock = _make_aws_client("bedrock-runtime", region, settings)
+    real_model_id = model.replace("bedrock.", "")
+    
+    embeddings = []
+    for text in texts:
+        try:
+            if "titan" in real_model_id:
+                payload = json.dumps({"inputText": text})
+            elif "cohere" in real_model_id:
+                # Cohere expects truncated text for embedding
+                payload = json.dumps({"texts": [text[:2048]], "input_type": "search_document"})
+            else:
+                # Fallback for others
+                payload = json.dumps({"inputText": text})
+            
+            def _run():
+                return bedrock.invoke_model(
+                    body=payload,
+                    modelId=real_model_id,
+                    accept="application/json",
+                    contentType="application/json"
+                )
+            
+            resp = await asyncio.to_thread(_run)
+            body = json.loads(resp.get("body").read())
+            
+            if "titan" in real_model_id:
+                embeddings.append(body.get("embedding", []))
+            elif "cohere" in real_model_id:
+                embeddings.append(body.get("embeddings", [[]])[0])
+            else:
+                embeddings.append(body.get("embedding", []))
+                
+        except Exception as e:
+            print(f"ERROR: Bedrock embedding failed for '{real_model_id}': {e}")
+            embeddings.append([])
+            
+    # Normalize missing to zeros if needed, though most providers should work
+    return embeddings
+
+
+async def _embed_ollama(texts: list[str], model: str) -> list[list[float]]:
+    url = f"{_ollama_base_url()}/api/embed"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, json={"model": model, "input": texts})
+            if resp.status_code != 200:
+                # Fallback for older Ollama versions
+                url_legacy = f"{_ollama_base_url()}/api/embeddings"
+                embeddings = []
+                for t in texts:
+                    r = await client.post(url_legacy, json={"model": model, "prompt": t})
+                    embeddings.append(r.json().get("embedding", []))
+                return embeddings
+            
+            data = resp.json()
+            return data.get("embeddings", [])
+    except Exception as e:
+        print(f"ERROR: Ollama embedding failed: {e}")
+        return [[0.0] * 768 for _ in range(len(texts))]

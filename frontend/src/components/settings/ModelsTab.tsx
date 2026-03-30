@@ -37,11 +37,13 @@ const DeepSeekIcon = ({ className }: BrandIconProps) => (
 interface ProviderInfo {
     available: boolean;
     models: string[];
+    embedding_models?: string[];
 }
 
 interface ModelsTabProps {
     providers: Record<string, ProviderInfo>;
     selectedModel: string; setSelectedModel: (v: string) => void;
+    embeddingModel: string; setEmbeddingModel: (v: string) => void;
     openaiKey: string; setOpenaiKey: (v: string) => void;
     anthropicKey: string; setAnthropicKey: (v: string) => void;
     geminiKey: string; setGeminiKey: (v: string) => void;
@@ -137,6 +139,7 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
 
 export const ModelsTab = ({
     providers, selectedModel, setSelectedModel,
+    embeddingModel, setEmbeddingModel,
     openaiKey, setOpenaiKey, anthropicKey, setAnthropicKey,
     geminiKey, setGeminiKey, grokKey, setGrokKey,
     deepseekKey, setDeepseekKey,
@@ -374,6 +377,45 @@ export const ModelsTab = ({
                         </>
                     )}
                 </select>
+            </div>
+            {/* Default Embedding Model Selector */}
+            <div className="space-y-4">
+                <div className="space-y-2">
+                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Embedding Model</label>
+                    <p className="text-[10px] text-zinc-600 -mt-1">Used for code indexing and repository search. Requires compatible providers like Gemini, OpenAI, or Ollama.</p>
+                    <select
+                        value={embeddingModel}
+                        onChange={(e) => setEmbeddingModel(e.target.value)}
+                        className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
+                    >
+                        {loadingModels ? (
+                            <option>Loading models...</option>
+                        ) : (
+                            <>
+                                <option value="">Select default embedding model...</option>
+                                {Object.entries(providers).map(([providerKey, info]) => {
+                                    if (!info.available || !info.embedding_models || info.embedding_models.length === 0) return null;
+                                    const label = PROVIDER_META[providerKey]?.label || providerKey;
+                                    return (
+                                        <optgroup key={providerKey} label={label}>
+                                            {info.embedding_models.map((m: string) => (
+                                                <option key={m} value={m}>{m}</option>
+                                            ))}
+                                        </optgroup>
+                                    );
+                                })}
+                            </>
+                        )}
+                    </select>
+                </div>
+                
+                {/* Warning Message */}
+                <div className="p-3 bg-amber-900/20 border border-amber-900/50 rounded-sm">
+                    <p className="text-[10px] text-amber-500 leading-relaxed uppercase font-bold tracking-tight">
+                        ⚠ Warning: Changing the global embedding model will affect new repository indexals. 
+                        Existing repositories will NOT be automatically migrated. Use individual repo settings to re-index manually if needed.
+                    </p>
+                </div>
             </div>
 
             <div className="pt-4 flex justify-end">

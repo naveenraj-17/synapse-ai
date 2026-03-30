@@ -75,20 +75,22 @@ async def get_models():
                              (settings.get("aws_access_key_id") or "").strip())
 
     # --- Fetch models from each provider concurrently ---
-    async def fetch_ollama() -> tuple[bool, list[str]]:
+    async def fetch_ollama() -> tuple[bool, list[str], list[str]]:
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3.0)
                 if r.status_code == 200:
                     models = [m["name"] for m in r.json().get("models", [])]
-                    return True, models
+                    # Simple heuristic: models with 'embed' in name are likely for embeddings
+                    embeds = [m for m in models if "embed" in m.lower()]
+                    return True, models, embeds
         except Exception:
             pass
-        return False, []
+        return False, [], []
 
-    async def fetch_openai() -> tuple[bool, list[str]]:
+    async def fetch_openai() -> tuple[bool, list[str], list[str]]:
         if not openai_key:
-            return False, OPENAI_FALLBACK
+            return False, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"]
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -98,20 +100,22 @@ async def get_models():
                 )
                 if r.status_code == 200:
                     data = r.json().get("data", [])
-                    # Filter to chat models only (gpt-*)
-                    models = sorted(set(
+                    chat_models = sorted(set(
                         m["id"] for m in data
                         if m.get("id", "").startswith(("gpt-4", "gpt-3.5"))
                         and "instruct" not in m.get("id", "")
                     ), reverse=True)
-                    return True, models if models else OPENAI_FALLBACK
+                    embed_models = sorted(set(
+                        m["id"] for m in data if "embedding" in m.get("id", "")
+                    ))
+                    return True, chat_models if chat_models else OPENAI_FALLBACK, embed_models if embed_models else ["text-embedding-3-small", "text-embedding-3-large"]
         except Exception as e:
             print(f"Error fetching OpenAI models: {e}")
-        return True, OPENAI_FALLBACK  # Key present, assume available
+        return True, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large"]
 
-    async def fetch_anthropic() -> tuple[bool, list[str]]:
+    async def fetch_anthropic() -> tuple[bool, list[str], list[str]]:
         if not anthropic_key:
-            return False, ANTHROPIC_FALLBACK
+            return False, ANTHROPIC_FALLBACK, []
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -125,14 +129,14 @@ async def get_models():
                 if r.status_code == 200:
                     data = r.json().get("data", [])
                     models = sorted(set(m["id"] for m in data if m.get("id")), reverse=True)
-                    return True, models if models else ANTHROPIC_FALLBACK
+                    return True, models if models else ANTHROPIC_FALLBACK, []
         except Exception as e:
             print(f"Error fetching Anthropic models: {e}")
-        return True, ANTHROPIC_FALLBACK  # Key present, assume available
+        return True, ANTHROPIC_FALLBACK, []
 
-    async def fetch_gemini() -> tuple[bool, list[str]]:
+    async def fetch_gemini() -> tuple[bool, list[str], list[str]]:
         if not gemini_key:
-            return False, GEMINI_FALLBACK
+            return False, GEMINI_FALLBACK, ["text-embedding-004", "gemini-embedding-001"]
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -141,22 +145,23 @@ async def get_models():
                 )
                 if r.status_code == 200:
                     data = r.json().get("models", [])
-                    # Filter to generateContent-capable models and extract clean names
-                    models = []
+                    chat_models = []
+                    embed_models = []
                     for m in data:
-                        name = m.get("name", "")  # e.g. "models/gemini-2.0-flash"
+                        name = m.get("name", "").replace("models/", "")
                         methods = m.get("supportedGenerationMethods", [])
-                        if "generateContent" in methods and name.startswith("models/"):
-                            clean = name.replace("models/", "")
-                            models.append(clean)
-                    return True, sorted(set(models)) if models else GEMINI_FALLBACK
+                        if "generateContent" in methods:
+                            chat_models.append(name)
+                        if "embedContent" in methods:
+                            embed_models.append(name)
+                    return True, sorted(set(chat_models)) if chat_models else GEMINI_FALLBACK, sorted(set(embed_models)) if embed_models else ["text-embedding-004"]
         except Exception as e:
             print(f"Error fetching Gemini models: {e}")
-        return True, GEMINI_FALLBACK  # Key present, assume available
+        return True, GEMINI_FALLBACK, ["text-embedding-004"]
 
-    async def fetch_grok() -> tuple[bool, list[str]]:
+    async def fetch_grok() -> tuple[bool, list[str], list[str]]:
         if not grok_key:
-            return False, GROK_FALLBACK
+            return False, GROK_FALLBACK, []
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -169,14 +174,14 @@ async def get_models():
                     models = sorted(set(
                         m["id"] for m in data if m.get("id", "").startswith("grok")
                     ), reverse=True)
-                    return True, models if models else GROK_FALLBACK
+                    return True, models if models else GROK_FALLBACK, []
         except Exception as e:
             print(f"Error fetching Grok models: {e}")
-        return True, GROK_FALLBACK  # Key present, assume available
+        return True, GROK_FALLBACK, []
 
-    async def fetch_deepseek() -> tuple[bool, list[str]]:
+    async def fetch_deepseek() -> tuple[bool, list[str], list[str]]:
         if not deepseek_key:
-            return False, DEEPSEEK_FALLBACK
+            return False, DEEPSEEK_FALLBACK, []
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -189,32 +194,57 @@ async def get_models():
                     models = sorted(set(
                         m["id"] for m in data if m.get("id", "").startswith("deepseek")
                     ), reverse=True)
-                    return True, models if models else DEEPSEEK_FALLBACK
+                    return True, models if models else DEEPSEEK_FALLBACK, []
         except Exception as e:
             print(f"Error fetching DeepSeek models: {e}")
-        return True, DEEPSEEK_FALLBACK  # Key present, assume available
+        return True, DEEPSEEK_FALLBACK, []
+
+    async def fetch_bedrock() -> tuple[bool, list[str], list[str]]:
+        if not bedrock_available:
+            return False, BEDROCK_FALLBACK, ["amazon.titan-embed-text-v1", "amazon.titan-embed-text-v2:0"]
+        try:
+            # Bedrock foundation models include embeddings
+            def _list():
+                c = _make_aws_client("bedrock", settings.get("aws_region", "us-east-1"), settings)
+                resp = c.list_foundation_models()
+                chat = []
+                embed = []
+                for m in resp.get("modelSummaries", []):
+                    mid = f"bedrock.{m['modelId']}"
+                    if "EMBEDDING" in m.get("outputModalities", []):
+                        embed.append(mid)
+                    else:
+                        chat.append(mid)
+                return chat, embed
+            
+            chat, embed = await asyncio.to_thread(_list)
+            return True, chat if chat else BEDROCK_FALLBACK, embed if embed else ["bedrock.amazon.titan-embed-text-v1"]
+        except Exception:
+            return True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]
 
     # Run all fetches concurrently
-    ollama_result, openai_result, anthropic_result, gemini_result, grok_result, deepseek_result = await asyncio.gather(
-        fetch_ollama(), fetch_openai(), fetch_anthropic(), fetch_gemini(), fetch_grok(), fetch_deepseek()
+    results = await asyncio.gather(
+        fetch_ollama(), fetch_openai(), fetch_anthropic(), 
+        fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock()
     )
 
-    ollama_available, local_models = ollama_result
-    openai_avail, openai_models = openai_result
-    anthropic_avail, anthropic_models = anthropic_result
-    gemini_avail, gemini_models = gemini_result
-    grok_avail, grok_models = grok_result
-    deepseek_avail, deepseek_models = deepseek_result
+    ollama_avail, ollama_chat, ollama_embed = results[0]
+    openai_avail, openai_chat, openai_embed = results[1]
+    anthropic_avail, anthropic_chat, anthropic_embed = results[2]
+    gemini_avail, gemini_chat, gemini_embed = results[3]
+    grok_avail, grok_chat, grok_embed = results[4]
+    deepseek_avail, deepseek_chat, deepseek_embed = results[5]
+    bedrock_avail, bedrock_chat, bedrock_embed = results[6]
 
     # --- Build provider map ---
     providers = {
-        "ollama": {"available": ollama_available, "models": local_models},
-        "gemini": {"available": gemini_avail, "models": gemini_models},
-        "anthropic": {"available": anthropic_avail, "models": anthropic_models},
-        "openai": {"available": openai_avail, "models": openai_models},
-        "grok": {"available": grok_avail, "models": grok_models},
-        "deepseek": {"available": deepseek_avail, "models": deepseek_models},
-        "bedrock": {"available": bedrock_available, "models": BEDROCK_FALLBACK},
+        "ollama": {"available": ollama_avail, "models": ollama_chat, "embedding_models": ollama_embed},
+        "gemini": {"available": gemini_avail, "models": gemini_chat, "embedding_models": gemini_embed},
+        "anthropic": {"available": anthropic_avail, "models": anthropic_chat, "embedding_models": anthropic_embed},
+        "openai": {"available": openai_avail, "models": openai_chat, "embedding_models": openai_embed},
+        "grok": {"available": grok_avail, "models": grok_chat, "embedding_models": grok_embed},
+        "deepseek": {"available": deepseek_avail, "models": deepseek_chat, "embedding_models": deepseek_embed},
+        "bedrock": {"available": bedrock_avail, "models": bedrock_chat, "embedding_models": bedrock_embed},
     }
 
     # --- Flat list of all available models ---
@@ -224,12 +254,12 @@ async def get_models():
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_models + anthropic_models + openai_models + grok_models + deepseek_models + BEDROCK_FALLBACK
+    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK
 
     return {
         "providers": providers,
         "all_available": all_available,
-        "local": local_models,
+        "local": ollama_chat,
         "cloud": cloud_models,
     }
 

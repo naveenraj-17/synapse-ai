@@ -22,14 +22,28 @@ def save_repos(repos: list[dict]):
 
 @router.get("/api/repos")
 async def get_repos():
-    # Update statuses if needed or simply return
     repos = load_repos()
-    
-    # Reconcile status from the actual DB state for ALL repos
+
     try:
-        from services.code_indexer import get_index_status
+        from services.code_indexer import get_index_status, _active_threads
         updated = False
         for r in repos:
+            if r.get("status") in ("indexing", "stopping"):
+                # Check whether the background thread is still alive.
+                # After a backend restart _active_threads is empty, so any
+                # repo left in "indexing" / "stopping" is a stale artifact.
+                thread = _active_threads.get(r["id"])
+                if not thread or not thread.is_alive():
+                    r["status"] = "stopped"
+                    updated = True
+                else:
+                    # Thread alive — just refresh the live chunk count
+                    stats = get_index_status(r["id"])
+                    if stats["count"] != r.get("file_count", 0):
+                        r["file_count"] = stats["count"]
+                        updated = True
+                continue
+
             stats = get_index_status(r["id"])
             if stats["status"] == "indexed":
                 if r.get("status") != "indexed" or r.get("file_count") != stats["count"]:
@@ -40,7 +54,6 @@ async def get_repos():
                 if r.get("status") != "error":
                     r["status"] = "error"
                     updated = True
-        # Persist corrected statuses so tools/agents see the right state
         if updated:
             save_repos(repos)
     except ImportError:
@@ -108,7 +121,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
             repos[i] = repo
             break
     save_repos(repos)
-    
+
     # Run in background
     try:
         from services.code_indexer import run_index
@@ -120,3 +133,31 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Indexer service not available")
 
     return {"status": "indexing_started"}
+
+
+@router.post("/api/repos/{repo_id}/stop-index")
+async def stop_index_repo(repo_id: str):
+    repos = load_repos()
+    repo = next((r for r in repos if r["id"] == repo_id), None)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repo not found")
+
+    if repo.get("status") not in ("indexing", "stopping"):
+        raise HTTPException(status_code=409, detail="Repo is not currently indexing")
+
+    try:
+        from services.code_indexer import stop_index
+        was_running = stop_index(repo_id)
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Indexer service not available")
+
+    # If a live thread was signalled, mark "stopping" (thread will set "stopped" when done).
+    # If no thread is alive (e.g. after a backend restart), mark "stopped" immediately.
+    new_status = "stopping" if was_running else "stopped"
+    for i, r in enumerate(repos):
+        if r["id"] == repo_id:
+            repos[i]["status"] = new_status
+            break
+    save_repos(repos)
+
+    return {"status": new_status, "was_running": was_running}

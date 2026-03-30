@@ -38,6 +38,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [activeTab, setActiveTab] = useState<Tab>(initialTab as Tab);
     const [agentName, setAgentName] = useState('');
     const [selectedModel, setSelectedModel] = useState('');
+    const [embeddingModel, setEmbeddingModel] = useState('');
     const [mode, setMode] = useState('local'); // local | cloud
     const [localModels, setLocalModels] = useState<string[]>([]);
     const [cloudModels, setCloudModels] = useState<string[]>([]);
@@ -184,6 +185,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
         const payload = {
             agent_name: agentName,
             model: selectedModel,
+            embedding_model: embeddingModel,
             mode: mode,
             openai_key: openaiKey,
             anthropic_key: anthropicKey,
@@ -393,6 +395,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             .then(data => {
                 setAgentName(data.agent_name || 'Antigravity Agent');
                 setSelectedModel(data.model || 'mistral');
+                setEmbeddingModel(data.embedding_model || '');
                 setMode(data.mode || 'local');
                 setOpenaiKey(data.openai_key || '');
                 setAnthropicKey(data.anthropic_key || '');
@@ -900,6 +903,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             providers={providers}
                             mode={mode} setMode={setMode}
                             selectedModel={selectedModel} setSelectedModel={setSelectedModel}
+                            embeddingModel={embeddingModel} setEmbeddingModel={setEmbeddingModel}
                             localModels={localModels} cloudModels={cloudModels}
                             filteredModels={filteredModels}
                             loadingModels={loadingModels}
