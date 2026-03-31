@@ -725,7 +725,8 @@ def _fetch_anthropic_models(api_key):
         return []
 
 def _fetch_bedrock_models(api_key, region):
-    """Use boto3 with ABSK token to list Bedrock foundation models."""
+    """List Bedrock foundation models — tries boto3, falls back to direct HTTP."""
+    # Try boto3 first
     try:
         import boto3  # type: ignore
         os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
@@ -737,8 +738,24 @@ def _fetch_bedrock_models(api_key, region):
         ))
         return models
     except ImportError:
-        warn("boto3 not found in system Python — cannot list Bedrock models.")
+        pass  # fall through to HTTP path
+    except Exception as e:
+        warn(f"boto3 Bedrock listing failed: {e}")
         return []
+
+    # Fallback: direct HTTP with ABSK bearer token
+    try:
+        import urllib.request
+        import json as _json
+        url = f"https://bedrock.{region}.amazonaws.com/foundation-models"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = _json.loads(r.read())
+        models = sorted(set(
+            s["modelId"] for s in data.get("modelSummaries", [])
+            if s.get("modelId")
+        ))
+        return models
     except Exception as e:
         warn(f"Could not fetch Bedrock models: {e}")
         return []

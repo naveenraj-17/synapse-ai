@@ -133,7 +133,7 @@ export const LogsTab = () => {
                 <div className="ml-auto flex items-center gap-3">
                     <span className="text-xs text-zinc-600">{logs.length} log{logs.length !== 1 ? 's' : ''}</span>
                     <button
-                        onClick={fetchLogs}
+                        onClick={() => fetchLogs()}
                         className="p-2 text-zinc-500 hover:text-white hover:bg-white/5 transition-colors"
                         title="Refresh"
                     >
