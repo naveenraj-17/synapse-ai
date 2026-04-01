@@ -932,10 +932,17 @@ export default function Home() {
         {/* Header */}
         <header className="h-14 border-b border-zinc-800 bg-zinc-950 px-6 shrink-0 z-10">
           <div className='w-full md:max-w-5xl mx-auto h-full flex items-center justify-between'>
-            <div className="flex items-center gap-3">
-              <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-              <h1 className="text-base font-bold tracking-widest uppercase text-zinc-100">
-                {agentName} <span className="text-zinc-500">-</span> <span className="text-zinc-400">Ask Anything</span>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-3 w-3 shrink-0 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
+              <h1 className="text-base font-bold tracking-widest uppercase text-zinc-100 flex items-center gap-2 min-w-0">
+                <span
+                  className="truncate max-w-[180px] md:max-w-[260px]"
+                  title={agentName}
+                >
+                  {agentName}
+                </span>
+                <span className="text-zinc-500 shrink-0">-</span>
+                <span className="text-zinc-400 shrink-0">Ask Anything</span>
               </h1>
             </div>
             <div className="flex items-center">
@@ -953,9 +960,14 @@ export default function Home() {
                     {systemStatus?.provider ? systemStatus.provider.charAt(0).toUpperCase() + systemStatus.provider.slice(1) : 'Loading...'}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">Model:</span>
-                  <span className="text-zinc-200">{systemStatus?.model || 'Loading...'}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-zinc-400 shrink-0">Model:</span>
+                  <span
+                    className="text-zinc-200 truncate max-w-[120px] lg:max-w-[180px]"
+                    title={systemStatus?.model || undefined}
+                  >
+                    {systemStatus?.model || 'Loading...'}
+                  </span>
                 </div>
               </div>
 
