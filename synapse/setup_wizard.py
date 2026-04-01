@@ -10,8 +10,15 @@ from pathlib import Path
 import sys
 
 PACKAGE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = PACKAGE_DIR.parent  # project root (synapse-ai/)
 DEFAULT_DATA_DIR = Path.home() / ".synapse" / "data"
-DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR)))
+
+_raw_data_dir = os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR))
+if not os.path.isabs(_raw_data_dir):
+    DATA_DIR = (ROOT_DIR / _raw_data_dir).resolve()
+else:
+    DATA_DIR = Path(_raw_data_dir).resolve()
+
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DEFAULT_SETTINGS = {

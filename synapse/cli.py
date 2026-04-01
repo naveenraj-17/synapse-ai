@@ -49,7 +49,14 @@ def _load_dotenv(path: Path):
 _load_dotenv(_ENV_FILE)
 
 DEFAULT_DATA_DIR = Path.home() / ".synapse" / "data"
-DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR)))
+# Always resolve to absolute path so the value is correct regardless of CWD.
+# When SYNAPSE_DATA_DIR is a relative path (e.g. "data" in .env), resolve it
+# relative to the project root rather than wherever `synapse` was invoked from.
+_raw_data_dir = os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR))
+if not os.path.isabs(_raw_data_dir):
+    DATA_DIR = (ROOT_DIR / _raw_data_dir).resolve()
+else:
+    DATA_DIR = Path(_raw_data_dir).resolve()
 
 DEFAULT_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
 DEFAULT_FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))

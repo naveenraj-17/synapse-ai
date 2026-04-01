@@ -29,7 +29,7 @@ SCOPES = [
 ]
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
-GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data" / "google-credentials")))
+GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data"))) / "google-credentials"
 
 
 class UnauthenticatedError(Exception):
