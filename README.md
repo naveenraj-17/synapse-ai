@@ -19,13 +19,6 @@ curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.s
 irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
 ```
 
-### Docker
-```bash
-git clone https://github.com/naveenraj-17/synapse
-cd synapse
-docker-compose up
-```
-
 ### npm
 ```bash
 npm install -g synapse-ai
@@ -58,6 +51,11 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 - **Local-first** — runs entirely on your machine with Ollama, or connect any cloud LLM
 
 ---
+
+## Synapse UI
+
+https://github.com/user-attachments/assets/a898626f-0b5e-48fd-80ed-c052700ab7d2
+
 
 ## The Tool Ecosystem
 
