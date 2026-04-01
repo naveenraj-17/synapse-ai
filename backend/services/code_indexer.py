@@ -40,7 +40,10 @@ _active_threads: dict[str, threading.Thread] = {}
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
-# Known output dimensions for popular embedding models
+# Known output dimensions for popular embedding models.
+# Only base model IDs are listed here — provisioned-throughput suffixes
+# (e.g. ":2:8k", ":1:512k") are handled by the prefix-match fallback in
+# probe_embedding_dim(), so there is no need to enumerate every variant.
 EMBEDDING_MODEL_DIMS: dict[str, int] = {
     # Gemini
     "gemini-embedding-001": 768,
@@ -50,9 +53,10 @@ EMBEDDING_MODEL_DIMS: dict[str, int] = {
     "text-embedding-ada-002": 1536,
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
-    # Bedrock
+    # Bedrock — Titan Text Embeddings
     "bedrock.amazon.titan-embed-text-v1": 1536,
     "bedrock.amazon.titan-embed-text-v2:0": 1024,
+    # Bedrock — Cohere
     "bedrock.cohere.embed-english-v3": 1024,
     "bedrock.cohere.embed-multilingual-v3": 1024,
     # Ollama popular models
@@ -133,6 +137,19 @@ def probe_embedding_dim(model: str, settings: dict) -> int:
     if known_dim is not None:
         print(f"[index] Resolved dim for '{model}' from lookup table: {known_dim}")
         return known_dim
+
+    # Prefix-match fallback: handles provisioned-throughput suffixes like ":2:8k"
+    # that Bedrock appends to base model IDs.  Pick the longest matching prefix.
+    prefix_match = None
+    prefix_len = 0
+    for known_model, dim in EMBEDDING_MODEL_DIMS.items():
+        if model.startswith(known_model) and len(known_model) > prefix_len:
+            prefix_match = (known_model, dim)
+            prefix_len = len(known_model)
+    if prefix_match is not None:
+        matched_model, matched_dim = prefix_match
+        print(f"[index] Resolved dim for '{model}' via prefix match on '{matched_model}': {matched_dim}")
+        return matched_dim
 
     # Unknown model — probe by making one test call
     from core.llm_providers import embed_batch

@@ -53,7 +53,7 @@ OLLAMA_MODEL = "llama3"
 TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
-GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data" / "google-credentials")))
+GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data"))) / "google-credentials"
 
 _settings = load_settings()
 

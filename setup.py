@@ -19,11 +19,42 @@ import urllib.request
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
-DATA_DIR = os.path.join(BACKEND_DIR, "data")
+ENV_FILE = os.path.join(ROOT_DIR, ".env")
+
+# ---------------------------------------------------------------------------
+# Load .env BEFORE computing DATA_DIR so that setup.py and cli.py always
+# agree on the same data directory (e.g. SYNAPSE_DATA_DIR=backend/data).
+# ---------------------------------------------------------------------------
+def _load_dotenv_early(path):
+    """Minimal .env loader — only sets vars not already in the environment."""
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line or _line.startswith("#") or "=" not in _line:
+                    continue
+                _key, _, _val = _line.partition("=")
+                _key = _key.strip()
+                _val = _val.strip()
+                if _key and _key not in os.environ:
+                    os.environ[_key] = _val
+    except Exception:
+        pass
+
+_load_dotenv_early(ENV_FILE)
+
+# Resolve DATA_DIR: relative paths are anchored to ROOT_DIR (same logic as cli.py)
+_raw_data_dir = os.environ.get("SYNAPSE_DATA_DIR", os.path.join(BACKEND_DIR, "data"))
+if not os.path.isabs(_raw_data_dir):
+    DATA_DIR = os.path.normpath(os.path.join(ROOT_DIR, _raw_data_dir))
+else:
+    DATA_DIR = _raw_data_dir
+
 EXAMPLES_DIR = os.path.join(BACKEND_DIR, "examples")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
-ENV_FILE = os.path.join(ROOT_DIR, ".env")
 
 # Port defaults — read from env first so an existing .env is respected
 DEFAULT_BACKEND_PORT = int(os.environ.get("SYNAPSE_BACKEND_PORT", "8000"))
@@ -364,6 +395,10 @@ def save_settings(cfg):
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(cfg, f, indent=4)
+    # Persist the data directory path into .env so cli.py and synapse start
+    # always find settings in the same location, even with relative paths.
+    _rel = os.path.relpath(DATA_DIR, ROOT_DIR)
+    _update_env_file("SYNAPSE_DATA_DIR", _rel)
 
 # ---------------------------------------------------------------------------
 # Q1 — Coding Agent
@@ -1049,6 +1084,9 @@ def start_backend(backend_port: int = DEFAULT_BACKEND_PORT):
     step("Starting Backend Server")
     env = os.environ.copy()
     env["SYNAPSE_BACKEND_PORT"] = str(backend_port)
+    # Always pass SYNAPSE_DATA_DIR as an absolute path so the backend subprocess
+    # resolves it correctly regardless of its working directory.
+    env["SYNAPSE_DATA_DIR"] = os.path.abspath(DATA_DIR)
     return subprocess.Popen([PYTHON_EXE, "main.py"], cwd=BACKEND_DIR, env=env)
 
 def start_frontend(frontend_port: int = DEFAULT_FRONTEND_PORT, backend_port: int = DEFAULT_BACKEND_PORT):
