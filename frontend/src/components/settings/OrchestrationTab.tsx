@@ -803,7 +803,7 @@ function BottomPanel({
     draft: Orchestration;
     setDraft: (o: Orchestration) => void;
     runStatus: string;
-    runLog: string[];
+    runLog: LogEntry[];
     runInput: string;
     setRunInput: (v: string) => void;
     humanPrompt: string | null;
