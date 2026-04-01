@@ -52,8 +52,14 @@ OLLAMA_MODEL = "llama3"
 # Agent Configuration
 TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data")))
-GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data"))) / "google-credentials"
+_PROJECT_ROOT = BACKEND_ROOT.parent
+_data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
+if _data_dir_env:
+    _data_dir_p = Path(_data_dir_env)
+    DATA_DIR = _data_dir_p if _data_dir_p.is_absolute() else _PROJECT_ROOT / _data_dir_p
+else:
+    DATA_DIR = BACKEND_ROOT / "data"
+GOOGLE_CREDENTIALS_DIR = DATA_DIR / "google-credentials"
 
 _settings = load_settings()
 
@@ -69,10 +75,8 @@ TOOLS_LIST = {
     "pdf_parser": str(TOOLS_DIR / "pdf_parser.py"),
     "xlsx_parser": str(TOOLS_DIR / "xlsx_parser.py"),
     "sandbox": str(TOOLS_DIR / "sandbox.py"),
+    "code_search": str(TOOLS_DIR / "code_search.py")
 }
-
-if _settings.get("coding_agent_enabled"):
-    TOOLS_LIST["code_search"] = str(TOOLS_DIR / "code_search.py")
 
 REPOS_FILE = DATA_DIR / "repos.json"
 
@@ -143,18 +147,16 @@ def _build_native_mcp_servers() -> list[dict]:
 
     # --- Filesystem MCP Server ---
     repo_paths = _get_repo_paths()
-    vault_path = str(BACKEND_ROOT / "data" / "vault")
-    # Always include the vault directory so the Filesystem session can read vault
-    # files written by the sandbox session (avoids cross-session path mismatches).
+    vault_path = str(DATA_DIR / "vault")
+    # Always start with vault; include any configured repo paths on top.
     fs_paths = repo_paths + [vault_path]
-    if repo_paths:
-        servers.append({
-            "name": "Filesystem",
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem"] + fs_paths,
-        })
-    else:
-        print("Warning: No repos configured — skipping filesystem MCP server.")
+    if not repo_paths:
+        print("Warning: No repos configured — starting filesystem MCP server with vault access only.")
+    servers.append({
+        "name": "Filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"] + fs_paths,
+    })
 
     # --- Playwright MCP Server (browser automation) ---
     if _settings.get("browser_automation_enabled", True):
@@ -211,7 +213,7 @@ def _build_native_mcp_servers() -> list[dict]:
 # The react_engine receives this module as a parameter for testability.
 # ---------------------------------------------------------------------------
 agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
-tool_router: dict[str, str] = {}                 # tool_name -> client_name
+tool_router: dict[str, tuple[str, str]] = {}     # tool_key -> (session_name, actual_tool_name)
 exit_stack: Optional[AsyncExitStack] = None
 memory_store: Any = None
 mcp_manager: Optional[MCPClientManager] = None
@@ -254,7 +256,7 @@ async def lifespan(app: FastAPI):
             # Register tools
             tools = await session.list_tools()
             for tool in tools.tools:
-                tool_router[tool.name] = agent_name
+                tool_router[tool.name] = (agent_name, tool.name)
                 print(f"  Registered tool: {tool.name} -> {agent_name}")
 
         # --- Initialize Native MCP Servers ---
@@ -288,7 +290,7 @@ async def lifespan(app: FastAPI):
 
                 tools = await session.list_tools()
                 for tool in tools.tools:
-                    tool_router[tool.name] = mcp_name
+                    tool_router[tool.name] = (mcp_name, tool.name)
                     print(f"  Registered tool: {tool.name} -> {mcp_name}")
             except Exception as e:
                 print(f"  Failed to connect native MCP server '{mcp_name}': {e}")
@@ -309,8 +311,8 @@ async def lifespan(app: FastAPI):
                 tools = await session.list_tools()
                 print(f"  MCP Server '{name}' returned {len(tools.tools)} tools.")
                 for tool in tools.tools:
-                    tool_router[tool.name] = agent_key
-                    print(f"  Registered external tool: {tool.name} -> {agent_key}")
+                    tool_router[f"{name}__{tool.name}"] = (agent_key, tool.name)
+                    print(f"  Registered external tool: {name}__{tool.name} -> {agent_key}")
             except Exception as e:
                 print(f"  Error listing tools for {name}: {e}")
                 import traceback

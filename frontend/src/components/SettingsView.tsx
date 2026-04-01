@@ -61,8 +61,9 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [bedrockApiKey, setBedrockApiKey] = useState('');
     const [awsRegion, setAwsRegion] = useState('us-east-1');
     const [bedrockInferenceProfile, setBedrockInferenceProfile] = useState('');
-    const [bedrockInferenceProfiles, setBedrockInferenceProfiles] = useState<Array<{ id: string; arn: string; name: string; status?: string }>>([]);
+    const [bedrockInferenceProfiles, setBedrockInferenceProfiles] = useState<Array<{ id: string; arn: string; name: string; status?: string; type?: string }>>([]);
     const [loadingInferenceProfiles, setLoadingInferenceProfiles] = useState(false);
+    const [inferenceProfilesError, setInferenceProfilesError] = useState<string | null>(null);
     const [sqlConnectionString, setSqlConnectionString] = useState('');
 
 
@@ -107,10 +108,10 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     const [mcpToast, setMcpToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
     const [pendingMcpServerName, setPendingMcpServerName] = useState<string | null>(null);
     const [draftMcpServer, setDraftMcpServer] = useState<{
-        name: string; server_type: 'stdio' | 'remote';
+        name: string; label: string; server_type: 'stdio' | 'remote';
         command: string; args: string; env: { key: string; value: string }[];
         url: string; token: string;
-    }>({ name: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
+    }>({ name: '', label: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
 
     const [availableCapabilities, setAvailableCapabilities] = useState<any[]>([]);
     const [loadingCapabilities, setLoadingCapabilities] = useState(true);
@@ -173,13 +174,16 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
     const refreshBedrockInferenceProfiles = async () => {
         setLoadingInferenceProfiles(true);
+        setInferenceProfilesError(null);
         try {
             const res = await fetch('/api/bedrock/inference-profiles');
             const data = await res.json();
             const profiles = Array.isArray(data.profiles) ? data.profiles : [];
             setBedrockInferenceProfiles(profiles);
+            if (data.error) setInferenceProfilesError(data.error);
         } catch {
             setBedrockInferenceProfiles([]);
+            setInferenceProfilesError('Failed to reach the server.');
         } finally {
             setLoadingInferenceProfiles(false);
         }
@@ -220,7 +224,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             return;
         }
 
-        if (mode === 'bedrock') {
+        if (mode === 'bedrock' || bedrockApiKey) {
             await refreshBedrockModels();
             await refreshBedrockInferenceProfiles();
         } else if (activeTab === 'models' || mode === 'cloud') {
@@ -402,6 +406,9 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 setAllowDbWrite(data.allow_db_write || false);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
+                if (data.bedrock_api_key) {
+                    refreshBedrockInferenceProfiles();
+                }
             });
 
         // Personal details
@@ -452,7 +459,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                         if (!groups[source]) {
                             groups[source] = {
                                 id: source,
-                                label: source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' '),
+                                label: t.source_label || source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' '),
                                 description: `Tools from ${source}`,
                                 tools: [],
                                 toolDetails: [],
@@ -531,6 +538,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: draftMcpServer.name,
+                    label: draftMcpServer.label,
                     server_type: draftMcpServer.server_type,
                     command: draftMcpServer.command,
                     args: argsList,
@@ -542,7 +550,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
             if (res.ok) {
                 const data = await res.json();
                 dispatch(addMcpServer(data.config));
-                setDraftMcpServer({ name: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
+                setDraftMcpServer({ name: '', label: '', server_type: 'stdio', command: '', args: '', env: [], url: '', token: '' });
 
                 if (data.status === 'oauth_pending') {
                     setLastMcpConnected(false);
@@ -886,6 +894,8 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             setBedrockInferenceProfile={setBedrockInferenceProfile}
                             bedrockInferenceProfiles={bedrockInferenceProfiles}
                             loadingInferenceProfiles={loadingInferenceProfiles}
+                            inferenceProfilesError={inferenceProfilesError}
+                            onExpandBedrock={refreshBedrockInferenceProfiles}
                             onSave={handleSaveSection}
                         />
                     )}
@@ -925,7 +935,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
                     {/* REPOS TAB */}
                     {activeTab === 'repos' && (
-                        <ReposTab />
+                        <ReposTab embeddingModel={embeddingModel} />
                     )}
 
                     {/* DB CONFIGS TAB */}

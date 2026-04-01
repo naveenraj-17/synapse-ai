@@ -175,6 +175,7 @@ export default function Home() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [streamingActivity, setStreamingActivity] = useState<string | null>(null);
+  const [isThinking, setIsThinking] = useState(false);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -412,6 +413,7 @@ export default function Home() {
   const processMessage = async (content: string, images?: string[]) => {
     setIsLoading(true);
     setStreamingActivity(null);
+    setIsThinking(false);
     pendingThoughtsRef.current = [];
 
     // Try SSE streaming first
@@ -424,6 +426,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       setStreamingActivity(null);
+      setIsThinking(false);
       pendingThoughtsRef.current = [];
     }
   };
@@ -474,10 +477,11 @@ export default function Home() {
                     // ── Standard events ──────────────────────────────────────────
                     case 'status':
                       setStreamingActivity(data.message);
+                      setIsThinking(false);
                       break;
 
                     case 'thinking':
-                      setStreamingActivity('🤔 Thinking...');
+                      setIsThinking(true);
                       break;
 
                     case 'tool_execution': {
@@ -486,11 +490,13 @@ export default function Home() {
                         .replace(/\b\w/g, (l: string) => l.toUpperCase());
                       const stepLabel = data.step_name ? ` · ${data.step_name}` : '';
                       setStreamingActivity(`🔧 ${toolDisplayName}${stepLabel}`);
+                      setIsThinking(false);
                       break;
                     }
 
                     case 'tool_result':
                       setStreamingActivity(`✓ Processing results`);
+                      setIsThinking(false);
                       break;
 
                     case 'llm_thought':
@@ -506,7 +512,7 @@ export default function Home() {
                         // Single-agent flow — accumulate in pending ref
                         pendingThoughtsRef.current = [...pendingThoughtsRef.current, data.thought];
                       }
-                      setStreamingActivity('💭 Reasoning...');
+                      setIsThinking(true);
                       break;
 
                     case 'response':
@@ -1054,9 +1060,9 @@ export default function Home() {
 
             {/* Loading Indicator */}
             {isLoading && (
-              <div className="flex gap-4 max-w-3xl items-center">
+              <div className="flex gap-4 max-w-3xl items-start">
                 {/* Spinning Bot Icon with Ring */}
-                <div className="relative h-8 w-8 shrink-0">
+                <div className="relative h-8 w-8 shrink-0 mt-0.5">
                   {/* Outer spinning ring */}
                   <div className="absolute inset-0 border-2 border-transparent border-t-purple-500 border-r-purple-500/50 rounded-full animate-spin"></div>
                   {/* Inner bot icon */}
@@ -1065,17 +1071,32 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Status text with animated dots */}
-                <div className="flex items-baseline gap-0.5">
-                  <span className="text-sm text-zinc-300 font-medium">
-                    {streamingActivity || 'Processing'}
-                  </span>
-                  {/* Animated dots - smaller and inline */}
-                  <span className="flex gap-0.5 items-end pb-0.5">
-                    <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                    <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
-                    <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
-                  </span>
+                <div className="flex flex-col gap-1">
+                  {/* Primary status — last tool call, persists until next tool call */}
+                  <div className="flex items-baseline gap-0.5">
+                    <span className="text-sm text-zinc-300 font-medium">
+                      {streamingActivity || 'Processing'}
+                    </span>
+                    {!isThinking && (
+                      <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
+                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Thinking line — only shown when actively thinking */}
+                  {isThinking && (
+                    <div className="flex items-baseline gap-0.5">
+                      <span className="text-xs text-zinc-500 font-mono">💭 Thinking</span>
+                      <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
+                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info } from 'lucide-react';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -54,7 +54,9 @@ interface ModelsTabProps {
     bedrockInferenceProfile: string; setBedrockInferenceProfile: (v: string) => void;
     bedrockInferenceProfiles: any[];
     loadingInferenceProfiles: boolean;
+    inferenceProfilesError?: string | null;
     loadingModels: boolean;
+    onExpandBedrock?: () => void;
     onSave: () => void;
     // Backward compat
     mode: string; setMode: (v: string) => void;
@@ -145,8 +147,8 @@ export const ModelsTab = ({
     deepseekKey, setDeepseekKey,
     bedrockApiKey, setBedrockApiKey,
     awsRegion, setAwsRegion, bedrockInferenceProfile, setBedrockInferenceProfile,
-    bedrockInferenceProfiles, loadingInferenceProfiles, loadingModels,
-    onSave, mode, setMode, localModels, cloudModels, filteredModels
+    bedrockInferenceProfiles, loadingInferenceProfiles, inferenceProfilesError, loadingModels,
+    onExpandBedrock, onSave, mode, setMode, localModels, cloudModels, filteredModels
 }: ModelsTabProps) => {
     const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
@@ -198,7 +200,11 @@ export const ModelsTab = ({
                                 }`}>
                                 {/* Card Header */}
                                 <button
-                                    onClick={() => setExpandedProvider(isExpanded ? null : key)}
+                                    onClick={() => {
+                                        const next = isExpanded ? null : key;
+                                        setExpandedProvider(next);
+                                        if (next === 'bedrock') onExpandBedrock?.();
+                                    }}
                                     className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-900/30 transition-colors"
                                 >
                                     <div className="flex items-center gap-3">
@@ -306,6 +312,18 @@ export const ModelsTab = ({
                                                         )}
                                                     </select>
                                                 </div>
+                                                {inferenceProfilesError && (
+                                                    <div className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/20 text-[10px] text-red-400">
+                                                        <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                                                        <span className="break-all">{inferenceProfilesError}</span>
+                                                    </div>
+                                                )}
+                                                {!inferenceProfilesError && providerData.available && !bedrockInferenceProfile && (
+                                                    <div className="flex items-start gap-2 p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-400">
+                                                        <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                                                        <span>No inference profile selected. Please select an inference profile above to use AWS Bedrock.</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

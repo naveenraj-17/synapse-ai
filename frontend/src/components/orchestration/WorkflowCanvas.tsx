@@ -229,31 +229,37 @@ export function WorkflowCanvas({
             if (!sourceStep || !connection.target) return;
 
             const updatedSteps = orchestration.steps.map((s) => {
-                if (s.id !== connection.source) return s;
-
-                // Evaluator: route handle → update route_map
-                if (s.type === 'evaluator' && connection.sourceHandle?.startsWith('route_')) {
-                    const label = connection.sourceHandle.replace('route_', '');
-                    const newRouteMap = { ...(s.route_map || {}), [label]: connection.target! };
-                    return { ...s, route_map: newRouteMap };
-                }
-
-                // Loop: body handle → add to loop_step_ids, done handle → set next_step_id
-                if (s.type === 'loop') {
-                    if (connection.sourceHandle === 'body') {
-                        const bodyIds = [...(s.loop_step_ids || [])];
-                        if (!bodyIds.includes(connection.target!)) {
-                            bodyIds.push(connection.target!);
+                // --- SOURCE step: update routing fields ---
+                if (s.id === connection.source) {
+                    if (s.type === 'evaluator' && connection.sourceHandle?.startsWith('route_')) {
+                        const label = connection.sourceHandle.replace('route_', '');
+                        const newRouteMap = { ...(s.route_map || {}), [label]: connection.target! };
+                        return { ...s, route_map: newRouteMap };
+                    }
+                    if (s.type === 'loop') {
+                        if (connection.sourceHandle === 'body') {
+                            const bodyIds = [...(s.loop_step_ids || [])];
+                            if (!bodyIds.includes(connection.target!)) {
+                                bodyIds.push(connection.target!);
+                            }
+                            return { ...s, loop_step_ids: bodyIds };
                         }
-                        return { ...s, loop_step_ids: bodyIds };
+                        if (connection.sourceHandle === 'done') {
+                            return { ...s, next_step_id: connection.target! };
+                        }
                     }
-                    if (connection.sourceHandle === 'done') {
-                        return { ...s, next_step_id: connection.target! };
+                    return { ...s, next_step_id: connection.target! };
+                }
+
+                // --- TARGET step: auto-append source's output_key to input_keys ---
+                if (s.id === connection.target && sourceStep.output_key) {
+                    const existingKeys = s.input_keys || [];
+                    if (!existingKeys.includes(sourceStep.output_key)) {
+                        return { ...s, input_keys: [...existingKeys, sourceStep.output_key] };
                     }
                 }
 
-                // Default: set next_step_id
-                return { ...s, next_step_id: connection.target! };
+                return s;
             });
             onUpdateOrchestration({ ...orchestration, steps: updatedSteps });
         },

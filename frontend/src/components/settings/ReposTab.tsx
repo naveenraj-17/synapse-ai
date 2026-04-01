@@ -31,7 +31,11 @@ export interface Repo {
     file_count: number;
 }
 
-export function ReposTab() {
+interface ReposTabProps {
+    embeddingModel?: string;
+}
+
+export function ReposTab({ embeddingModel }: ReposTabProps) {
     const [repos, setRepos] = useState<Repo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [draftRepo, setDraftRepo] = useState<Partial<Repo> | null>(null);
@@ -209,6 +213,17 @@ export function ReposTab() {
         return (
             <div className="space-y-8">
                 {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
+                {!embeddingModel && (
+                    <div className="flex items-start gap-3 p-3 bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>
+                            No embedding model configured. Indexing requires an embedding model.{' '}
+                            <a href="/settings/models" className="underline hover:text-amber-300 transition-colors">
+                                Go to Models settings →
+                            </a>
+                        </span>
+                    </div>
+                )}
                 <div className="mb-4">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                         <FolderGit2 className="h-5 w-5" />

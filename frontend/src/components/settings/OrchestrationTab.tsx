@@ -13,6 +13,10 @@ import remarkGfm from 'remark-gfm';
 import { ConfirmationModal } from './ConfirmationModal';
 import { ToastNotification } from './ToastNotification';
 
+type ToolCallLogEntry = { kind: 'tool_call'; tool_name: string; args: Record<string, any>; step_name?: string };
+type ToolResultLogEntry = { kind: 'tool_result'; tool_name: string; preview: string };
+type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry;
+
 const STEP_ICONS: Record<StepType, React.FC<{ size?: number }>> = {
     llm: Zap, agent: Bot, tool: Wrench, evaluator: Scale, parallel: GitBranch,
     merge: GitMerge, loop: RefreshCw, human: User, transform: Code, end: Square,
@@ -70,7 +74,7 @@ export function OrchestrationTab() {
     const [runStepStatuses, setRunStepStatuses] = useState<Record<string, 'pending' | 'running' | 'paused' | 'completed' | 'failed'>>({});
     const [runId, setRunId] = useState<string | null>(null);
     const [runInput, setRunInput] = useState('');
-    const [runLog, setRunLog] = useState<string[]>([]);
+    const [runLog, setRunLog] = useState<LogEntry[]>([]);
     const [humanPrompt, setHumanPrompt] = useState<string | null>(null);
     const [humanContext, setHumanContext] = useState<string | null>(null);
     const [humanResponse, setHumanResponse] = useState('');
@@ -489,6 +493,23 @@ export function OrchestrationTab() {
                 abortRef.current = null;
                 break;
 
+            case 'tool_execution':
+                setRunLog(prev => [...prev, {
+                    kind: 'tool_call',
+                    tool_name: data.tool_name,
+                    args: data.args || {},
+                    step_name: data.step_name,
+                } as ToolCallLogEntry]);
+                break;
+
+            case 'tool_result':
+                setRunLog(prev => [...prev, {
+                    kind: 'tool_result',
+                    tool_name: data.tool_name,
+                    preview: data.preview || '',
+                } as ToolResultLogEntry]);
+                break;
+
             case 'token_usage':
                 // Silently track
                 break;
@@ -497,7 +518,7 @@ export function OrchestrationTab() {
                 if (data.type === 'chunk' && data.content) {
                     setRunLog(prev => {
                         const last = prev[prev.length - 1];
-                        if (last && last.startsWith('  ')) {
+                        if (last && typeof last === 'string' && last.startsWith('  ')) {
                             return [...prev.slice(0, -1), last + data.content];
                         }
                         return [...prev, '  ' + data.content];
@@ -792,7 +813,47 @@ function BottomPanel({
     onSubmitHuman: () => void;
 }) {
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run'>('run');
+    const [panelHeight, setPanelHeight] = useState(280);
+    const [humanContextHeight, setHumanContextHeight] = useState(200);
     const logRef = useRef<HTMLDivElement>(null);
+    const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+    const contextDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+    const onDragHandleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        dragRef.current = { startY: e.clientY, startHeight: panelHeight };
+        const onMouseMove = (ev: MouseEvent) => {
+            if (!dragRef.current) return;
+            const delta = dragRef.current.startY - ev.clientY;
+            const newHeight = Math.max(120, Math.min(700, dragRef.current.startHeight + delta));
+            setPanelHeight(newHeight);
+        };
+        const onMouseUp = () => {
+            dragRef.current = null;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    }, [panelHeight]);
+
+    const onContextDragMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        contextDragRef.current = { startY: e.clientY, startHeight: humanContextHeight };
+        const onMouseMove = (ev: MouseEvent) => {
+            if (!contextDragRef.current) return;
+            const delta = ev.clientY - contextDragRef.current.startY;
+            const newHeight = Math.max(80, Math.min(500, contextDragRef.current.startHeight + delta));
+            setHumanContextHeight(newHeight);
+        };
+        const onMouseUp = () => {
+            contextDragRef.current = null;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    }, [humanContextHeight]);
 
     useEffect(() => {
         if (logRef.current) {
@@ -801,9 +862,16 @@ function BottomPanel({
     }, [runLog]);
 
     return (
-        <div>
+        <div style={{ height: panelHeight }} className="flex flex-col">
+            {/* Drag handle */}
+            <div
+                onMouseDown={onDragHandleMouseDown}
+                className="h-1.5 w-full cursor-row-resize bg-zinc-800 hover:bg-blue-500/40 transition-colors flex-shrink-0 group flex items-center justify-center"
+            >
+                <div className="w-8 h-0.5 rounded bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
+            </div>
             {/* Section tabs */}
-            <div className="flex border-b border-zinc-800">
+            <div className="flex border-b border-zinc-800 flex-shrink-0">
                 {(['state', 'guardrails', 'run'] as const).map(section => (
                     <button
                         key={section}
@@ -826,7 +894,7 @@ function BottomPanel({
                 ))}
             </div>
 
-            <div className="p-4 max-h-[200px] overflow-y-auto">
+            <div className="p-4 flex-1 overflow-y-auto min-h-0">
                 {/* State Schema */}
                 {activeSection === 'state' && (
                     <StateSchemaEditor
@@ -890,16 +958,27 @@ function BottomPanel({
                         {humanPrompt && (
                             <div className="bg-amber-900/20 border border-amber-700/50 rounded p-3 space-y-2">
                                 {humanContext && (
-                                    <div className="text-xs text-zinc-300 bg-zinc-800/60 rounded p-2 max-h-[80px] overflow-y-auto border border-zinc-700/50">
-                                        <ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-                                                a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                code: ({ children }) => <code className="bg-zinc-700 px-1 rounded">{children}</code>,
-                                                strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
-                                            }}
-                                        >{humanContext}</ReactMarkdown>
+                                    <div>
+                                        <div
+                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
+                                            style={{ height: humanContextHeight }}
+                                        >
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                                                    a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
+                                                    code: ({ children }) => <code className="bg-zinc-700 px-1 rounded">{children}</code>,
+                                                    strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                                                }}
+                                            >{humanContext}</ReactMarkdown>
+                                        </div>
+                                        <div
+                                            onMouseDown={onContextDragMouseDown}
+                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-blue-500/40 transition-colors rounded-b border border-zinc-700/50 flex items-center justify-center group"
+                                        >
+                                            <div className="w-8 h-0.5 rounded bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
+                                        </div>
                                     </div>
                                 )}
                                 <div className="text-xs text-amber-300">
@@ -931,30 +1010,54 @@ function BottomPanel({
                         )}
 
                         {/* Log output */}
-                        <div ref={logRef} className="font-mono text-[11px] text-zinc-400 space-y-0.5 max-h-[120px] overflow-y-auto">
+                        <div ref={logRef} className="font-mono text-[11px] text-zinc-400 space-y-0.5">
                             {runLog.length === 0 ? (
                                 <div className="text-zinc-600 italic">No run output yet. Click Run to start.</div>
                             ) : (
-                                runLog.map((line, i) => (
-                                    <div key={i} className={
-                                        line.startsWith('✓') ? 'text-green-400' :
-                                        line.startsWith('✗') ? 'text-red-400' :
-                                        line.startsWith('▶') ? 'text-blue-400' :
-                                        line.startsWith('⏸') ? 'text-amber-400' :
-                                        line.startsWith('⟳') ? 'text-purple-400' :
-                                        'text-zinc-400'
-                                    }>
-                                        <ReactMarkdown
-                                            remarkPlugins={[remarkGfm]}
-                                            components={{
-                                                p: ({ children }) => <span>{children}</span>,
-                                                code: ({ children }) => <code className="bg-zinc-800 px-1 rounded text-[10px]">{children}</code>,
-                                                pre: ({ children }) => <pre className="bg-zinc-800 p-1 rounded mt-0.5 overflow-x-auto">{children}</pre>,
-                                                a: ({ href, children }) => <a href={href} className="underline opacity-70" target="_blank" rel="noreferrer">{children}</a>,
-                                            }}
-                                        >{line}</ReactMarkdown>
-                                    </div>
-                                ))
+                                runLog.map((entry, i) => {
+                                    if (typeof entry !== 'string') {
+                                        if (entry.kind === 'tool_call') {
+                                            return (
+                                                <div key={i} className="text-violet-400 pl-2">
+                                                    <details>
+                                                        <summary className="cursor-pointer list-none">
+                                                            🔧 {entry.tool_name}
+                                                            {entry.step_name && <span className="text-zinc-500 text-[10px]"> · {entry.step_name}</span>}
+                                                        </summary>
+                                                        <pre className="bg-zinc-800/50 p-1 rounded mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
+                                                            {JSON.stringify(entry.args, null, 2)}
+                                                        </pre>
+                                                    </details>
+                                                </div>
+                                            );
+                                        }
+                                        return (
+                                            <div key={i} className="text-zinc-500 pl-4 text-[10px]">
+                                                ↳ {entry.preview.slice(0, 200)}{entry.preview.length > 200 ? '…' : ''}
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div key={i} className={
+                                            entry.startsWith('✓') ? 'text-green-400' :
+                                            entry.startsWith('✗') ? 'text-red-400' :
+                                            entry.startsWith('▶') ? 'text-blue-400' :
+                                            entry.startsWith('⏸') ? 'text-amber-400' :
+                                            entry.startsWith('⟳') ? 'text-purple-400' :
+                                            'text-zinc-400'
+                                        }>
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    p: ({ children }) => <span>{children}</span>,
+                                                    code: ({ children }) => <code className="bg-zinc-800 px-1 rounded text-[10px]">{children}</code>,
+                                                    pre: ({ children }) => <pre className="bg-zinc-800 p-1 rounded mt-0.5 overflow-x-auto">{children}</pre>,
+                                                    a: ({ href, children }) => <a href={href} className="underline opacity-70" target="_blank" rel="noreferrer">{children}</a>,
+                                                }}
+                                            >{entry}</ReactMarkdown>
+                                        </div>
+                                    );
+                                })
                             )}
                         </div>
                     </div>

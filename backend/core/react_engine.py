@@ -349,34 +349,23 @@ async def run_agent_step(
                 print(f"DEBUG: 🔧 Tool Call: {tool_name}")
                 print(f"DEBUG: 📥 Args: {json.dumps(tool_args, indent=2, default=str)[:1000]}")
 
-                # ── sequentialthinking hard cap (1 call per task) ──────────────────
+                # ── sequentialthinking hard cap (5 calls per task) ─────────────────
                 # sequentialthinking changes `thoughtNumber` on every call so the
-                # identical-args guard below never fires.  Limit it to a single
-                # planning call so the LLM cannot spin in an infinite think loop.
+                # identical-args guard below never fires.  Limit to 5 calls so the
+                # LLM cannot spin in an infinite think loop.
                 if tool_name == "sequentialthinking":
                     _seq_count = tool_repetition_counts.get("__sequentialthinking__", 0) + 1
                     tool_repetition_counts["__sequentialthinking__"] = _seq_count
-                    if _seq_count > 1:
+                    if _seq_count > 5:
                         _seq_msg = (
-                            "sequentialthinking has already been called once this task. "
+                            "sequentialthinking has already been called 5 times this task. "
                             "You MUST now call a real action tool (browser, search, data tool, etc.) "
                             "to make progress. Do NOT call sequentialthinking again."
                         )
                         print(f"DEBUG: 🔁 sequentialthinking cap hit (call #{_seq_count}) — blocked", flush=True)
                         current_context_text += f"\nSystem: {_seq_msg}\n"
-                        yield {"type": "tool_result", "tool_name": tool_name, "preview": "Blocked: sequentialthinking already used (call a real tool now)"}
+                        yield {"type": "tool_result", "tool_name": tool_name, "preview": "Blocked: sequentialthinking already used 5 times (call a real tool now)"}
                         continue
-
-                # Loop guard
-                current_tool_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
-                tool_repetition_counts[current_tool_signature] = tool_repetition_counts.get(current_tool_signature, 0) + 1
-                _rep_count = tool_repetition_counts[current_tool_signature]
-                if _rep_count > 3:
-                    _loop_msg = f"Tool '{tool_name}' has been called {_rep_count} times with identical arguments and will not execute again. You are stuck in a loop. Stop calling this tool and synthesize the results you already have."
-                    print(f"DEBUG: 🔁 Loop guard fired for '{tool_name}' (called {_rep_count}x with same args — blocked)", flush=True)
-                    current_context_text += f"\nSystem: {_loop_msg}\n"
-                    yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Blocked: called {_rep_count}x with same args (loop guard)"}
-                    continue
 
                 # Execution guard
                 if "all" not in allowed_tools and tool_name not in allowed_tools and tool_name not in always_allowed:
@@ -454,7 +443,7 @@ async def run_agent_step(
 
                 # ===== MCP TOOLS =====
 
-                agent_name = server_module.tool_router[tool_name]
+                agent_name, actual_tool_name = server_module.tool_router[tool_name]
                 session = server_module.agent_sessions[agent_name]
 
                 try:
@@ -485,7 +474,7 @@ async def run_agent_step(
 
                     print(f"DEBUG MCP: ✓ ping OK [{round(time.time()-_mcp_t0,2)}s] — call_tool starting", flush=True)
 
-                    _timeout = timedelta(seconds=45) if tool_name.startswith("browser_") else timedelta(seconds=30)
+                    _timeout = timedelta(seconds=45) if actual_tool_name.startswith("browser_") else timedelta(seconds=30)
 
                     # Checkpoint again right before the actual call_tool —
                     # gives background transport tasks one more scheduling
@@ -493,7 +482,7 @@ async def run_agent_step(
                     await _anyio.sleep(0)
 
                     with _anyio.fail_after(_timeout.total_seconds() + 5):
-                        result = await session.call_tool(tool_name, tool_args, read_timeout_seconds=_timeout)
+                        result = await session.call_tool(actual_tool_name, tool_args, read_timeout_seconds=_timeout)
                         raw_output = result.content[0].text
 
                     print(f"DEBUG MCP: ✓ call_tool OK [{round(time.time()-_mcp_t0,2)}s] tool='{tool_name}'", flush=True)

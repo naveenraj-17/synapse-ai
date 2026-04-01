@@ -21,11 +21,11 @@ DEFAULT_TOOLS_BY_TYPE = {
         "search_files",               # recursive pattern search
         "list_directory",             # directory listing
         "get_file_info",              # file metadata
+        "grep",
+        "glob",
     },
     "code": {
         "search_codebase",
-        "grep",
-        "glob"
     },
     "orchestrator": set(),  # orchestrator agents delegate to sub-agents; no extra tools needed
 }
@@ -105,12 +105,21 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
                 print(f"DEBUG: Skipping session '{session_name}' — list_tools failed: {e}", flush=True)
                 continue
 
-        if "all" in allowed_tools:
-            all_tools.extend(session_tools)
-        else:
+        is_external = session_name.startswith("ext_mcp_")
+        server_name = session_name[len("ext_mcp_"):] if is_external else None
+
+        if is_external:
             for t in session_tools:
-                if t.name in allowed_tools:
-                    all_tools.append(t)
+                prefixed = f"{server_name}__{t.name}"
+                if "all" in allowed_tools or prefixed in allowed_tools:
+                    all_tools.append(VirtualTool(prefixed, t.description, t.inputSchema))
+        else:
+            if "all" in allowed_tools:
+                all_tools.extend(session_tools)
+            else:
+                for t in session_tools:
+                    if t.name in allowed_tools:
+                        all_tools.append(t)
 
     # Populate schema map for MCP tools
     for t in all_tools:
@@ -245,8 +254,17 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
 You have access to the following tools:
 {tools_json}
 
+**CODE & FILE NAVIGATION — EFFICIENCY FIRST:**
+When exploring or reading code/files, always reason: *"Can I find this with a search instead of reading the whole file?"* Follow this strict priority order:
+1. **`search_codebase` / `grep`** — use these first to locate symbols, patterns, function definitions, imports, or any text across files. This is almost always faster and more targeted than opening files.
+2. **`glob`** — use to discover file paths by pattern (e.g. `**/*.py`, `src/**/*.ts`) before reading any file.
+3. **Read / open a file** — only after you have identified the exact file and approximate line range via search. Read only the relevant slice, not the entire file.
+4. **Any other tool** — only when search/glob/read are genuinely insufficient.
+
+**Never read a file in full when you can grep for the specific symbol or section you need.** If you find yourself about to read more than one file without first searching, stop and use `search_codebase` or `grep` instead. This is the most efficient path and minimizes unnecessary context.
+
 **SEQUENTIALTHINKING (OPTIONAL — USE SPARINGLY):**
-`sequentialthinking` is a lightweight planning aid. If the request is complex, you MAY call it **once** to briefly outline your plan. After that **one** call you MUST immediately call a real action tool (browser, search, data tool, etc.). Never call `sequentialthinking` more than once per task, and never call it in place of a real tool — it cannot fetch data, browse the web, or do anything productive by itself.
+`sequentialthinking` is a lightweight planning aid. If the request is complex, you MAY call it to outline your plan or refine your thinking — up to **5 times** per task. After each call you MUST make progress with real action tools (browser, search, data tool, etc.). Never call `sequentialthinking` more than 5 times per task, and never call it in place of a real tool — it cannot fetch data, browse the web, or do anything productive by itself.
 
 ### LINKS & REFERENCES
 Whenever a tool returns URLs, source links, documentation references, or any other hyperlinks — **always include them in your response**. Present them clearly so the user can visit them directly. If you know of relevant official documentation, articles, or resources that would help the user, proactively include those links even if not explicitly returned by a tool.

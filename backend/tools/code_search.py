@@ -17,6 +17,19 @@ from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
 
+
+def _load_repo_paths() -> dict[str, str]:
+    """Load repo_id → absolute_path mapping from repos.json (via core.config DATA_DIR)."""
+    try:
+        from core.config import DATA_DIR
+        repos_file = os.path.join(DATA_DIR, "repos.json")
+        with open(repos_file) as f:
+            repos = json.load(f)
+        return {r["id"]: r["path"].rstrip("/") for r in repos if r.get("id") and r.get("path")}
+    except Exception:
+        return {}
+
+
 # Must match the indexing config in services/code_indexer.py
 CODE_EMBEDDING_MODEL = "gemini-embedding-001"
 CODE_EMBEDDING_DIM = 768
@@ -66,6 +79,7 @@ def _search(query: str, repo_ids: list[str], top_k: int = 10) -> list[dict]:
     except Exception as e:
         return [{"error": f"Database connection failed: {e}"}]
 
+    repo_path_map = _load_repo_paths()
     query_vector = _get_query_embedding(query)
     vector_str = "[" + ",".join(str(v) for v in query_vector) + "]"
     all_results = []
@@ -86,6 +100,7 @@ def _search(query: str, repo_ids: list[str], top_k: int = 10) -> list[dict]:
                         LIMIT %s
                     """, (vector_str, top_k))
 
+                    repo_root = repo_path_map.get(repo_id, "")
                     for row in cur.fetchall():
                         # location may be a psycopg Range object — convert to string
                         loc = row[2]
@@ -93,9 +108,12 @@ def _search(query: str, repo_ids: list[str], top_k: int = 10) -> list[dict]:
                             loc = f"{loc.lower}-{loc.upper}"
                         else:
                             loc = str(loc) if loc is not None else ""
+                        filename = row[0].lstrip("/")
+                        full_path = f"{repo_root}/{filename}" if repo_root else filename
                         all_results.append({
                             "repo_id": repo_id,
-                            "filename": row[0],
+                            "filename": filename,
+                            "full_path": full_path,
                             "code": row[1],
                             "location": loc,
                             "score": round(1.0 - row[3], 5)
@@ -124,9 +142,9 @@ def _grep_file(
     resolved = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
 
     if not os.path.exists(resolved):
-        return [{"error": f"File not found: {file_path}"}]
+        return [{"error": f"File not found: {file_path}. Use an absolute path (e.g. as returned by list_directory or search_files)."}]
     if not os.path.isfile(resolved):
-        return [{"error": f"Not a file: {file_path}"}]
+        return [{"error": f"Not a file: {file_path}. Use an absolute path to a file."}]
 
     # Detect binary files (simple heuristic)
     try:
@@ -192,9 +210,9 @@ def _glob_files(
     resolved = folder_path if os.path.isabs(folder_path) else os.path.join(os.getcwd(), folder_path)
 
     if not os.path.exists(resolved):
-        return [{"error": f"Folder not found: {folder_path}"}]
+        return [{"error": f"Folder not found: {folder_path}. Use an absolute path (e.g. as returned by list_allowed_directories or list_directory)."}]
     if not os.path.isdir(resolved):
-        return [{"error": f"Not a directory: {folder_path}"}]
+        return [{"error": f"Not a directory: {folder_path}. Use an absolute path to a folder."}]
 
     import glob as _glob
 
@@ -250,12 +268,13 @@ async def list_tools() -> list[types.Tool]:
             name="grep",
             description=(
                 "Search inside a single file for a pattern (grep-like). Pattern is a regex by default; "
-                "set `fixed` to true for literal matching. Returns matches with line numbers."
+                "set `fixed` to true for literal matching. Returns matches with line numbers. "
+                "IMPORTANT: `file_path` must be an absolute path (e.g. as returned by list_directory or search_files)."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "Path to the file to search"},
+                    "file_path": {"type": "string", "description": "Absolute path to the file to search (must be absolute, not relative)"},
                     "pattern": {"type": "string", "description": "Regex or literal pattern to search for"},
                     "ignore_case": {"type": "boolean", "default": False},
                     "fixed": {"type": "boolean", "description": "Treat pattern as literal substring (like grep -F)", "default": False},
@@ -268,12 +287,13 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="glob",
             description=(
-                "List files under a folder matching a glob pattern. Returns paths relative to the provided folder."
+                "List files under a folder matching a glob pattern. Returns paths relative to the provided folder. "
+                "IMPORTANT: `folder_path` must be an absolute path (e.g. from list_allowed_directories or list_directory)."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "folder_path": {"type": "string", "description": "Folder to search in"},
+                    "folder_path": {"type": "string", "description": "Absolute path to the folder to search in (must be absolute, not relative)"},
                     "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.py')", "default": "**/*"},
                     "recursive": {"type": "boolean", "default": True},
                     "include_dirs": {"type": "boolean", "default": False},

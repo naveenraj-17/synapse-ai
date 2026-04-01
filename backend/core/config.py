@@ -2,7 +2,13 @@ import os
 import json
 from pathlib import Path
 
-DATA_DIR = str(Path(os.getenv("SYNAPSE_DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))))
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
+if _data_dir_env:
+    _p = Path(_data_dir_env)
+    DATA_DIR = str(_p if _p.is_absolute() else _PROJECT_ROOT / _p)
+else:
+    DATA_DIR = str(Path(__file__).resolve().parent.parent / "data")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 

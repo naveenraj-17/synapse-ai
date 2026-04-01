@@ -120,6 +120,7 @@ class PersonalDetails(BaseModel):
 
 class AddMCPServerRequest(BaseModel):
     name: str
+    label: str = ""                # human-friendly display name (falls back to name if empty)
     server_type: str = "stdio"     # "stdio" | "remote"
     # stdio fields
     command: str = ""

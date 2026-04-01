@@ -19,6 +19,7 @@ interface McpToast {
 
 type DraftServer = {
     name: string;
+    label: string;
     server_type: 'stdio' | 'remote';
     command: string;
     args: string;
@@ -200,6 +201,7 @@ export const McpServersTab = ({
             : [];
         setDraftMcpServer({
             name: p.name,
+            label: p.label,
             server_type: p.server_type,
             command: p.command || '',
             args: p.args || '',
@@ -270,7 +272,10 @@ export const McpServersTab = ({
                             <div key={server.name} className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded group">
                                 <div className="flex flex-col gap-1.5 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-white text-sm">{server.name}</span>
+                                        <span className="font-bold text-white text-sm">{server.label || server.name}</span>
+                                        {server.label && server.label !== server.name && (
+                                            <span className="text-[10px] text-zinc-600 font-mono">{server.name}</span>
+                                        )}
                                         <TypePill type={server.server_type} />
                                         <StatusBadge status={server.status} />
                                     </div>
@@ -348,12 +353,20 @@ export const McpServersTab = ({
 
                 {/* ── Fields ── */}
                 <div className="space-y-4">
-                    {/* Server Name — always shown */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] uppercase font-bold text-zinc-500">Server Name</label>
-                        <input type="text" value={draftMcpServer.name}
-                            onChange={e => setDraftMcpServer({ ...draftMcpServer, name: e.target.value })}
-                            className={inputCls} placeholder="e.g. vercel" />
+                    {/* Display Label + Unique ID — always shown */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500">Display Label</label>
+                            <input type="text" value={draftMcpServer.label}
+                                onChange={e => setDraftMcpServer({ ...draftMcpServer, label: e.target.value })}
+                                className={inputCls} placeholder="e.g. GitHub Production" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] uppercase font-bold text-zinc-500">Unique ID</label>
+                            <input type="text" value={draftMcpServer.name}
+                                onChange={e => setDraftMcpServer({ ...draftMcpServer, name: e.target.value })}
+                                className={inputCls} placeholder="e.g. github-prod" />
+                        </div>
                     </div>
 
                     {serverType === 'stdio' ? (

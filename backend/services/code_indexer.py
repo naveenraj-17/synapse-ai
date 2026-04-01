@@ -354,11 +354,17 @@ def drop_index(repo_id: str):
             with conn.cursor() as cur:
                 cur.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE;')
                 cur.execute(f'DROP TABLE IF EXISTS "{tracking}" CASCADE;')
-                # cocoindex_setup_metadata uses (flow_name, resource_type, key) as PK
-                cur.execute(
-                    "DELETE FROM cocoindex_setup_metadata WHERE flow_name = %s;",
-                    (flow_name,),
-                )
+                # cocoindex_setup_metadata is created lazily by cocoindex.init() —
+                # it won't exist on a fresh installation.  Use a SAVEPOINT so a
+                # missing table is a silent no-op that doesn't affect the DROPs above.
+                cur.execute("SAVEPOINT before_meta_delete;")
+                try:
+                    cur.execute(
+                        "DELETE FROM cocoindex_setup_metadata WHERE flow_name = %s;",
+                        (flow_name,),
+                    )
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT before_meta_delete;")
             conn.commit()
     except Exception as e:
         print(f"Warning during drop_index({repo_id}): {e}")

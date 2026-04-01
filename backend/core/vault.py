@@ -12,7 +12,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-VAULT_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))) / "vault"
+from core.config import DATA_DIR
+VAULT_DIR = Path(DATA_DIR) / "vault"
 VAULT_THRESHOLD = 15000  # characters (fallback default)
 
 

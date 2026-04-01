@@ -306,38 +306,41 @@ async def get_bedrock_inference_profiles():
     def _list_profiles_sync():
         client = _make_aws_client("bedrock", region, settings)
 
-        if not hasattr(client, "list_inference_profiles"):
-            return []
-
-        resp = client.list_inference_profiles()
-        summaries = (
-            resp.get("inferenceProfileSummaries")
-            or resp.get("inferenceProfiles")
-            or resp.get("summaries")
-            or []
-        )
         profiles = []
-        for s in summaries or []:
-            if not isinstance(s, dict):
-                continue
-            profiles.append(
-                {
-                    "id": s.get("inferenceProfileId") or s.get("id") or "",
-                    "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
-                    "name": s.get("inferenceProfileName") or s.get("name") or "",
-                    "status": s.get("status") or "",
-                }
-            )
+        next_token = None
+        while True:
+            kwargs: dict = {}
+            if next_token:
+                kwargs["nextToken"] = next_token
+            resp = client.list_inference_profiles(**kwargs)
+            print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
+            for s in resp.get("inferenceProfileSummaries") or []:
+                if not isinstance(s, dict):
+                    continue
+                profiles.append(
+                    {
+                        "id": s.get("inferenceProfileId") or s.get("id") or "",
+                        "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
+                        "name": s.get("inferenceProfileName") or s.get("name") or "",
+                        "status": s.get("status") or "",
+                        "type": s.get("type") or "",
+                    }
+                )
+            next_token = resp.get("nextToken")
+            if not next_token:
+                break
+
         return sorted(profiles, key=lambda p: (p.get("name") or p.get("arn") or p.get("id") or ""))
 
     try:
         profiles = await asyncio.to_thread(_list_profiles_sync)
         return {"profiles": profiles}
     except Exception as e:
-        print(f"Error listing Bedrock inference profiles: {e}")
+        error_msg = str(e)
+        print(f"Error listing Bedrock inference profiles: {error_msg}")
         return {
             "profiles": [],
-            "error": "Unable to list Bedrock inference profiles. Check AWS credentials/permissions and region.",
+            "error": error_msg,
         }
 
 

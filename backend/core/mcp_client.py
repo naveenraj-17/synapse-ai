@@ -213,7 +213,7 @@ class MCPClientManager:
             _server.agent_sessions[agent_key] = session
             tools = await session.list_tools()
             for tool in tools.tools:
-                _server.tool_router[tool.name] = agent_key
+                _server.tool_router[f"{name}__{tool.name}"] = (agent_key, tool.name)
             print(f"[MCP] Registered {len(tools.tools)} tools for '{name}': "
                   f"{[t.name for t in tools.tools]}")
         except Exception as e:
@@ -424,6 +424,7 @@ class MCPClientManager:
     async def add_server(
         self,
         name: str,
+        label: str = "",
         server_type: str = "stdio",
         command: str = "",
         args: Optional[List[str]] = None,
@@ -437,7 +438,7 @@ class MCPClientManager:
             if s["name"] == name:
                 raise ValueError(f"Server '{name}' already exists.")
 
-        new_config: Dict[str, Any] = {"name": name, "server_type": server_type, "status": "disconnected"}
+        new_config: Dict[str, Any] = {"name": name, "label": label or name, "server_type": server_type, "status": "disconnected"}
 
         if server_type == "stdio":
             if not command:

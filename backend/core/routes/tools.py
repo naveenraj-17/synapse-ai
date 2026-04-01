@@ -41,15 +41,23 @@ async def get_available_tools():
     for name, session in _server.agent_sessions.items():
         try:
             is_external = name.startswith("ext_mcp_")
-            source_label = name.replace("ext_mcp_", "") if is_external else name
+            server_name = name[len("ext_mcp_"):] if is_external else name
             tool_type = "mcp_external" if is_external else "mcp_native"
+
+            # Look up human-friendly label from stored config
+            if is_external and _server.mcp_manager:
+                cfg = _server.mcp_manager.get_server_config(server_name)
+                display_label = (cfg.get("label") or server_name) if cfg else server_name
+            else:
+                display_label = server_name
 
             result = await session.list_tools()
             for t in result.tools:
                 all_tools.append({
-                    "name": t.name,
+                    "name": f"{server_name}__{t.name}" if is_external else t.name,
                     "description": t.description,
-                    "source": source_label,
+                    "source": server_name,
+                    "source_label": display_label,
                     "type": tool_type,
                     "schema": t.inputSchema
                 })
@@ -104,7 +112,7 @@ async def _register_session(name: str):
         _server.agent_sessions[agent_key] = session
         tools = await session.list_tools()
         for tool in tools.tools:
-            _server.tool_router[tool.name] = agent_key
+            _server.tool_router[f"{name}__{tool.name}"] = (agent_key, tool.name)
 
 
 @router.get("/api/mcp/servers")
@@ -123,6 +131,7 @@ async def add_mcp_server(req: AddMCPServerRequest):
     try:
         result = await _server.mcp_manager.add_server(
             name=req.name,
+            label=req.label,
             server_type=req.server_type,
             command=req.command,
             args=req.args,
@@ -239,7 +248,7 @@ async def remove_mcp_server(name: str):
         agent_key = f"ext_mcp_{name}"
         if agent_key in _server.agent_sessions:
             del _server.agent_sessions[agent_key]
-        keys_to_del = [k for k, v in _server.tool_router.items() if v == agent_key]
+        keys_to_del = [k for k, (ak, _) in _server.tool_router.items() if ak == agent_key]
         for k in keys_to_del:
             del _server.tool_router[k]
 
