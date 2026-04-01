@@ -18,6 +18,35 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 # When installed as a package, backend is one level up from synapse/
 BACKEND_DIR = PACKAGE_DIR.parent / "backend"
 FRONTEND_DIR = PACKAGE_DIR.parent / "frontend"
+ROOT_DIR = PACKAGE_DIR.parent
+
+# ---------------------------------------------------------------------------
+# Load .env from the project root BEFORE reading port defaults so that values
+# set by `synapse setup` (or hand-edited .env) are honoured without the user
+# having to export them manually in every shell session.
+# ---------------------------------------------------------------------------
+_ENV_FILE = ROOT_DIR / ".env"
+
+def _load_dotenv(path: Path):
+    """Minimal .env loader — only sets vars that are NOT already in the environment."""
+    if not path.exists():
+        return
+    try:
+        with open(path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line or _line.startswith("#") or "=" not in _line:
+                    continue
+                _key, _, _val = _line.partition("=")
+                _key = _key.strip()
+                _val = _val.strip()
+                # Don't override variables already set in the real environment
+                if _key and _key not in os.environ:
+                    os.environ[_key] = _val
+    except Exception:
+        pass  # non-fatal — env vars can still be set manually
+
+_load_dotenv(_ENV_FILE)
 
 DEFAULT_DATA_DIR = Path.home() / ".synapse" / "data"
 DATA_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR)))
@@ -97,10 +126,12 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
         sys.exit(1)
     env = os.environ.copy()
     _backend_port = backend_port if backend_port is not None else DEFAULT_BACKEND_PORT
-    env["BACKEND_URL"] = f"http://127.0.0.1:{_backend_port}"
     _frontend_port = port if port is not None else DEFAULT_FRONTEND_PORT
-    if port is not None:
-        env["SYNAPSE_FRONTEND_PORT"] = str(port)
+    # Always set these so Next.js picks up the correct URLs at runtime
+    env["BACKEND_URL"] = f"http://127.0.0.1:{_backend_port}"
+    env["NEXT_PUBLIC_BACKEND_PORT"] = str(_backend_port)
+    env["SYNAPSE_FRONTEND_PORT"] = str(_frontend_port)
+    env["SYNAPSE_BACKEND_PORT"] = str(_backend_port)
     kwargs = {}
     if detach:
         if os.name == "posix":
