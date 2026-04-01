@@ -437,15 +437,6 @@ def ask_coding_agent(cfg):
             err("Invalid URL format.")
             sys.exit(1)
 
-# ---------------------------------------------------------------------------
-# Q2 — Report Agent
-# ---------------------------------------------------------------------------
-def ask_report_agent(cfg):
-    step("Report Agent")
-    info("Adds a 'Report' agent type with dynamic RAG support for analysis tasks.")
-    cfg["report_agent_enabled"] = ask_yn("Enable the Report Agent?")
-    status = "enabled" if cfg["report_agent_enabled"] else "disabled"
-    ok(f"Report Agent {status}.")
 
 # ---------------------------------------------------------------------------
 # Q2c — Browser Automation
@@ -1196,7 +1187,7 @@ def main():
     cfg = load_settings()
 
     ask_coding_agent(cfg)
-    ask_report_agent(cfg)
+
     ask_browser_automation(cfg)
     ask_messaging_app(cfg)
     ask_ports(cfg)
