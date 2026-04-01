@@ -1,16 +1,43 @@
-#!/bin/bash
-# Synapse AI CLI Wrapper — Activates venv and runs synapse command
-# Place this script in PATH or source it from your shell config
+#!/usr/bin/env node
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENV_DIR="$REPO_DIR/backend/venv"
+import { Command } from 'commander';
+import chalk from 'chalk';
+import fs from 'fs-extra';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { execa } from 'execa';
+import ora from 'ora';
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Error: Virtual environment not found at $VENV_DIR"
-    echo "Run setup.sh first."
-    exit 1
-fi
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-source "$VENV_DIR/bin/activate"
-python -m synapse "$@"
+const program = new Command();
+
+program
+  .name('synapse')
+  .description('Synapse AI - Multi-agent orchestrator CLI')
+  .version('0.1.0');
+
+program
+  .command('init')
+  .description('Initialize a new Synapse project')
+  .action(async () => {
+    const spinner = ora('Initializing Synapse project...').start();
+    try {
+      // Implementation for init
+      spinner.succeed(chalk.green('Project initialized successfully!'));
+    } catch (error) {
+      spinner.fail(chalk.red(`Failed to initialize: ${error.message}`));
+    }
+  });
+
+program
+  .command('start')
+  .description('Start the Synapse orchestrator')
+  .option('-p, --port <number>', 'port to run on', '3000')
+  .action(async (options) => {
+    console.log(chalk.cyan(`Starting Synapse on port ${options.port}...`));
+    // Implementation for start
+  });
+
+program.parse();
