@@ -1,0 +1,16 @@
+#!/bin/bash
+# Synapse AI CLI Wrapper — Activates venv and runs synapse command
+# Place this script in PATH or source it from your shell config
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_DIR="$REPO_DIR/backend/venv"
+
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Error: Virtual environment not found at $VENV_DIR"
+    echo "Run setup.sh first."
+    exit 1
+fi
+
+source "$VENV_DIR/bin/activate"
+python -m synapse "$@"

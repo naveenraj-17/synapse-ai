@@ -1,0 +1,36 @@
+import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+
+export const maxDuration = 300; // 5 minutes timeout (Vercel/Next.js specific)
+
+export async function POST(req: Request) {
+    try {
+        const body = await req.json();
+
+        // Forward request to Python Backend
+        // Since this runs on the server, localhost:8000 refers to the container's localhost
+        const backendResponse = await fetch(`${BACKEND_URL}/chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            // No manual abort signal -> Node.js default timeout (long)
+        });
+
+        if (!backendResponse.ok) {
+            const text = await backendResponse.text();
+            return NextResponse.json({ error: `Backend Error ${backendResponse.status}: ${text}` }, { status: backendResponse.status });
+        }
+
+        const data = await backendResponse.json();
+        return NextResponse.json(data);
+
+    } catch (error: any) {
+        console.error("Proxy Error:", error);
+        return NextResponse.json({ error: `Proxy Error: ${error.message}` }, { status: 500 });
+    }
+}

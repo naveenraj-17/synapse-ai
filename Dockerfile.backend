@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential curl nodejs npm libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install playwright && playwright install chromium --with-deps
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/core ./core
+COPY backend/services ./services
+COPY backend/tools ./tools
+COPY backend/main.py .
+
+ENV SYNAPSE_DATA_DIR=/data
+ENV PYTHONPATH=/app
+
+EXPOSE 8000
+CMD ["python", "main.py"]

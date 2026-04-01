@@ -1,0 +1,41 @@
+# General
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Python / Backend
+**/__pycache__/
+backend/node_modules/
+backend/data/orchestration_runs/
+backend/logs/
+backend/venv/
+backend/data/chroma_db/
+backend/data/*
+
+# Javascript / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/next-env.d.ts
+
+# Specific project files
+backend/chroma_db/
+backend/data/chroma_db/
+backend/.venv/
+
+# Distribution artifacts
+dist/
+*.egg-info/
+*.whl
+*.tar.gz
+synapse/_frontend/
+frontend-build/
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Security — token files
+backend/data/token.json
