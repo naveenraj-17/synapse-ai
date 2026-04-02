@@ -99,34 +99,36 @@ install_python() {
 # ---------------------------------------------------------------------------
 # Check and validate requirements
 # ---------------------------------------------------------------------------
-check_python() {
-    PYTHON_CMD=""
-    
-    if command -v python3.11 &> /dev/null; then
-        PYTHON_CMD="python3.11"
-    else
-        for cmd in python3 python python3.12 python3.13; do
-            if command -v $cmd &> /dev/null; then
-                ver=$($cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
-                if [ ! -z "$ver" ] && (( $(echo "$ver >= 3.11" | bc -l) )); then
-                    PYTHON_CMD="$cmd"
-                    break
-                fi
-            fi
-        done
-    fi
 
-    if [ -z "$PYTHON_CMD" ]; then
+# Returns true (0) if the given python command is >= 3.11
+_python_meets_minimum() {
+    local cmd="$1"
+    command -v "$cmd" &> /dev/null || return 1
+    local major minor
+    major=$("$cmd" -c 'import sys; print(sys.version_info.major)' 2>/dev/null)
+    minor=$("$cmd" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null)
+    [[ -n "$major" && -n "$minor" ]] || return 1
+    [[ "$major" -gt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -ge 11 ]]; }
+}
+
+# Scans well-known python command names and sets PYTHON_CMD to the first one >= 3.11
+_find_python_cmd() {
+    PYTHON_CMD=""
+    for cmd in python3.13 python3.12 python3.11 python3 python; do
+        if _python_meets_minimum "$cmd"; then
+            PYTHON_CMD="$cmd"
+            return 0
+        fi
+    done
+    return 1
+}
+
+check_python() {
+    if ! _find_python_cmd; then
         echo "⚠ Python 3.11+ not found. Attempting to install..."
         install_python
-        
-        if command -v python3.11 &> /dev/null; then
-            PYTHON_CMD="python3.11"
-        elif command -v python3 &> /dev/null; then
-            PYTHON_CMD="python3"
-        fi
-        
-        if [ -z "$PYTHON_CMD" ]; then
+
+        if ! _find_python_cmd; then
             echo "✗ Failed to install Python 3.11+ automatically."
             echo "Please manually install Python 3.11 or higher."
             if [[ "$OS" == "linux" ]] && [[ "$DISTRO" == "ubuntu" ]]; then
@@ -143,13 +145,8 @@ check_python() {
             exit 1
         fi
     fi
-    
-    PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    if (( $(echo "$PYTHON_VERSION < 3.11" | bc -l) )); then
-        echo "✗ Python 3.11+ required. You have $PYTHON_VERSION"
-        exit 1
-    fi
-    
+
+    PYTHON_VERSION=$("$PYTHON_CMD" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     echo "✓ Python $PYTHON_VERSION found ($PYTHON_CMD)"
     export PYTHON_CMD
 }
