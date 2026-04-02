@@ -67,12 +67,21 @@ install_python() {
     
     if [[ "$OS" == "linux" ]]; then
         if [[ "$DISTRO" == "ubuntu" ]] || [[ "$DISTRO" == "debian" ]]; then
-            echo "Installing Python on Ubuntu/Debian…"
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-venv python3-pip
+            echo "Installing Python 3.11 on Ubuntu/Debian…"
+            sudo apt-get update -qq
+            # python3.11 is in the default repos on Ubuntu 22.04+; try that first
+            if ! sudo apt-get install -y python3.11 python3.11-venv python3-pip 2>/dev/null; then
+                # Older distros (Ubuntu 20.04) need the deadsnakes PPA
+                echo "python3.11 not in default repos — adding deadsnakes PPA…"
+                sudo apt-get install -y software-properties-common
+                sudo add-apt-repository -y ppa:deadsnakes/ppa
+                sudo apt-get update -qq
+                sudo apt-get install -y python3.11 python3.11-venv python3-pip
+            fi
         elif [[ "$DISTRO" == "fedora" ]] || [[ "$DISTRO" == "rhel" ]] || [[ "$DISTRO" == "centos" ]]; then
             echo "Installing Python on Fedora/RHEL…"
-            sudo dnf install -y python3 python3-pip
+            sudo dnf install -y python3.11 python3-pip 2>/dev/null || \
+                sudo dnf install -y python3 python3-pip
         elif [[ "$DISTRO" == "arch" ]] || [[ "$DISTRO" == "manjaro" ]]; then
             echo "Installing Python on Arch/Manjaro…"
             sudo pacman -S --noconfirm python python-pip

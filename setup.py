@@ -340,10 +340,48 @@ def check_python():
         sys.exit(1)
     ok(f"Python {v.major}.{v.minor}.{v.micro}")
 
+    # Check that the venv module is available for this Python installation.
+    # On some Linux distros (Ubuntu/Debian) it ships as a separate package.
+    try:
+        import importlib.util
+        if importlib.util.find_spec("venv") is None:
+            raise ImportError
+        ok("venv module available.")
+    except ImportError:
+        err(f"Python venv module not found for Python {v.major}.{v.minor}.")
+        distro = get_linux_distro()
+        if distro in ("ubuntu", "debian"):
+            info(f"  Install it with:  sudo apt-get install python{v.major}.{v.minor}-venv")
+        elif distro in ("fedora", "rhel", "centos"):
+            info(f"  Install it with:  sudo dnf install python{v.major}-venv")
+        else:
+            info(f"  Install the python{v.major}.{v.minor}-venv package for your distribution.")
+        sys.exit(1)
+
 def check_npm():
     if not shutil.which("npm"):
         warn("npm not found. Attempting to install Node.js and npm automatically…")
         install_npm()
+
+    # Verify the *currently active* Node.js version — even if a newer version is
+    # installed elsewhere, the one on PATH must be >= 16.
+    node_exe = shutil.which("node")
+    if node_exe:
+        try:
+            result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+            version_str = result.stdout.strip().lstrip("v")  # e.g. "18.17.0"
+            major = int(version_str.split(".")[0])
+            if major < 16:
+                err(f"Node.js 16+ required. Current active version: v{version_str}")
+                info("A newer version may be installed but is not the active one.")
+                info("Use nvm/fnm to switch, or update your PATH, then re-run setup.")
+                sys.exit(1)
+            ok(f"Node.js v{version_str}")
+        except Exception as e:
+            warn(f"Could not verify Node.js version: {e}")
+    else:
+        warn("node executable not found — npm may not work correctly.")
+
     ok("npm found")
 
 # ---------------------------------------------------------------------------
@@ -989,12 +1027,11 @@ def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
 def install_backend(coding_enabled, messaging_enabled=False):
     step("Installing Backend Dependencies")
 
-    if not os.path.exists(PIP_EXE):
-        if os.path.exists(VENV_DIR):
-            info("Removing corrupted virtual environment…")
-            shutil.rmtree(VENV_DIR)
-        info("Creating virtual environment…")
-        subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
+    if os.path.exists(VENV_DIR):
+        info("Removing existing virtual environment…")
+        shutil.rmtree(VENV_DIR)
+    info("Creating virtual environment…")
+    subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
 
     info("Installing base requirements…")
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "--upgrade", "pip"])
@@ -1028,6 +1065,10 @@ def install_frontend():
     if not shutil.which("npm"):
         err("npm not found.")
         sys.exit(1)
+    node_modules = os.path.join(FRONTEND_DIR, "node_modules")
+    if os.path.exists(node_modules):
+        info("Removing existing node_modules…")
+        shutil.rmtree(node_modules)
     info("Running npm install (this may take a while)…")
     _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
     ok("Frontend dependencies installed.")
