@@ -11,30 +11,54 @@ The easiest way to get started is to run the automated setup script. This will c
 
 **macOS / Linux:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.sh | bash
+curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse/main/setup.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/naveenraj-17/synapse/main/setup.ps1 | iex
 ```
 
 ### npm
 ```bash
-npm install -g synapse-ai
+npm install -g synapse
 synapse
 ```
 Python 3.11+ required. All Python dependencies are installed automatically on first run.
 
 ### pip / uv
 ```bash
-pip install synapse-ai
+pip install synapse
 synapse
 
 # or with uv:
-uvx synapse-ai
+uvx synapse
 ```
 Node.js 18+ required.
+
+---
+
+## CLI
+
+Once installed, use the `synapse` command to manage the server:
+
+```bash
+synapse start              # start backend + frontend, open browser
+synapse start --detach     # run in background (writes pidfiles)
+synapse start --no-browser # start without opening browser
+synapse stop               # stop background processes
+synapse status             # show running status
+synapse restart            # stop then start
+synapse setup              # interactive setup wizard (API keys, ports)
+```
+
+Port overrides (also settable via env vars `SYNAPSE_BACKEND_PORT` / `SYNAPSE_FRONTEND_PORT`):
+
+```bash
+synapse start --backend-port 8080 --frontend-port 4000
+```
+
+See [docs/cli.md](docs/cli.md) for the full reference including profiling commands.
 
 ---
 

@@ -494,10 +494,14 @@ export default function Home() {
                       break;
                     }
 
-                    case 'tool_result':
-                      setStreamingActivity(`✓ Processing results`);
+                    case 'tool_result': {
+                      const resultToolName = data.tool_name
+                        ? data.tool_name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                        : 'Tool';
+                      setStreamingActivity(`✓ ${resultToolName}`);
                       setIsThinking(false);
                       break;
+                    }
 
                     case 'llm_thought':
                       // Accumulate thoughts for the current step
