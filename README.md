@@ -11,28 +11,28 @@ The easiest way to get started is to run the automated setup script. This will c
 
 **macOS / Linux:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse/main/setup.sh | bash
+curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/naveenraj-17/synapse/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
 ```
 
 ### npm
 ```bash
-npm install -g synapse
-synapse
+npm install -g synapse-ai
+synapse start
 ```
 Python 3.11+ required. All Python dependencies are installed automatically on first run.
 
 ### pip / uv
 ```bash
-pip install synapse
-synapse
+pip install synapse-ai
+synapse start
 
 # or with uv:
-uvx synapse
+uvx synapse-ai
 ```
 Node.js 18+ required.
 
