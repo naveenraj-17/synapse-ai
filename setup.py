@@ -358,13 +358,66 @@ def check_python():
             info(f"  Install the python{v.major}.{v.minor}-venv package for your distribution.")
         sys.exit(1)
 
+def _find_all_node_versions():
+    """Return list of (version_tuple, bin_dir) for every discoverable Node install, newest first."""
+    candidates = []
+    seen = set()
+
+    def _probe(node_path):
+        if not node_path or not os.path.isfile(node_path):
+            return
+        real = os.path.realpath(node_path)
+        if real in seen:
+            return
+        seen.add(real)
+        try:
+            r = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=5)
+            ver_str = r.stdout.strip().lstrip("v")
+            ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+            candidates.append((ver_tuple, os.path.dirname(node_path)))
+        except Exception:
+            pass
+
+    # nvm
+    nvm_versions = os.path.join(
+        os.path.expanduser(os.environ.get("NVM_DIR", "~/.nvm")), "versions", "node"
+    )
+    if os.path.isdir(nvm_versions):
+        for entry in sorted(os.listdir(nvm_versions)):
+            _probe(os.path.join(nvm_versions, entry, "bin", "node"))
+
+    # fnm
+    for fnm_root in [
+        os.path.expanduser("~/.local/share/fnm/node-versions"),
+        os.path.expanduser("~/.fnm/node-versions"),
+    ]:
+        if os.path.isdir(fnm_root):
+            for entry in sorted(os.listdir(fnm_root)):
+                _probe(os.path.join(fnm_root, entry, "installation", "bin", "node"))
+
+    # common system paths
+    for p in ["/usr/local/bin/node", "/usr/bin/node", "/opt/homebrew/bin/node"]:
+        _probe(p)
+
+    # which -a (Unix) — catches anything else on PATH
+    if not IS_WIN:
+        try:
+            r = subprocess.run(["which", "-a", "node"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.strip().splitlines():
+                _probe(line.strip())
+        except Exception:
+            pass
+
+    candidates.sort(reverse=True)
+    return candidates
+
+
 def check_npm():
     if not shutil.which("npm"):
         warn("npm not found. Attempting to install Node.js and npm automatically…")
         install_npm()
 
-    # Verify the *currently active* Node.js version — even if a newer version is
-    # installed elsewhere, the one on PATH must be >= 16.
+    # Verify the *currently active* Node.js version.
     node_exe = shutil.which("node")
     if node_exe:
         try:
@@ -372,11 +425,23 @@ def check_npm():
             version_str = result.stdout.strip().lstrip("v")  # e.g. "18.17.0"
             major = int(version_str.split(".")[0])
             if major < 16:
-                err(f"Node.js 16+ required. Current active version: v{version_str}")
-                info("A newer version may be installed but is not the active one.")
-                info("Use nvm/fnm to switch, or update your PATH, then re-run setup.")
-                sys.exit(1)
-            ok(f"Node.js v{version_str}")
+                warn(f"Active Node.js version is v{version_str} (< 16). Searching for a newer install…")
+                all_versions = _find_all_node_versions()
+                suitable = [(v, d) for v, d in all_versions if v[0] >= 16]
+                if suitable:
+                    best_ver, best_dir = suitable[0]
+                    best_ver_str = ".".join(str(x) for x in best_ver)
+                    ok(f"Found Node.js v{best_ver_str} at {best_dir}")
+                    # Prepend the better node's bin dir so all subsequent subprocess
+                    # calls (npm install, npm run build, …) use the right version.
+                    os.environ["PATH"] = best_dir + os.pathsep + os.environ.get("PATH", "")
+                    ok(f"Switched to Node.js v{best_ver_str} for this setup session.")
+                else:
+                    err(f"Node.js 16+ required. Active version: v{version_str}, none found ≥ 16.")
+                    info("Install Node.js 16+ from https://nodejs.org/ or via nvm/fnm, then re-run setup.")
+                    sys.exit(1)
+            else:
+                ok(f"Node.js v{version_str}")
         except Exception as e:
             warn(f"Could not verify Node.js version: {e}")
     else:
