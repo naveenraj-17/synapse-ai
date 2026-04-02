@@ -1341,16 +1341,6 @@ async def _embed_bedrock(texts: list[str], model: str, settings: dict) -> list[l
     # Strip the 'bedrock.' UI prefix to get the raw Bedrock model ID
     real_model_id = model.replace("bedrock.", "", 1)
 
-    # Respect cross-region inference profile if configured
-    # (same logic as call_bedrock — models without on-demand throughput need this)
-    inference_profile = (settings.get("bedrock_inference_profile") or "").strip()
-    if inference_profile:
-        if inference_profile.startswith("bedrock."):
-            inference_profile = inference_profile.replace("bedrock.", "", 1)
-        invocation_model_id = inference_profile
-    else:
-        invocation_model_id = real_model_id
-
     embeddings = []
     for text in texts:
         try:
@@ -1369,7 +1359,7 @@ async def _embed_bedrock(texts: list[str], model: str, settings: dict) -> list[l
                 # Generic fallback — try the Titan-style inputText payload
                 payload = json.dumps({"inputText": text})
 
-            def _run(pid=invocation_model_id, body=payload):
+            def _run(pid=real_model_id, body=payload):
                 return bedrock.invoke_model(
                     body=body,
                     modelId=pid,
@@ -1396,13 +1386,13 @@ async def _embed_bedrock(texts: list[str], model: str, settings: dict) -> list[l
             err_str = str(e)
             if "unknown model" in err_str.lower() or "resourcenotfound" in err_str.lower():
                 print(
-                    f"ERROR: Bedrock embedding — model '{invocation_model_id}' not found in "
+                    f"ERROR: Bedrock embedding — model '{real_model_id}' not found in "
                     f"region '{region}'. Ensure the model is enabled in the AWS console "
                     f"and, if it requires on-demand throughput via an inference profile, "
                     f"set 'Bedrock Inference Profile' in Settings.\nOriginal error: {e}"
                 )
             else:
-                print(f"ERROR: Bedrock embedding failed for '{invocation_model_id}': {e}")
+                print(f"ERROR: Bedrock embedding failed for '{real_model_id}': {e}")
             embeddings.append([])
 
     return embeddings

@@ -399,6 +399,10 @@ def save_settings(cfg):
     # always find settings in the same location, even with relative paths.
     _rel = os.path.relpath(DATA_DIR, ROOT_DIR)
     _update_env_file("SYNAPSE_DATA_DIR", _rel)
+    # Persist the database URL into .env so backend services that read
+    # DATABASE_URL from the environment (code_indexer, code_search) pick it up.
+    if cfg.get("sql_connection_string"):
+        _update_env_file("DATABASE_URL", cfg["sql_connection_string"])
 
 # ---------------------------------------------------------------------------
 # Q1 — Coding Agent
