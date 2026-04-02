@@ -304,14 +304,25 @@ def _start_command(
 
     def _shutdown(sig, frame):
         print("\nStopping Synapse...")
-        try:
-            frontend_proc.terminate()
-        except Exception:
-            pass
-        try:
-            backend_proc.terminate()
-        except Exception:
-            pass
+        for proc in (frontend_proc, backend_proc):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        # Wait for graceful shutdown, then force-kill anything still running
+        deadline = time.time() + 5
+        for proc in (frontend_proc, backend_proc):
+            remaining = deadline - time.time()
+            try:
+                proc.wait(timeout=max(0, remaining))
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=2)
+                except Exception:
+                    pass
+            except Exception:
+                pass
         try:
             if BACKEND_PID_FILE.exists():
                 BACKEND_PID_FILE.unlink()
