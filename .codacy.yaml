@@ -4,19 +4,28 @@ engines:
     enabled: false
   eslint:
     enabled: false
+  duplication:
+    enabled: false
+
 exclude_paths:
-  - "**/node_modules/**"
-  - "**/venv/**"
-  - "**/.venv/**"
+  - "node_modules/**"
+  - "frontend/node_modules/**"
+  - "backend/node_modules/**"
+  - "venv/**"
+  - "backend/venv/**"
+  - ".venv/**"
   - "**/__pycache__/**"
   - "**/data/**"
   - "**/chroma_db/**"
   - "**/frontend/.next/**"
   - "**/frontend/out/**"
   - "**/backend/logs/**"
+  - "frontend/tsconfig.tsbuildinfo"
   - "**/*.pyc"
   - "**/*.sqlite3"
   - "**/*.bin"
   - "**/*.pickle"
   - "**/*.log"
+  - "**/*.so"
+  - "**/*.so.*"
   - ".git/**"

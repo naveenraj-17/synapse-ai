@@ -41,6 +41,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Clean up binary files and caches to avoid encoding errors during SARIF generation
+      - name: Clean up binaries/caches
+        run: |
+          find . -name "__pycache__" -type d -exec rm -rf {} +
+          find . -name "*.pyc" -delete
+          find . -name "*.log" -delete
+          find . -name "*.bin" -delete
+          find . -name "*.pickle" -delete
+          find . -name "*.sqlite3" -delete
+          find . -name "*.so" -delete
+          find . -name "*.so.*" -delete
+          rm -rf backend/venv/
+          rm -rf backend/data/
+          rm -rf backend/chroma_db/
+          rm -rf frontend/node_modules/
+          rm -rf frontend/.next/
+
       # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
