@@ -385,13 +385,114 @@ async def run_agent_step(
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": "Tool removed"}
                     continue
 
-                # ===== CUSTOM TOOLS (Webhook) =====
+                # ===== CUSTOM TOOLS (Webhook + Python) =====
 
                 if tool_name not in server_module.tool_router:
                     custom_tools_list = load_custom_tools()
                     target_tool = next((t for t in custom_tools_list if t["name"] == tool_name), None)
 
                     if target_tool:
+                        tool_type = target_tool.get("tool_type", "http")
+
+                        # ── Python Tool ──────────────────────────────────────────
+                        if tool_type == "python":
+                            try:
+                                import asyncio as _asyncio
+                                import shutil as _shutil
+                                import tempfile as _tempfile
+                                from pathlib import Path as _Path
+
+                                python_code = target_tool.get("code", "")
+                                if not python_code.strip():
+                                    raise ValueError("Python tool has no code defined.")
+
+                                if not _shutil.which("docker"):
+                                    raise RuntimeError("Docker is not available. Cannot execute Python tool.")
+
+                                # Inject _args at the top of user's code
+                                args_json = json.dumps(tool_args)
+                                escaped = args_json.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+                                injected_code = (
+                                    f'import json\n_args = json.loads("""{escaped}""")\n\n'
+                                    + python_code
+                                )
+
+                                DATA_DIR_PATH = _Path(__file__).resolve().parent.parent / "data"
+                                vault_root = DATA_DIR_PATH / "vault"
+                                docker_image = "sandbox-python:latest"
+
+                                tmp_dir = _tempfile.mkdtemp(prefix="pytool_")
+                                script_path = f"{tmp_dir}/script.py"
+                                try:
+                                    with open(script_path, "w") as _f:
+                                        _f.write(injected_code)
+
+                                    docker_cmd = [
+                                        "docker", "run", "--rm",
+                                        "--memory", "512m",
+                                        "--cpus", "1.0",
+                                        "--pids-limit", "64",
+                                        "--read-only",
+                                        "--tmpfs", "/tmp:rw,size=256m",
+                                        "--tmpfs", "/root:rw,size=256m",
+                                        "--network", "none",
+                                        "-v", f"{script_path}:/sandbox/script.py:ro",
+                                    ]
+                                    if vault_root.exists():
+                                        docker_cmd += ["-v", f"{vault_root}:/data:ro"]
+                                    docker_cmd += [docker_image, "python", "/sandbox/script.py"]
+
+                                    proc = await _asyncio.create_subprocess_exec(
+                                        *docker_cmd,
+                                        stdout=_asyncio.subprocess.PIPE,
+                                        stderr=_asyncio.subprocess.PIPE,
+                                    )
+                                    try:
+                                        stdout_b, stderr_b = await _asyncio.wait_for(
+                                            proc.communicate(), timeout=35
+                                        )
+                                    except _asyncio.TimeoutError:
+                                        proc.kill()
+                                        await proc.wait()
+                                        raise RuntimeError("Python tool execution timed out after 30s")
+
+                                    stdout_text = stdout_b.decode("utf-8", errors="replace")[:20000]
+                                    stderr_text = stderr_b.decode("utf-8", errors="replace")[:5000]
+
+                                    if proc.returncode != 0:
+                                        raw_output = json.dumps({
+                                            "error": f"Python tool exited with code {proc.returncode}",
+                                            "stderr": stderr_text,
+                                            "stdout": stdout_text,
+                                        })
+                                    else:
+                                        # Try to parse stdout as JSON, otherwise wrap as string output
+                                        try:
+                                            parsed_out = json.loads(stdout_text.strip())
+                                            raw_output = json.dumps(parsed_out)
+                                        except Exception:
+                                            raw_output = json.dumps({"output": stdout_text})
+                                        if stderr_text:
+                                            print(f"DEBUG: Python tool stderr: {stderr_text[:200]}")
+
+                                finally:
+                                    _shutil.rmtree(tmp_dir, ignore_errors=True)
+
+                                raw_output = maybe_vault(tool_name, raw_output)
+                                current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
+                                tools_used_summary.append(f"{tool_name}: {raw_output[:500]}...")
+                                print(f"DEBUG: 🐍 Python Tool Result ({tool_name}): {raw_output[:300]}")
+                                preview = raw_output[:100] + "..." if len(raw_output) > 100 else raw_output
+                                yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
+                                last_intent = "custom_tool"
+                                last_data = json.loads(raw_output) if raw_output else {}
+                                continue
+                            except Exception as e:
+                                current_context_text += f"\nSystem: Error executing Python tool '{tool_name}': {str(e)}\n"
+                                yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Error: {e}"}
+                                continue
+
+                        # ── HTTP / Webhook Tool ───────────────────────────────────
                         try:
                             method = target_tool.get("method", "POST")
                             url = target_tool.get("url")
@@ -412,8 +513,6 @@ async def run_agent_step(
                                 raw_output = json.dumps(json_resp)
                             except Exception:
                                 raw_output = resp.text or json.dumps({"error": f"Empty response (Status: {resp.status_code})"})
-
-
 
                             # Vault large outputs
                             raw_output = maybe_vault(tool_name, raw_output)

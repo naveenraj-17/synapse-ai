@@ -3,9 +3,14 @@ Custom tools and MCP server management endpoints.
 """
 import json
 import os
+import asyncio
+import shutil
+import tempfile
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from core.models import AddMCPServerRequest
 from core.config import DATA_DIR
@@ -64,17 +69,18 @@ async def get_available_tools():
         except Exception as e:
             print(f"Error listing tools for agent '{name}': {e}")
 
-    # 2. Custom HTTP Tools
+    # 2. Custom HTTP + Python Tools
     try:
         custom_tools = load_custom_tools()
         for t in custom_tools:
+            tool_type = t.get("tool_type", "http")
             all_tools.append({
                 "name": t.get("name"),
                 "label": t.get("generalName", t.get("name")),
                 "description": t.get("description", ""),
-                "source": "custom_http",
-                "type": "http",
-                "schema": t.get("schema")
+                "source": "custom_http" if tool_type != "python" else "custom_python",
+                "type": tool_type,
+                "schema": t.get("inputSchema") or t.get("schema")
             })
     except Exception as e:
         print(f"Error listing custom tools: {e}")
@@ -99,6 +105,96 @@ async def delete_custom_tool(tool_name: str):
     tools = [t for t in tools if t['name'] != tool_name]
     save_custom_tools(tools)
     return {"status": "success"}
+
+
+# ── Python Tool Endpoints ──────────────────────────────────────────────────
+
+SANDBOX_PACKAGES = [
+    "pandas", "pandas_ta", "numpy", "scipy", "scikit-learn",
+    "matplotlib", "seaborn", "requests", "httpx", "beautifulsoup4",
+    "lxml", "openpyxl", "xlsxwriter", "pyyaml", "tabulate",
+    "jinja2", "jsonschema", "pillow", "sympy",
+]
+
+DOCKER_IMAGE = "sandbox-python:latest"
+MEMORY_LIMIT = "512m"
+CPU_LIMIT = "1.0"
+VAULT_ROOT = os.path.join(DATA_DIR, "vault")
+
+
+class PythonTestRequest(BaseModel):
+    code: str
+    args: Optional[dict] = None
+    timeout: Optional[int] = 30
+
+
+@router.get("/api/tools/python/packages")
+async def get_python_packages():
+    """Returns list of pre-installed packages available in the Python sandbox."""
+    return {"packages": SANDBOX_PACKAGES}
+
+
+@router.post("/api/tools/python/test")
+async def test_python_tool(req: PythonTestRequest):
+    """Execute a Python tool snippet in the Docker sandbox and return stdout/stderr."""
+    if not req.code or not req.code.strip():
+        raise HTTPException(status_code=400, detail="No code provided")
+
+    # Check Docker is available
+    if not shutil.which("docker"):
+        raise HTTPException(status_code=503, detail="Docker is not installed or not in PATH")
+
+    # Inject _args into the code
+    args_json = json.dumps(req.args or {})
+    escaped = args_json.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+    injected_code = f'import json\n_args = json.loads("""' + escaped + '""")\n\n' + req.code
+
+    timeout = min(int(req.timeout or 30), 60)
+    tmp_dir = tempfile.mkdtemp(prefix="pytool_test_")
+    script_path = os.path.join(tmp_dir, "script.py")
+
+    try:
+        with open(script_path, "w") as f:
+            f.write(injected_code)
+
+        cmd = [
+            "docker", "run", "--rm",
+            "--memory", MEMORY_LIMIT,
+            "--cpus", CPU_LIMIT,
+            "--pids-limit", "64",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,size=256m",
+            "--tmpfs", "/root:rw,size=256m",
+            "--network", "none",
+            "-v", f"{script_path}:/sandbox/script.py:ro",
+        ]
+        if os.path.isdir(VAULT_ROOT):
+            cmd += ["-v", f"{VAULT_ROOT}:/data:ro"]
+        cmd += [DOCKER_IMAGE, "python", "/sandbox/script.py"]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout + 5)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return {"exit_code": -1, "stdout": "", "stderr": f"Execution timed out after {timeout}s"}
+
+        return {
+            "exit_code": proc.returncode,
+            "stdout": stdout_b.decode("utf-8", errors="replace")[:20000],
+            "stderr": stderr_b.decode("utf-8", errors="replace")[:5000],
+        }
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Docker not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sandbox error: {e}")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # --- External MCP Server Management ---

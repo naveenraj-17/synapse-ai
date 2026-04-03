@@ -1081,13 +1081,13 @@ export default function Home() {
               <div className="h-3 w-3 shrink-0 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
               <h1 className="text-base font-bold tracking-widest uppercase text-zinc-100 flex items-center gap-2 min-w-0">
                 <span
-                  className="truncate max-w-[180px] md:max-w-[260px]"
+                  className="truncate max-w-[140px] md:max-w-[220px]"
                   title={agentName}
                 >
                   {agentName}
                 </span>
                 <span className="text-zinc-500 shrink-0">-</span>
-                <span className="text-zinc-400 shrink-0">Ask Anything</span>
+                <span className="text-zinc-400 shrink-0">Synapse AI</span>
               </h1>
             </div>
             <div className="flex items-center">

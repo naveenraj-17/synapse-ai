@@ -90,7 +90,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
 
     // Custom Tools State
     const [draftTool, setDraftTool] = useState<any>(null);
-    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'n8n'>('config');
+    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'n8n' | 'python'>('config');
     const [headerRows, setHeaderRows] = useState<{ id: string, key: string, value: string }[]>([]);
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
     const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
@@ -610,7 +610,49 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
     // Handle Save Custom Tool
     const handleSaveTool = async () => {
         if (!draftTool) return;
-        // Validate
+
+        // ── Python tool save path ──────────────────────────────────
+        if (draftTool.tool_type === 'python') {
+            if (!draftTool.name) {
+                showToast('System Name is required', 'warning');
+                return;
+            }
+            if (!draftTool.code || !draftTool.code.trim()) {
+                showToast('Python code cannot be empty', 'warning');
+                return;
+            }
+            try {
+                const payload = {
+                    name: draftTool.name,
+                    generalName: draftTool.generalName || draftTool.name,
+                    description: draftTool.description || '',
+                    tool_type: 'python',
+                    code: draftTool.code,
+                    inputSchema: draftTool.inputSchema || { type: 'object', properties: {} },
+                    schemaParams: draftTool.schemaParams || [],
+                };
+                const res = await fetch('/api/tools/custom', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (res.ok) {
+                    const savedResp = await res.json();
+                    const saved = savedResp?.tool ?? savedResp;
+                    dispatch(updateCustomTool(saved));
+                    setDraftTool(null);
+                    setToolBuilderMode('config');
+                    showToast('Python tool saved successfully', 'success');
+                } else {
+                    showToast('Failed to save Python tool', 'error');
+                }
+            } catch {
+                showToast('Error saving Python tool', 'error');
+            }
+            return;
+        }
+
+        // ── HTTP / n8n tool save path ──────────────────────────────
         if (!draftTool.name || !draftTool.url) {
             showToast('Name and URL are required', 'warning');
             return;
@@ -865,6 +907,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             getN8nBaseUrl={getN8nBaseUrl}
                             onSaveTool={handleSaveTool}
                             onDeleteTool={handleDeleteTool}
+                            n8nIntegrated={!!(n8nApiKey && n8nApiKey.trim())}
                         />
                     )}
 
