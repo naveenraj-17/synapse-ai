@@ -4,6 +4,7 @@ Mirrors the design of agent_logger.py exactly.
 """
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
@@ -141,12 +142,39 @@ class ScheduleLogger:
         prefix = " " * spaces
         return "\n".join(f"{prefix}{line}" for line in text.split("\n"))
 
+    @staticmethod
+    def _safe_log_path(run_id: str) -> Path | None:
+        """
+        Construct a safe log path for the given run_id, ensuring it remains
+        within LOGS_DIR to prevent path traversal or access to arbitrary files.
+        """
+        try:
+            # Avoid obvious traversal via path separators or leading dots.
+            if not run_id or any(c in run_id for c in ("/", "\\", os.sep, os.altsep or "")):
+                return None
+
+            candidate = (LOGS_DIR / f"{run_id}.log").resolve()
+            root = LOGS_DIR.resolve()
+
+            try:
+                # Python 3.9+: use is_relative_to if available
+                is_inside = candidate.is_relative_to(root)  # type: ignore[attr-defined]
+            except AttributeError:
+                # Fallback for older Python versions
+                is_inside = root == candidate or root in candidate.parents
+
+            if not is_inside:
+                return None
+            return candidate
+        except Exception:
+            return None
+
     # ── Query helpers (for API endpoints) ───────────────────────────────
 
     @staticmethod
     def get_log(run_id: str) -> str | None:
-        path = LOGS_DIR / f"{run_id}.log"
-        if not path.exists():
+        path = ScheduleLogger._safe_log_path(run_id)
+        if not path or not path.exists():
             return None
         return path.read_text(encoding="utf-8")
 
@@ -182,8 +210,8 @@ class ScheduleLogger:
 
     @staticmethod
     def delete_log(run_id: str) -> bool:
-        path = LOGS_DIR / f"{run_id}.log"
-        if path.exists():
+        path = ScheduleLogger._safe_log_path(run_id)
+        if path and path.exists():
             path.unlink()
             return True
         return False
