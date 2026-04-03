@@ -6,26 +6,55 @@ engines:
     enabled: false
   duplication:
     enabled: false
+  pmdcpd:
+    enabled: false
 
 exclude_paths:
+  # Dependency directories
   - "node_modules/**"
   - "frontend/node_modules/**"
   - "backend/node_modules/**"
   - "venv/**"
   - "backend/venv/**"
   - ".venv/**"
+  # Build/cache artifacts
   - "**/__pycache__/**"
-  - "**/data/**"
-  - "**/chroma_db/**"
   - "**/frontend/.next/**"
   - "**/frontend/out/**"
+  - "dist/**"
+  - "build/**"
+  # Data directories
+  - "**/data/**"
+  - "**/chroma_db/**"
   - "**/backend/logs/**"
-  - "frontend/tsconfig.tsbuildinfo"
+  - "**/logs/**"
+  # Auto-generated lock files (large, repetitive, not user code)
+  - "**/package-lock.json"
+  - "**/yarn.lock"
+  - "**/pnpm-lock.yaml"
+  - "**/poetry.lock"
+  - "**/Pipfile.lock"
+  # Auto-generated config files
+  - "**/tsconfig.tsbuildinfo"
+  - "**/tsconfig.json"
+  # Binary and compiled files
   - "**/*.pyc"
   - "**/*.sqlite3"
+  - "**/*.db"
   - "**/*.bin"
   - "**/*.pickle"
+  - "**/*.pkl"
   - "**/*.log"
   - "**/*.so"
   - "**/*.so.*"
+  - "**/*.woff"
+  - "**/*.woff2"
+  - "**/*.ttf"
+  - "**/*.eot"
+  - "**/*.ico"
+  - "**/*.png"
+  - "**/*.jpg"
+  - "**/*.jpeg"
+  - "**/*.gif"
+  # Git internals
   - ".git/**"

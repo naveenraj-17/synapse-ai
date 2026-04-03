@@ -44,23 +44,36 @@ jobs:
       # Clean up binary files and caches to avoid encoding errors during SARIF generation
       - name: Clean up binaries/caches
         run: |
-          find . -name "__pycache__" -type d -exec rm -rf {} +
-          find . -name "*.pyc" -delete
-          find . -name "*.log" -delete
-          find . -name "*.bin" -delete
-          find . -name "*.pickle" -delete
-          find . -name "*.sqlite3" -delete
-          find . -name "*.so" -delete
-          find . -name "*.so.*" -delete
-          rm -rf backend/venv/
-          rm -rf backend/data/
-          rm -rf backend/chroma_db/
-          rm -rf frontend/node_modules/
-          rm -rf frontend/.next/
+          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          find . -name "*.pyc" -delete 2>/dev/null || true
+          find . -name "*.log" -delete 2>/dev/null || true
+          find . -name "*.bin" -delete 2>/dev/null || true
+          find . -name "*.pickle" -delete 2>/dev/null || true
+          find . -name "*.pkl" -delete 2>/dev/null || true
+          find . -name "*.sqlite3" -delete 2>/dev/null || true
+          find . -name "*.db" -delete 2>/dev/null || true
+          find . -name "*.so" -delete 2>/dev/null || true
+          find . -name "*.so.*" -delete 2>/dev/null || true
+          # Remove auto-generated lock files that trigger duplicate detection
+          find . -name "package-lock.json" -delete 2>/dev/null || true
+          find . -name "yarn.lock" -delete 2>/dev/null || true
+          find . -name "pnpm-lock.yaml" -delete 2>/dev/null || true
+          find . -name "poetry.lock" -delete 2>/dev/null || true
+          find . -name "Pipfile.lock" -delete 2>/dev/null || true
+          # Remove directories with build artifacts and data
+          rm -rf backend/venv/ 2>/dev/null || true
+          rm -rf backend/data/ 2>/dev/null || true
+          rm -rf backend/chroma_db/ 2>/dev/null || true
+          rm -rf frontend/node_modules/ 2>/dev/null || true
+          rm -rf frontend/.next/ 2>/dev/null || true
+          rm -rf node_modules/ 2>/dev/null || true
 
       # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
+        env:
+          # Force UTF-8 encoding for all file reading in the JVM to prevent MalformedInputException
+          JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8"
         with:
           # Check https://github.com/codacy/codacy-analysis-cli#project-token to get your project token from your Codacy repository
           # You can also omit the token and run the tools that support default configurations
