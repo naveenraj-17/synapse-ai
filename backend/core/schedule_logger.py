@@ -57,10 +57,10 @@ class ScheduleLogger:
 {'='*80}
 """)
 
-    # ── Core write ─────────────────────────────────────────────────────
+    # -- Core write -----------------------------------------------------
 
     def _write(self, text: str):
-        """Sync write — only call from a thread (via _write_bg) or startup."""
+        """Sync write -- only call from a thread (via _write_bg) or startup."""
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(text)
 
@@ -72,7 +72,7 @@ class ScheduleLogger:
         except RuntimeError:
             self._write(text)
 
-    # ── Run lifecycle ───────────────────────────────────────────────────
+    # -- Run lifecycle ---------------------------------------------------
 
     def run_end(self, status: str):
         elapsed = round(time.time() - self._start_time, 2)
@@ -85,7 +85,7 @@ class ScheduleLogger:
 {'='*80}
 """)
 
-    # ── Event logging ───────────────────────────────────────────────────
+    # -- Event logging ---------------------------------------------------
 
     def log_event(self, event: dict):
         """Process an SSE event and write relevant info to the log."""
@@ -94,10 +94,10 @@ class ScheduleLogger:
         if etype == "_log_prompt":
             prompt = event.get("prompt", "")
             self._write_bg(f"""
-{'─'*80}
+{'-'*80}
   INPUT PROMPT:
 {self._indent(prompt)}
-{'─'*80}
+{'-'*80}
 """)
 
         elif etype == "tool_execution":
@@ -134,14 +134,14 @@ class ScheduleLogger:
         elif etype == "thinking":
             pass  # skip noise
 
-    # ── Helpers ─────────────────────────────────────────────────────────
+    # -- Helpers ---------------------------------------------------------
 
     @staticmethod
     def _indent(text: str, spaces: int = 4) -> str:
         prefix = " " * spaces
         return "\n".join(f"{prefix}{line}" for line in text.split("\n"))
 
-    # ── Query helpers (for API endpoints) ───────────────────────────────
+    # -- Query helpers (for API endpoints) -------------------------------
 
     @staticmethod
     def get_log(run_id: str) -> str | None:

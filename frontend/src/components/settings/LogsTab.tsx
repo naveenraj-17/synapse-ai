@@ -179,7 +179,7 @@ export const LogsTab = () => {
                 </div>
             </div>
 
-            {/* Secondary filter — only shown when there are multiple unique names */}
+            {/* Secondary filter -- only shown when there are multiple unique names */}
             {uniqueIds.length > 1 && (
                 <div className="flex items-center gap-3 px-6 py-2 border-b border-white/5 shrink-0 bg-zinc-900/40">
                     <span className="text-[11px] text-zinc-600 shrink-0">Filter</span>
@@ -191,7 +191,7 @@ export const LogsTab = () => {
                     >
                         <option value="all">All {logType === 'orchestrations' ? 'orchestrations' : logType === 'agents' ? 'agents' : 'schedules'}</option>
                         {uniqueIds.map(id => (
-                            <option key={id} value={id}>{id.length > 40 ? id.slice(0, 37) + '…' : id}</option>
+                            <option key={id} value={id}>{id.length > 40 ? id.slice(0, 37) + '...' : id}</option>
                         ))}
                     </select>
                 </div>

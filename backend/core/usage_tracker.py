@@ -18,17 +18,17 @@ from typing import Optional
 
 from core.config import DATA_DIR
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Paths
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 USAGE_LOGS_FILE = os.path.join(DATA_DIR, "usage_logs.json")
 PRICING_FILE = os.path.join(DATA_DIR, "model_pricing.json")
 
 _lock = threading.Lock()
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Pricing lookup
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def _load_pricing() -> dict:
     """Load the flat model_pricing.json. Returns {} on any error."""
@@ -49,7 +49,7 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     # so e.g. "claude-sonnet-4-20250514" matches its exact key.
     entry = pricing.get(model)
     if entry is None:
-        # Fuzzy prefix match — pick the longest prefix that fits
+        # Fuzzy prefix match -- pick the longest prefix that fits
         for key in sorted(pricing.keys(), key=len, reverse=True):
             if model.startswith(key) or key.startswith(model.split("-")[0]):
                 entry = pricing[key]
@@ -76,20 +76,20 @@ def save_pricing_table(table: dict) -> None:
     print(f"DEBUG usage_tracker: pricing table saved ({len(table)} entries)", flush=True)
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Token estimation fallback
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def estimate_tokens_from_text(text: str) -> int:
-    """Rough heuristic: 1 token ≈ 4 characters. Used when the API doesn't return usage."""
+    """Rough heuristic: 1 token ? 4 characters. Used when the API doesn't return usage."""
     if not text:
         return 0
     return max(1, len(text) // 4)
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Usage log persistence
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def _load_logs() -> list:
     if not os.path.exists(USAGE_LOGS_FILE):
@@ -149,9 +149,9 @@ def log_usage(
     )
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Query helpers
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def get_usage_logs(
     limit: int = 100,
@@ -175,7 +175,7 @@ def get_usage_logs(
     if source:
         logs = [r for r in logs if r.get("source") == source]
 
-    # Ordering: per-session/run → chronological (oldest first); global → newest first
+    # Ordering: per-session/run ? chronological (oldest first); global ? newest first
     if not session_id and not run_id:
         logs = list(reversed(logs))
 
@@ -339,7 +339,7 @@ def get_usage_summary() -> dict:
         bs["agents_used"] = list(bs["agents_used"])
         by_session_list.append(bs)
 
-    # Schedule runs — convert sets to lists, sort by last_ts descending
+    # Schedule runs -- convert sets to lists, sort by last_ts descending
     by_schedule_list = []
     for bsch in sorted(by_schedule.values(), key=lambda x: x.get("last_ts") or "", reverse=True):
         bsch["models_used"] = list(bsch["models_used"])

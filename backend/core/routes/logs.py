@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 router = APIRouter()
 
 
-# ── Agent Logs ─────────────────────────────────────────────────────
+# -- Agent Logs -----------------------------------------------------
 
 @router.get("/api/logs/agents")
 async def list_agent_logs(limit: int = 100, offset: int = 0):
@@ -37,7 +37,7 @@ async def delete_agent_log(run_id: str):
     raise HTTPException(status_code=404, detail="Log not found")
 
 
-# ── Orchestration Logs ─────────────────────────────────────────────
+# -- Orchestration Logs ---------------------------------------------
 
 @router.get("/api/logs/orchestrations")
 async def list_orchestration_logs(limit: int = 100, offset: int = 0):
@@ -65,7 +65,7 @@ async def delete_orchestration_log(run_id: str):
     raise HTTPException(status_code=404, detail="Log not found")
 
 
-# ── Schedule Logs ──────────────────────────────────────────────────────
+# -- Schedule Logs ------------------------------------------------------
 
 @router.get("/api/logs/schedules")
 async def list_schedule_logs(limit: int = 100, offset: int = 0):

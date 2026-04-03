@@ -7,9 +7,9 @@ import {
     AlertTriangle, CheckCircle2, Info, Plus, Save, X, Edit2, Check
 } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Types
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 interface UsageSummary {
     total_cost: number;
     total_input_tokens: number;
@@ -57,9 +57,9 @@ interface PricingEntry {
     provider: string; input_per_1m: number; output_per_1m: number;
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Constants
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const PROVIDERS = ['openai', 'anthropic', 'gemini', 'grok', 'deepseek', 'bedrock', 'ollama'] as const;
 type Provider = typeof PROVIDERS[number];
 
@@ -73,9 +73,9 @@ const PROVIDER_META: Record<Provider, { label: string; color: string; dot: strin
     ollama:    { label: 'Ollama (Local)', color: '#94a3b8', dot: '#94a3b8', bg: 'bg-slate-800/60',   text: 'text-slate-400' },
 };
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Helpers
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 function fmt$(n: number) {
     if (n === 0) return '$0.00';
     if (n < 0.000001) return '<$0.000001';
@@ -92,7 +92,7 @@ function fmtKB(chars: number) {
     return kb >= 1 ? `${kb.toFixed(1)}KB` : `${chars}B`;
 }
 function fmtDate(ts: string) {
-    if (!ts) return '—';
+    if (!ts) return '--';
     try {
         return new Date(ts).toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -100,7 +100,7 @@ function fmtDate(ts: string) {
     } catch { return ts; }
 }
 function fmtTime(ts: string) {
-    if (!ts) return '—';
+    if (!ts) return '--';
     try {
         return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     } catch { return ts; }
@@ -115,9 +115,9 @@ function detectProvider(model: string): Provider {
     return 'ollama';
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Sub-components
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 function ProviderBadge({ provider }: { provider: string }) {
     const meta = PROVIDER_META[provider as Provider] ?? PROVIDER_META.ollama;
     return (
@@ -202,7 +202,7 @@ function SessionRow({ s }: { s: SessionStat }) {
         setOpen(o => !o);
     };
 
-    // For orchestration/schedule: flat list sorted by timestamp — agent change dividers are rendered inline in the table
+    // For orchestration/schedule: flat list sorted by timestamp -- agent change dividers are rendered inline in the table
     const flatOrchLogs: (UsageLog & { globalIdx: number })[] = (isOrch || isSched) && logs.length > 0
         ? [...logs]
             .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
@@ -315,7 +315,7 @@ type IndexedLog = UsageLog & { globalIdx: number };
 
 function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; showAgentDividers?: boolean }) {
     const sorted = [...logs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const COL_COUNT = 10; // # Time Model Tool Context ΔCtx In Out Latency Cost
+    const COL_COUNT = 10; // # Time Model Tool Context DCtx In Out Latency Cost
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -375,12 +375,12 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
                                         <td className="py-2.5 pr-4 max-w-[130px]">
                                             {log.tool_name
                                                 ? <span className="text-sky-400 font-mono truncate block" title={log.tool_name}>{log.tool_name}</span>
-                                                : <span className="text-zinc-700">—</span>}
+                                                : <span className="text-zinc-700">--</span>}
                                         </td>
                                         <td className="py-2.5 pr-3 text-right text-zinc-300 tabular-nums">{fmtKB(log.context_chars)}</td>
                                         <td className="py-2.5 pr-3 text-right tabular-nums">
                                             <span className={delta > 0 ? 'text-amber-400 font-medium' : 'text-zinc-600'}>
-                                                {delta > 0 ? `+${fmtKB(delta)}` : '—'}
+                                                {delta > 0 ? `+${fmtKB(delta)}` : '--'}
                                             </span>
                                         </td>
                                         <td className="py-2.5 pr-3 text-right text-zinc-400 tabular-nums">{fmtK(log.input_tokens)}</td>
@@ -398,9 +398,9 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
     );
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Editable Pricing Table
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 type EditablePricing = Record<string, PricingEntry & { _editing?: boolean; _new?: boolean }>;
 
 function PricingEditor({ initialPricing, onSaved }: {
@@ -506,7 +506,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                 <div className="flex items-center gap-3">
                     <Info className="w-4 h-4 text-zinc-400" />
                     <span className="text-sm font-semibold text-white">Pricing Reference</span>
-                    <span className="text-xs text-zinc-500">— edit rates used for cost calculation (USD / 1M tokens)</span>
+                    <span className="text-xs text-zinc-500">-- edit rates used for cost calculation (USD / 1M tokens)</span>
                 </div>
                 <div className="flex items-center gap-3">
                     {saveMsg && (
@@ -633,12 +633,12 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             }}
                                             className="bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-white/40 transition-colors"
                                         >
-                                            <option value="">— select model —</option>
+                                            <option value="">-- select model --</option>
                                             {(availableModels[provider] ?? [])
                                                 .filter((m: string) => !pricing[m])
                                                 .map((m: string) => <option key={m} value={m}>{m}</option>)
                                             }
-                                            <option value="__custom__">Custom model ID…</option>
+                                            <option value="__custom__">Custom model ID...</option>
                                         </select>
                                     )}
                                     <div className="flex items-center gap-1 justify-end">
@@ -669,9 +669,9 @@ function PricingEditor({ initialPricing, onSaved }: {
     );
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Main Component
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 export function UsageTab() {
     const [summary, setSummary] = useState<UsageSummary | null>(null);
     const [pricing, setPricing] = useState<Record<string, PricingEntry>>({});
@@ -833,14 +833,14 @@ export function UsageTab() {
                             ))}
                         </div>
 
-                        {/* Session History — always visible, includes schedule info */}
+                        {/* Session History -- always visible, includes schedule info */}
                         <div className="bg-zinc-900/60 border border-white/5 p-5">
                             {/* Header */}
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-zinc-400" />
                                     <h2 className="text-sm font-semibold text-white tracking-wide">Session History</h2>
-                                    <span className="text-xs text-zinc-600">{sessions.length} sessions — click to expand per-turn breakdown</span>
+                                    <span className="text-xs text-zinc-600">{sessions.length} sessions -- click to expand per-turn breakdown</span>
                                 </div>
                                 <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
                                     <span className="flex items-center gap-1.5"><Zap className="w-3 h-3 text-emerald-400" /> Chat</span>
@@ -894,7 +894,7 @@ export function UsageTab() {
                     </>
                 )}
 
-                {/* Editable Pricing Table — always visible */}
+                {/* Editable Pricing Table -- always visible */}
                 {Object.keys(pricing).length > 0 && (
                     <PricingEditor initialPricing={pricing} onSaved={setPricing} />
                 )}
@@ -907,7 +907,7 @@ export function UsageTab() {
                         <p>
                             Token counts are sourced from API response metadata for OpenAI, Anthropic, Gemini, Grok, and DeepSeek.
                             Ollama uses its <code>eval_count</code> field. AWS Bedrock does not expose token counts directly,
-                            so tokens are estimated from character length (chars ÷ 4) — costs for Bedrock calls may be less accurate.
+                            so tokens are estimated from character length (chars / 4) -- costs for Bedrock calls may be less accurate.
                             Edit prices above and click <strong>Save Pricing</strong> to update rates used for future cost calculations.
                         </p>
                     </div>
