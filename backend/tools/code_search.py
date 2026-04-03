@@ -195,6 +195,39 @@ def _grep_file(
     return results
 
 
+def _grep_folder(
+    folder_path: str,
+    pattern: str,
+    file_pattern: str = "*",
+    ignore_case: bool = False,
+    fixed: bool = False,
+    context: int = 0,
+    max_matches: int = 1000,
+    recursive: bool = True,
+) -> list[dict]:
+    """Search for a pattern across all files in a folder matching file_pattern."""
+    import glob as _glob
+
+    resolved = folder_path if os.path.isabs(folder_path) else os.path.join(os.getcwd(), folder_path)
+    if not os.path.exists(resolved):
+        return [{"error": f"Folder not found: {folder_path}. Use an absolute path."}]
+    if not os.path.isdir(resolved):
+        return [{"error": f"Not a directory: {folder_path}."}]
+
+    glob_pat = os.path.join(resolved, "**", file_pattern) if recursive else os.path.join(resolved, file_pattern)
+    files = sorted(f for f in _glob.glob(glob_pat, recursive=recursive) if os.path.isfile(f))
+
+    all_results: list[dict] = []
+    for fpath in files:
+        if len(all_results) >= max_matches:
+            break
+        remaining = max_matches - len(all_results)
+        hits = _grep_file(fpath, pattern, ignore_case=ignore_case, fixed=fixed, context=context, max_matches=remaining)
+        all_results.extend(h for h in hits if "error" not in h)
+
+    return all_results
+
+
 def _glob_files(
     folder_path: str,
     pattern: str = "**/*",
@@ -233,6 +266,37 @@ def _glob_files(
     return results
 
 
+def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100) -> dict:
+    """Read lines [start_line, end_line] (1-indexed, inclusive) from a file."""
+    resolved = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
+    if not os.path.exists(resolved):
+        return {"error": f"File not found: {file_path}. Use an absolute path."}
+    if not os.path.isfile(resolved):
+        return {"error": f"Not a file: {file_path}."}
+    try:
+        with open(resolved, "rb") as f:
+            if b"\x00" in f.read(1024):
+                return {"error": f"Binary file: {file_path}"}
+    except Exception as e:
+        return {"error": str(e)}
+    try:
+        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        total = len(lines)
+        s = max(1, start_line) - 1
+        e = min(end_line, total)
+        chunk = [l.rstrip("\n") for l in lines[s:e]]
+        return {
+            "path": file_path,
+            "start_line": s + 1,
+            "end_line": e,
+            "total_lines": total,
+            "content": "\n".join(chunk),
+        }
+    except Exception as ex:
+        return {"error": str(ex)}
+
+
 @app.list_tools()
 async def list_tools() -> list[types.Tool]:
     return [
@@ -267,21 +331,26 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="grep",
             description=(
-                "Search inside a single file for a pattern (grep-like). Pattern is a regex by default; "
-                "set `fixed` to true for literal matching. Returns matches with line numbers. "
-                "IMPORTANT: `file_path` must be an absolute path (e.g. as returned by list_directory or search_files)."
+                "Search for a pattern inside a file or across all files in a folder (grep-like). "
+                "Pass a file path to search that file, or a folder path to search all matching files within it. "
+                "Use `file_pattern` to filter by extension when searching a folder (e.g. '*.py', '*.ts'). "
+                "Pattern is a regex by default; set `fixed` to true for literal matching. "
+                "Returns matches with file path and line numbers. "
+                "IMPORTANT: `path` must be an absolute path."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "Absolute path to the file to search (must be absolute, not relative)"},
+                    "path": {"type": "string", "description": "Absolute path to a file or folder to search in"},
                     "pattern": {"type": "string", "description": "Regex or literal pattern to search for"},
+                    "file_pattern": {"type": "string", "description": "When path is a folder: glob pattern to filter files (e.g. '*.py', '*.ts'). Default: all files", "default": "*"},
+                    "recursive": {"type": "boolean", "description": "When path is a folder: search subdirectories recursively", "default": True},
                     "ignore_case": {"type": "boolean", "default": False},
                     "fixed": {"type": "boolean", "description": "Treat pattern as literal substring (like grep -F)", "default": False},
                     "context": {"type": "integer", "description": "Number of context lines before/after each match", "default": 0},
                     "max_matches": {"type": "integer", "default": 1000}
                 },
-                "required": ["file_path", "pattern"]
+                "required": ["path", "pattern"]
             },
         ),
         types.Tool(
@@ -301,6 +370,24 @@ async def list_tools() -> list[types.Tool]:
                     "max_results": {"type": "integer", "default": 1000}
                 },
                 "required": ["folder_path"]
+            },
+        ),
+        types.Tool(
+            name="read_file_by_lines",
+            description=(
+                "Read a specific range of lines from a file (1-indexed, inclusive). Returns the content, "
+                "start/end line numbers, and total line count. Use this instead of read_file when you only "
+                "need a slice of a large file or a vault file. "
+                "IMPORTANT: `file_path` must be an absolute path."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to the file to read"},
+                    "start_line": {"type": "integer", "description": "First line to read (1-indexed, inclusive)", "default": 1},
+                    "end_line": {"type": "integer", "description": "Last line to read (1-indexed, inclusive)", "default": 100},
+                },
+                "required": ["file_path"]
             },
         ),
     ]
@@ -323,17 +410,25 @@ async def call_tool(
             return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
 
         if name == "grep":
-            file_path = arguments.get("file_path")
+            # Accept both new `path` and legacy `file_path` for backward compatibility
+            path = arguments.get("path") or arguments.get("file_path")
             pattern = arguments.get("pattern", "")
-            if not file_path or pattern == "":
-                return [types.TextContent(type="text", text=json.dumps({"error": "Both 'file_path' and 'pattern' are required."}))]
+            if not path or pattern == "":
+                return [types.TextContent(type="text", text=json.dumps({"error": "Both 'path' and 'pattern' are required."}))]
 
             ignore_case = bool(arguments.get("ignore_case", False))
             fixed = bool(arguments.get("fixed", False))
             context = int(arguments.get("context", 0))
             max_matches = int(arguments.get("max_matches", 1000))
 
-            results = _grep_file(file_path, pattern, ignore_case=ignore_case, fixed=fixed, context=context, max_matches=max_matches)
+            resolved = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+            if os.path.isdir(resolved):
+                file_pattern = arguments.get("file_pattern", "*")
+                recursive = bool(arguments.get("recursive", True))
+                results = _grep_folder(path, pattern, file_pattern=file_pattern, ignore_case=ignore_case, fixed=fixed, context=context, max_matches=max_matches, recursive=recursive)
+            else:
+                results = _grep_file(path, pattern, ignore_case=ignore_case, fixed=fixed, context=context, max_matches=max_matches)
+
             return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
 
         if name == "glob":
@@ -349,6 +444,15 @@ async def call_tool(
 
             results = _glob_files(folder_path, pattern=pattern, recursive=recursive, include_dirs=include_dirs, include_hidden=include_hidden, max_results=max_results)
             return [types.TextContent(type="text", text=json.dumps({"results": results}, ensure_ascii=False))]
+
+        if name == "read_file_by_lines":
+            file_path = arguments.get("file_path")
+            if not file_path:
+                return [types.TextContent(type="text", text=json.dumps({"error": "'file_path' is required."}))]
+            start_line = int(arguments.get("start_line", 1))
+            end_line = int(arguments.get("end_line", 100))
+            result = _read_file_by_lines(file_path, start_line=start_line, end_line=end_line)
+            return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
         return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
     except Exception as e:

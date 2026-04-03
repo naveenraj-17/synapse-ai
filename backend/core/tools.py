@@ -23,6 +23,7 @@ DEFAULT_TOOLS_BY_TYPE = {
         "get_file_info",              # file metadata
         "grep",
         "glob",
+        "read_file_by_lines",         # read specific line range from any file
     },
     "code": {
         "search_codebase",
@@ -254,14 +255,17 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
 You have access to the following tools:
 {tools_json}
 
-**CODE & FILE NAVIGATION — EFFICIENCY FIRST:**
-When exploring or reading code/files, always reason: *"Can I find this with a search instead of reading the whole file?"* Follow this strict priority order:
-1. **`search_codebase` / `grep`** — use these first to locate symbols, patterns, function definitions, imports, or any text across files. This is almost always faster and more targeted than opening files.
-2. **`glob`** — use to discover file paths by pattern (e.g. `**/*.py`, `src/**/*.ts`) before reading any file.
-3. **Read / open a file** — only after you have identified the exact file and approximate line range via search. Read only the relevant slice, not the entire file.
-4. **Any other tool** — only when search/glob/read are genuinely insufficient.
+**CODE & FILE NAVIGATION:**
+- **`search_codebase`** — semantic search across indexed repos. Requires `repo_ids`. Best for broad symbol or concept search.
+- **`grep`** — search for a pattern inside a file or across all files in a folder. Pass a file path to search that file, or a folder path to search all files within it. Use `file_pattern` to filter by extension (e.g. `*.py`, `*.ts`).
+- **`glob`** — discover file paths by pattern (e.g. `**/*.py`, `src/**/*.ts`).
+- **`read_file`** — read an entire file. Use when you already know the path and the file is small. For large files, prefer `read_file_by_lines` or `grep`.
+- **`read_file_by_lines`** — read a specific line range from a file (1-indexed, inclusive). Ideal when you know approximately where the relevant content is.
 
-**Never read a file in full when you can grep for the specific symbol or section you need.** If you find yourself about to read more than one file without first searching, stop and use `search_codebase` or `grep` instead. This is the most efficient path and minimizes unnecessary context.
+If you already know the file path, read it directly — no need to search first. Prefer `grep` or `read_file_by_lines` over reading entire files when you only need a specific section.
+
+**VAULT (LARGE OUTPUT HANDLING):**
+When a tool's output exceeds the character limit, it is automatically saved to a vault file. You will receive a JSON reference containing the vault file path, file type, size, and total line count — instead of the raw output. To access the data: use `grep` to search for specific values within the vault file, or use `read_file_by_lines` with `start_line`/`end_line` to read a slice. Do NOT use `read_file` on vault files — they are too large and will be re-vaulted.
 
 **SEQUENTIALTHINKING (OPTIONAL — USE SPARINGLY):**
 `sequentialthinking` is a lightweight planning aid. If the request is complex, you MAY call it to outline your plan or refine your thinking — up to **5 times** per task. After each call you MUST make progress with real action tools (browser, search, data tool, etc.). Never call `sequentialthinking` more than 5 times per task, and never call it in place of a real tool — it cannot fetch data, browse the web, or do anything productive by itself.

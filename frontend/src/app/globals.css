@@ -199,3 +199,13 @@ button:disabled {
 .light-mode .react-flow__minimap {
   background-color: #ffffff !important;
 }
+
+/* Welcome screen tip card fade-in */
+@keyframes tip-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tip-card-animate {
+  animation: tip-fade-in 0.4s ease forwards;
+}

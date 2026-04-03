@@ -18,79 +18,6 @@ if TYPE_CHECKING:
     from .engine import OrchestrationEngine
 
 
-def _build_step_prompt(
-    step: StepConfig,
-    shared_state: dict,
-    step_map: dict[str, StepConfig] | None = None,
-    agent_names: dict[str, str] | None = None,
-) -> str:
-    """Build the prompt for an agent step, injecting shared state context with agent attribution."""
-    context_parts = []
-
-    # Always inject user_input so every step knows the original request,
-    # unless the step already lists it in input_keys (would be injected below).
-    if "user_input" in shared_state and "user_input" not in (step.input_keys or []):
-        context_parts.append(f"[user_input]:\n{shared_state['user_input']}")
-
-    # Also inject human responses (clarifications) that are not in input_keys.
-    # These are stored under the human step's output_key and also under "human_response".
-    human_keys = {"human_response"}
-    # Collect output_keys of all human steps
-    if step_map:
-        for s in step_map.values():
-            if s.type and s.type.value == "human" and s.output_key:
-                human_keys.add(s.output_key)
-    for hkey in sorted(human_keys):  # sorted for deterministic ordering
-        if hkey in shared_state and hkey not in (step.input_keys or []) and hkey != "user_input":
-            val = str(shared_state[hkey])
-            if len(val) > 5000:
-                val = val[:5000] + "...(truncated)"
-            context_parts.append(f"[{hkey}]:\n{val}")
-
-    for key in step.input_keys:
-        if key not in shared_state:
-            continue
-        val = shared_state[key]
-
-        # Find which agent produced this key for attribution
-        label = key
-        if step_map and agent_names:
-            producer = next((s for s in step_map.values() if s.output_key == key), None)
-            if producer and producer.agent_id and producer.agent_id in agent_names:
-                label = f"{agent_names[producer.agent_id]} → {key}"
-
-        # Handle list values (from loop/parallel accumulation)
-        if isinstance(val, list) and val and isinstance(val[0], dict) and "result" in val[0]:
-            for entry in val:
-                iteration = entry.get("iteration", entry.get("run", ""))
-                agent = entry.get("agent", "")
-                result_str = str(entry.get("result", ""))
-                if len(result_str) > 5000:
-                    result_str = result_str[:5000] + "...(truncated)"
-                iter_label = f" (Iteration {iteration})" if iteration else ""
-                source = f"{agent} → {key}{iter_label}" if agent else f"{key}{iter_label}"
-                context_parts.append(f"[{source}]:\n{result_str}")
-        else:
-            val_str = str(val)
-            if len(val_str) > 5000:
-                val_str = val_str[:5000] + "...(truncated)"
-            context_parts.append(f"[{label}]:\n{val_str}")
-
-    prompt = step.prompt_template or shared_state.get("user_input", "")
-
-    # Replace {state.key} references in prompt template
-    def replace_state_ref(match):
-        key = match.group(1)
-        return str(shared_state.get(key, f"{{state.{key}}}"))
-
-    prompt = re.sub(r"\{state\.(\w+)\}", replace_state_ref, prompt)
-
-    if context_parts:
-        context_block = "\n\n".join(context_parts)
-        prompt = f"Context from previous steps:\n{context_block}\n\nTask: {prompt}"
-
-    return prompt
-
 
 class AgentStepExecutor:
     """Run a sub-agent's ReAct loop. Reuses the existing engine."""
@@ -102,10 +29,17 @@ class AgentStepExecutor:
         from core.agent_logger import AgentLogger
         print(f"DEBUG AGENT EXEC: agent_id={step.agent_id} step={step.id}", flush=True)
 
-        prompt = _build_step_prompt(step, run.shared_state, engine.step_map, engine.agent_names)
+        from .context import build_origin_aware_context
+        transition = getattr(engine, "current_transition", None)
+        if transition is None:
+            from .context import TransitionContext
+            transition = TransitionContext(origin_type="entry", execution_number=1)
+        prompt, system_prompt_extra = build_origin_aware_context(
+            step, run, engine, transition
+        )
 
         # Emit prompt for the orchestration logger (filtered out before SSE)
-        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt}
+        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt, "system_prompt_extra": system_prompt_extra}
 
         agent_id = step.agent_id or "default"
         agent_name = engine.agent_names.get(agent_id, agent_id)
@@ -123,6 +57,7 @@ class AgentStepExecutor:
 
         final_response = None
         _log_status = "completed"
+        execution_events: list[dict] = []
         try:
             async for event in run_agent_step(
                 message=prompt,
@@ -133,7 +68,9 @@ class AgentStepExecutor:
                 allowed_tools_override=step.allowed_tools,
                 source="orchestration",
                 run_id=run.run_id,
+                system_prompt_extra=system_prompt_extra,
             ):
+                execution_events.append(event)
                 agent_log.log_event(event)
                 yield {**event, "orch_step_id": step.id, "step_name": step.name}
                 if event.get("type") == "final":
@@ -146,6 +83,11 @@ class AgentStepExecutor:
 
         if step.output_key and final_response:
             run.shared_state[step.output_key] = final_response
+
+        # Store execution trace for memory across re-invocations
+        from .context import build_execution_trace, store_execution_memory
+        trace = build_execution_trace(execution_events)
+        store_execution_memory(run, step, trace, agent_name)
 
 
 class ToolStepExecutor:
@@ -167,9 +109,14 @@ class ToolStepExecutor:
                    "message": f"No tool configured for TOOL step '{step.name}'"}
             return
 
-        prompt = _build_step_prompt(step, run.shared_state, engine.step_map, engine.agent_names)
+        from .context import build_origin_aware_context
+        transition = getattr(engine, "current_transition", None)
+        if transition is None:
+            from .context import TransitionContext
+            transition = TransitionContext(origin_type="entry", execution_number=1)
+        prompt, system_prompt_extra = build_origin_aware_context(step, run, engine, transition)
 
-        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt}
+        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt, "system_prompt_extra": system_prompt_extra}
 
         agent_id = step.agent_id
         session_id = run.session_id or f"orch_{run.run_id}"
@@ -195,6 +142,7 @@ class ToolStepExecutor:
                 allowed_tools_override=[step.forced_tool],
                 source="orchestration",
                 run_id=run.run_id,
+                system_prompt_extra=system_prompt_extra,
             ):
                 agent_log.log_event(event)
                 yield {**event, "orch_step_id": step.id, "step_name": step.name}
@@ -746,10 +694,14 @@ class LLMStepExecutor:
         from core.llm_providers import generate_response as llm_generate, detect_mode_from_model
         from core.config import load_settings
 
-        # Reuse the shared prompt builder so {state.key} refs and context injection work
-        prompt = _build_step_prompt(step, run.shared_state, engine.step_map, engine.agent_names)
+        from .context import build_origin_aware_context
+        transition = getattr(engine, "current_transition", None)
+        if transition is None:
+            from .context import TransitionContext
+            transition = TransitionContext(origin_type="entry", execution_number=1)
+        prompt, system_prompt_extra = build_origin_aware_context(step, run, engine, transition)
 
-        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt}
+        yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt, "system_prompt_extra": system_prompt_extra}
         yield {
             "type": "thinking",
             "orch_step_id": step.id,

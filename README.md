@@ -19,23 +19,6 @@ curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.s
 irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
 ```
 
-### npm
-```bash
-npm install -g synapse-ai
-synapse start
-```
-Python 3.11+ required. All Python dependencies are installed automatically on first run.
-
-### pip / uv
-```bash
-pip install synapse-ai
-synapse start
-
-# or with uv:
-uvx synapse-ai
-```
-Node.js 18+ required.
-
 ---
 
 ## CLI
@@ -78,7 +61,7 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 
 ## Synapse UI
 
-https://github.com/user-attachments/assets/a898626f-0b5e-48fd-80ed-c052700ab7d2
+https://github.com/user-attachments/assets/78c526d9-c75b-41fa-9353-589d3207e7db
 
 
 ## The Tool Ecosystem

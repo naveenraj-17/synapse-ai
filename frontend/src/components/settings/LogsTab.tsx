@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Trash2, Bot, Workflow, ScrollText } from 'lucide-react';
+import { RefreshCw, Trash2, Bot, Workflow, ScrollText, Clock } from 'lucide-react';
 
-type LogType = 'agents' | 'orchestrations';
+type LogType = 'agents' | 'orchestrations' | 'schedules';
 
 interface LogSummary {
     run_id: string;
@@ -15,6 +15,11 @@ interface LogSummary {
     // Orchestration log fields
     orchestration_name?: string;
     orchestration_id?: string;
+    // Schedule log fields
+    schedule_name?: string;
+    schedule_id?: string;
+    target_type?: string;
+    prompt?: string;
     // Common
     started_at?: string;
     user_input?: string;
@@ -30,6 +35,7 @@ export const LogsTab = () => {
     const [contentLoading, setContentLoading] = useState(false);
     const [offset, setOffset] = useState(0);
     const [hasMore, setHasMore] = useState(true);
+    const [filterById, setFilterById] = useState<string>('all');
     const LIMIT = 100;
 
     const fetchLogs = useCallback(async (isLoadMore = false) => {
@@ -62,7 +68,7 @@ export const LogsTab = () => {
         }
     }, [logType, offset]);
 
-    useEffect(() => { fetchLogs(); }, [logType]);
+    useEffect(() => { fetchLogs(); setFilterById('all'); }, [logType]);
 
     const fetchContent = async (runId: string) => {
         setSelectedId(runId);
@@ -85,11 +91,34 @@ export const LogsTab = () => {
         }
     };
 
-    // Group logs by session_id
+    // Under Agents tab: hide logs that were triggered by a schedule
+    // (they appear as agent_logs with source='schedule' but belong in Schedules tab)
+    const visibleLogs = logType === 'agents'
+        ? logs.filter(l => l.source !== 'schedule')
+        : logs;
+
+    // Unique ID options for secondary dropdown (based on name, not run_id)
+    const uniqueIds: string[] = Array.from(new Set(
+        visibleLogs.map(log =>
+            logType === 'agents' ? (log.agent_name || log.run_id)
+                : logType === 'orchestrations' ? (log.orchestration_name || log.run_id)
+                    : (log.schedule_name || log.run_id)
+        ).filter(Boolean) as string[]
+    ));
+
+    // Apply secondary filter
+    const filteredLogs = filterById === 'all' ? visibleLogs : visibleLogs.filter(log => {
+        const name = logType === 'agents' ? (log.agent_name || log.run_id)
+            : logType === 'orchestrations' ? (log.orchestration_name || log.run_id)
+                : (log.schedule_name || log.run_id);
+        return name === filterById;
+    });
+
+    // Group filtered logs by session_id
     const groupedLogs: Record<string, LogSummary[]> = {};
     const sessionOrder: string[] = [];
 
-    logs.forEach(log => {
+    filteredLogs.forEach(log => {
         const sid = log.session_id || `nosession_${log.run_id}`;
         if (!groupedLogs[sid]) {
             groupedLogs[sid] = [];
@@ -110,25 +139,33 @@ export const LogsTab = () => {
             <div className="flex items-center gap-2 px-6 py-3 border-b border-white/10 shrink-0">
                 <button
                     onClick={() => setLogType('agents')}
-                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${
-                        logType === 'agents'
-                            ? 'bg-white text-black'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                    }`}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'agents'
+                        ? 'bg-white text-black'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                        }`}
                 >
                     <Bot className="h-3.5 w-3.5" />
                     Agent Logs
                 </button>
                 <button
                     onClick={() => setLogType('orchestrations')}
-                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${
-                        logType === 'orchestrations'
-                            ? 'bg-white text-black'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                    }`}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'orchestrations'
+                        ? 'bg-white text-black'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                        }`}
                 >
                     <Workflow className="h-3.5 w-3.5" />
                     Orchestration Logs
+                </button>
+                <button
+                    onClick={() => setLogType('schedules')}
+                    className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'schedules'
+                            ? 'bg-white text-black'
+                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                        }`}
+                >
+                    <Clock className="h-3.5 w-3.5" />
+                    Schedule Logs
                 </button>
                 <div className="ml-auto flex items-center gap-3">
                     <span className="text-xs text-zinc-600">{logs.length} log{logs.length !== 1 ? 's' : ''}</span>
@@ -141,6 +178,24 @@ export const LogsTab = () => {
                     </button>
                 </div>
             </div>
+
+            {/* Secondary filter -- only shown when there are multiple unique names */}
+            {uniqueIds.length > 1 && (
+                <div className="flex items-center gap-3 px-6 py-2 border-b border-white/5 shrink-0 bg-zinc-900/40">
+                    <span className="text-[11px] text-zinc-600 shrink-0">Filter</span>
+                    <select
+                        value={filterById}
+                        onChange={e => setFilterById(e.target.value)}
+                        className="bg-zinc-800/60 border border-white/8 text-zinc-300 text-[11px] px-2.5 py-1 focus:outline-none focus:border-white/20 transition-colors cursor-pointer appearance-none pr-6 max-w-[260px]"
+                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+                    >
+                        <option value="all">All {logType === 'orchestrations' ? 'orchestrations' : logType === 'agents' ? 'agents' : 'schedules'}</option>
+                        {uniqueIds.map(id => (
+                            <option key={id} value={id}>{id.length > 40 ? id.slice(0, 37) + '...' : id}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {/* Two-pane layout */}
             <div className="flex flex-1 overflow-hidden">
@@ -158,8 +213,8 @@ export const LogsTab = () => {
                         <>
                             {sessionOrder.map(sid => {
                                 const sessionLogs = groupedLogs[sid];
-                                const hasRealSessionInput = sessionLogs.some(l => l.session_id && l.user_input);
-                                const sessionInput = sessionLogs.find(l => l.user_input)?.user_input;
+                                const sessionInput = sessionLogs.find(l => l.user_input || l.prompt)?.user_input
+                                    || sessionLogs.find(l => l.prompt)?.prompt;
                                 const sessionDisplayName = sid.startsWith('nosession_') ? 'Individual Run' : `Session: ${sid.slice(-8)}`;
 
                                 return (
@@ -174,20 +229,23 @@ export const LogsTab = () => {
                                             const isSelected = selectedId === log.run_id;
                                             const name = logType === 'agents'
                                                 ? (log.agent_name || log.run_id)
-                                                : (log.orchestration_name || log.run_id);
+                                                : logType === 'orchestrations'
+                                                    ? (log.orchestration_name || log.run_id)
+                                                    : (log.schedule_name || log.run_id);
                                             const subtitle = logType === 'agents'
                                                 ? log.source
-                                                : log.orchestration_id;
+                                                : logType === 'orchestrations'
+                                                    ? log.orchestration_id
+                                                    : log.target_type;
 
                                             return (
                                                 <div
                                                     key={log.run_id}
                                                     onClick={() => fetchContent(log.run_id)}
-                                                    className={`group cursor-pointer px-4 py-3 border-b border-white/5 last:border-b-0 flex flex-col gap-1 transition-colors ${
-                                                        isSelected
-                                                            ? 'bg-white/10 border-l-2 border-l-white'
-                                                            : 'hover:bg-white/5 border-l-2 border-l-transparent'
-                                                    }`}
+                                                    className={`group cursor-pointer px-4 py-3 border-b border-white/5 last:border-b-0 flex flex-col gap-1 transition-colors ${isSelected
+                                                        ? 'bg-white/10 border-l-2 border-l-white'
+                                                        : 'hover:bg-white/5 border-l-2 border-l-transparent'
+                                                        }`}
                                                 >
                                                     <div className="flex items-start justify-between gap-2">
                                                         <span className="text-xs text-white font-semibold leading-tight truncate">{name}</span>
@@ -216,7 +274,7 @@ export const LogsTab = () => {
                                     </div>
                                 );
                             })}
-                            
+
                             {hasMore && (
                                 <button
                                     onClick={() => fetchLogs(true)}

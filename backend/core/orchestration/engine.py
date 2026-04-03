@@ -23,6 +23,7 @@ class OrchestrationEngine:
         self.step_map: dict[str, StepConfig] = {s.id: s for s in orchestration.steps}
         self.executors = STEP_EXECUTORS
         self.agent_names: dict[str, str] = self._load_agent_names()
+        self.current_transition = None  # set by _execute_loop before each step
 
     def _load_agent_names(self) -> dict[str, str]:
         """Load agent_id -> name mapping for context attribution."""
@@ -106,6 +107,11 @@ class OrchestrationEngine:
 
             step_start_time = time.time()
             step_timeout = step.timeout_seconds or 300  # default 5 min
+
+            # Build and store TransitionContext so executors can access it
+            from .context import build_transition_context
+            transition = build_transition_context(step, run, self)
+            self.current_transition = transition
 
             # Log step start
             agent_name = self.agent_names.get(step.agent_id, "") if step.agent_id else None

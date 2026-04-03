@@ -21,3 +21,4 @@ requests
 anthropic
 google-genai
 pyinstrument
+croniter

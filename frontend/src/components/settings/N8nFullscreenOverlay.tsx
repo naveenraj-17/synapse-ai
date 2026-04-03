@@ -2,7 +2,7 @@
 
 interface N8nFullscreenOverlayProps {
     isIframeFullscreen: boolean;
-    toolBuilderMode: 'config' | 'n8n';
+    toolBuilderMode: 'config' | 'n8n' | 'python';
     draftTool: any;
     setIsIframeFullscreen: (v: boolean) => void;
     getN8nBaseUrl: () => string;

@@ -18,17 +18,17 @@ from typing import Optional
 
 from core.config import DATA_DIR
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Paths
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 USAGE_LOGS_FILE = os.path.join(DATA_DIR, "usage_logs.json")
 PRICING_FILE = os.path.join(DATA_DIR, "model_pricing.json")
 
 _lock = threading.Lock()
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Pricing lookup
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def _load_pricing() -> dict:
     """Load the flat model_pricing.json. Returns {} on any error."""
@@ -49,7 +49,7 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     # so e.g. "claude-sonnet-4-20250514" matches its exact key.
     entry = pricing.get(model)
     if entry is None:
-        # Fuzzy prefix match — pick the longest prefix that fits
+        # Fuzzy prefix match -- pick the longest prefix that fits
         for key in sorted(pricing.keys(), key=len, reverse=True):
             if model.startswith(key) or key.startswith(model.split("-")[0]):
                 entry = pricing[key]
@@ -76,20 +76,20 @@ def save_pricing_table(table: dict) -> None:
     print(f"DEBUG usage_tracker: pricing table saved ({len(table)} entries)", flush=True)
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Token estimation fallback
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def estimate_tokens_from_text(text: str) -> int:
-    """Rough heuristic: 1 token ≈ 4 characters. Used when the API doesn't return usage."""
+    """Rough heuristic: 1 token ? 4 characters. Used when the API doesn't return usage."""
     if not text:
         return 0
     return max(1, len(text) // 4)
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Usage log persistence
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def _load_logs() -> list:
     if not os.path.exists(USAGE_LOGS_FILE):
@@ -149,9 +149,9 @@ def log_usage(
     )
 
 
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 # Query helpers
-# ─────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
 
 def get_usage_logs(
     limit: int = 100,
@@ -175,7 +175,7 @@ def get_usage_logs(
     if source:
         logs = [r for r in logs if r.get("source") == source]
 
-    # Ordering: per-session/run → chronological (oldest first); global → newest first
+    # Ordering: per-session/run ? chronological (oldest first); global ? newest first
     if not session_id and not run_id:
         logs = list(reversed(logs))
 
@@ -200,6 +200,7 @@ def get_usage_summary() -> dict:
     by_model: dict[str, dict] = {}
     by_session: dict[str, dict] = {}   # keyed by session_id (chat)
     by_run: dict[str, dict] = {}       # keyed by run_id (orchestration runs)
+    by_schedule: dict[str, dict] = {}  # keyed by run_id (schedule runs)
 
     for r in logs:
         model = r.get("model", "unknown")
@@ -235,8 +236,41 @@ def get_usage_summary() -> dict:
         bm["total_tokens"] += inp + out
         bm["estimated_cost"] = round(bm["estimated_cost"] + cost, 8)
 
+        # Schedule entries are grouped by run_id
+        if run_id and source == "schedule":
+            if run_id not in by_schedule:
+                # Extract schedule_id from run_id format: schedulerun_{schedule_id}_{ts}
+                parts = run_id.split("_")
+                schedule_id = parts[1] if len(parts) > 1 else "unknown"
+                by_schedule[run_id] = {
+                    "run_id": run_id,
+                    "schedule_id": schedule_id,
+                    "agent_id": agent_id,
+                    "agents_used": set(),
+                    "requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "context_chars": 0,
+                    "estimated_cost": 0.0,
+                    "models_used": set(),
+                    "first_ts": r.get("timestamp"),
+                    "last_ts": r.get("timestamp"),
+                    "source": "schedule",
+                }
+            bsch = by_schedule[run_id]
+            bsch["requests"] += 1
+            bsch["input_tokens"] += inp
+            bsch["output_tokens"] += out
+            bsch["total_tokens"] += inp + out
+            bsch["context_chars"] += ctx
+            bsch["estimated_cost"] = round(bsch["estimated_cost"] + cost, 8)
+            bsch["models_used"].add(model)
+            bsch["agents_used"].add(agent_id)
+            bsch["last_ts"] = r.get("timestamp")
+
         # Orchestration entries are grouped by run_id
-        if run_id and (source == "orchestration" or source.startswith("orchestration:")):
+        elif run_id and (source == "orchestration" or source.startswith("orchestration:")):
             if run_id not in by_run:
                 by_run[run_id] = {
                     "session_id": session,   # the chat session that spawned this run
@@ -305,6 +339,13 @@ def get_usage_summary() -> dict:
         bs["agents_used"] = list(bs["agents_used"])
         by_session_list.append(bs)
 
+    # Schedule runs -- convert sets to lists, sort by last_ts descending
+    by_schedule_list = []
+    for bsch in sorted(by_schedule.values(), key=lambda x: x.get("last_ts") or "", reverse=True):
+        bsch["models_used"] = list(bsch["models_used"])
+        bsch["agents_used"] = list(bsch["agents_used"])
+        by_schedule_list.append(bsch)
+
     return {
         "total_cost": round(total_cost, 8),
         "total_input_tokens": total_input,
@@ -313,6 +354,7 @@ def get_usage_summary() -> dict:
         "total_requests": total_requests,
         "by_model": by_model_list,
         "by_session": by_session_list,
+        "by_schedule": by_schedule_list,
     }
 
 def clear_usage_logs() -> int:

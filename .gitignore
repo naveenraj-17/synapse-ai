@@ -12,6 +12,7 @@ backend/logs/
 backend/venv/
 backend/data/chroma_db/
 backend/data/*
+backend/.playwright-mcp/
 
 # Javascript / Frontend
 frontend/node_modules/

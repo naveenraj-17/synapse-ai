@@ -7,9 +7,9 @@ import {
     AlertTriangle, CheckCircle2, Info, Plus, Save, X, Edit2, Check
 } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Types
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 interface UsageSummary {
     total_cost: number;
     total_input_tokens: number;
@@ -18,6 +18,21 @@ interface UsageSummary {
     total_requests: number;
     by_model: ModelStat[];
     by_session: SessionStat[];
+    by_schedule?: ScheduleStat[];
+}
+interface ScheduleStat {
+    run_id: string;
+    schedule_id: string;
+    agent_id: string;
+    requests: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    estimated_cost: number;
+    models_used: string[];
+    agents_used: string[];
+    first_ts: string;
+    last_ts: string;
 }
 interface ModelStat {
     model: string; provider: string; requests: number;
@@ -29,6 +44,7 @@ interface SessionStat {
     input_tokens: number; output_tokens: number; total_tokens: number;
     context_chars: number; estimated_cost: number; models_used: string[];
     first_ts: string; last_ts: string; source: string;
+    schedule_id?: string; // only for schedule entries
 }
 interface UsageLog {
     timestamp: string; model: string; provider: string;
@@ -41,9 +57,9 @@ interface PricingEntry {
     provider: string; input_per_1m: number; output_per_1m: number;
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Constants
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 const PROVIDERS = ['openai', 'anthropic', 'gemini', 'grok', 'deepseek', 'bedrock', 'ollama'] as const;
 type Provider = typeof PROVIDERS[number];
 
@@ -57,9 +73,9 @@ const PROVIDER_META: Record<Provider, { label: string; color: string; dot: strin
     ollama:    { label: 'Ollama (Local)', color: '#94a3b8', dot: '#94a3b8', bg: 'bg-slate-800/60',   text: 'text-slate-400' },
 };
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Helpers
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 function fmt$(n: number) {
     if (n === 0) return '$0.00';
     if (n < 0.000001) return '<$0.000001';
@@ -76,7 +92,7 @@ function fmtKB(chars: number) {
     return kb >= 1 ? `${kb.toFixed(1)}KB` : `${chars}B`;
 }
 function fmtDate(ts: string) {
-    if (!ts) return '—';
+    if (!ts) return '--';
     try {
         return new Date(ts).toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -84,7 +100,7 @@ function fmtDate(ts: string) {
     } catch { return ts; }
 }
 function fmtTime(ts: string) {
-    if (!ts) return '—';
+    if (!ts) return '--';
     try {
         return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     } catch { return ts; }
@@ -99,9 +115,9 @@ function detectProvider(model: string): Provider {
     return 'ollama';
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Sub-components
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 function ProviderBadge({ provider }: { provider: string }) {
     const meta = PROVIDER_META[provider as Provider] ?? PROVIDER_META.ollama;
     return (
@@ -163,14 +179,15 @@ function SessionRow({ s }: { s: SessionStat }) {
     const [logs, setLogs] = useState<UsageLog[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const isOrch = s.source === 'orchestration' || s.source?.startsWith('orchestration:');
-    const isSysprompt = s.session_id === 'unknown';
+    const isSched = s.source === 'schedule';
+    const isSysprompt = s.session_id === 'unknown' && !isSched;
 
     const loadLogs = useCallback(async () => {
         if (logs.length > 0) return;
         setLoadingLogs(true);
         try {
-            // Orchestration runs: fetch by run_id to get ALL sub-agent calls correctly
-            const param = (isOrch && s.run_id)
+            // Orchestration + Schedule runs: fetch by run_id to get all sub-agent calls
+            const param = ((isOrch || isSched) && s.run_id)
                 ? `run_id=${encodeURIComponent(s.run_id)}`
                 : `session_id=${encodeURIComponent(s.session_id)}`;
             const res = await fetch(`/api/usage/logs?${param}&limit=500`);
@@ -178,15 +195,15 @@ function SessionRow({ s }: { s: SessionStat }) {
             setLogs(data.logs ?? []);
         } catch { /* silently ignore */ }
         finally { setLoadingLogs(false); }
-    }, [s.session_id, s.run_id, isOrch, logs.length]);
+    }, [s.session_id, s.run_id, isOrch, isSched, logs.length]);
 
     const toggle = () => {
         if (!open) loadLogs();
         setOpen(o => !o);
     };
 
-    // For orchestration: flat list sorted by timestamp — agent change dividers are rendered inline in the table
-    const flatOrchLogs: (UsageLog & { globalIdx: number })[] = isOrch && logs.length > 0
+    // For orchestration/schedule: flat list sorted by timestamp -- agent change dividers are rendered inline in the table
+    const flatOrchLogs: (UsageLog & { globalIdx: number })[] = (isOrch || isSched) && logs.length > 0
         ? [...logs]
             .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
             .map((log, i) => ({ ...log, globalIdx: i }))
@@ -199,25 +216,33 @@ function SessionRow({ s }: { s: SessionStat }) {
                 <div className="flex items-center gap-2 shrink-0">
                     {isSysprompt
                         ? <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
-                        : isOrch
-                            ? <Activity className="w-3.5 h-3.5 text-violet-400" />
-                            : <Zap className="w-3.5 h-3.5 text-emerald-400" />}
+                        : isSched
+                            ? <Clock className="w-3.5 h-3.5 text-sky-400" />
+                            : isOrch
+                                ? <Activity className="w-3.5 h-3.5 text-violet-400" />
+                                : <Zap className="w-3.5 h-3.5 text-emerald-400" />}
                     <span className={`text-xs px-2 py-0.5 font-medium border ${
                         isSysprompt
                             ? 'border-fuchsia-800/50 text-fuchsia-400 bg-fuchsia-950/40'
-                            : isOrch
-                                ? 'border-violet-800/50 text-violet-400 bg-violet-950/40'
-                                : 'border-emerald-800/50 text-emerald-400 bg-emerald-950/40'
+                            : isSched
+                                ? 'border-sky-800/50 text-sky-400 bg-sky-950/40'
+                                : isOrch
+                                    ? 'border-violet-800/50 text-violet-400 bg-violet-950/40'
+                                    : 'border-emerald-800/50 text-emerald-400 bg-emerald-950/40'
                     }`}>
-                        {isSysprompt ? 'system' : isOrch ? 'orch' : 'chat'}
+                        {isSysprompt ? 'system' : isSched ? 'schedule' : isOrch ? 'orch' : 'chat'}
                     </span>
                 </div>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="text-xs text-zinc-400 font-mono truncate">
-                        {isSysprompt ? 'System Prompt Generation' : isOrch && s.run_id ? s.run_id : s.session_id}
+                        {isSysprompt ? 'System Prompt Generation' : (isOrch || isSched) && s.run_id ? s.run_id : s.session_id}
                     </span>
-                    {isOrch && (s.agents_used?.length ?? 0) > 0 && (
-                        <span className="shrink-0 text-xs text-violet-400 bg-violet-950/40 border border-violet-800/30 px-1.5 py-0.5 whitespace-nowrap">
+                    {(isOrch || isSched) && (s.agents_used?.length ?? 0) > 0 && (
+                        <span className={`shrink-0 text-xs px-1.5 py-0.5 border whitespace-nowrap ${
+                            isSched
+                                ? 'text-sky-400 bg-sky-950/40 border-sky-800/30'
+                                : 'text-violet-400 bg-violet-950/40 border-violet-800/30'
+                        }`}>
                             {s.agents_used!.length} agent{s.agents_used!.length !== 1 ? 's' : ''}
                         </span>
                     )}
@@ -237,11 +262,15 @@ function SessionRow({ s }: { s: SessionStat }) {
                     {/* Session metadata */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-4 py-3 border-b border-white/5 text-xs">
                         <div>
-                            <p className="text-zinc-500 mb-1">{isOrch && (s.agents_used?.length ?? 0) > 1 ? 'Agents' : 'Agent'}</p>
-                            {isOrch && (s.agents_used?.length ?? 0) > 1
+                            <p className="text-zinc-500 mb-1">{(isOrch || isSched) && (s.agents_used?.length ?? 0) > 1 ? 'Agents' : 'Agent'}</p>
+                            {(isOrch || isSched) && (s.agents_used?.length ?? 0) > 1
                                 ? <div className="flex flex-wrap gap-1">
                                     {s.agents_used!.map(a => (
-                                        <span key={a} className="inline-flex items-center gap-1 bg-violet-950/50 border border-violet-800/30 px-1.5 py-0.5 text-violet-300 font-mono truncate max-w-[120px]">
+                                        <span key={a} className={`inline-flex items-center gap-1 px-1.5 py-0.5 font-mono truncate max-w-[120px] border ${
+                                            isSched
+                                                ? 'bg-sky-950/50 border-sky-800/30 text-sky-300'
+                                                : 'bg-violet-950/50 border-violet-800/30 text-violet-300'
+                                        }`}>
                                             <Cpu className="w-2.5 h-2.5 shrink-0" />{a}
                                         </span>
                                     ))}
@@ -271,8 +300,8 @@ function SessionRow({ s }: { s: SessionStat }) {
                         )}
                         {!loadingLogs && logs.length > 0 && (
                             <TurnTable
-                                logs={isOrch ? flatOrchLogs : logs.map((l, i) => ({ ...l, globalIdx: i }))}
-                                showAgentDividers={isOrch}
+                                logs={(isOrch || isSched) ? flatOrchLogs : logs.map((l, i) => ({ ...l, globalIdx: i }))}
+                                showAgentDividers={isOrch || isSched}
                             />
                         )}
                     </div>
@@ -286,7 +315,7 @@ type IndexedLog = UsageLog & { globalIdx: number };
 
 function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; showAgentDividers?: boolean }) {
     const sorted = [...logs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const COL_COUNT = 10; // # Time Model Tool Context ΔCtx In Out Latency Cost
+    const COL_COUNT = 10; // # Time Model Tool Context DCtx In Out Latency Cost
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -346,12 +375,12 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
                                         <td className="py-2.5 pr-4 max-w-[130px]">
                                             {log.tool_name
                                                 ? <span className="text-sky-400 font-mono truncate block" title={log.tool_name}>{log.tool_name}</span>
-                                                : <span className="text-zinc-700">—</span>}
+                                                : <span className="text-zinc-700">--</span>}
                                         </td>
                                         <td className="py-2.5 pr-3 text-right text-zinc-300 tabular-nums">{fmtKB(log.context_chars)}</td>
                                         <td className="py-2.5 pr-3 text-right tabular-nums">
                                             <span className={delta > 0 ? 'text-amber-400 font-medium' : 'text-zinc-600'}>
-                                                {delta > 0 ? `+${fmtKB(delta)}` : '—'}
+                                                {delta > 0 ? `+${fmtKB(delta)}` : '--'}
                                             </span>
                                         </td>
                                         <td className="py-2.5 pr-3 text-right text-zinc-400 tabular-nums">{fmtK(log.input_tokens)}</td>
@@ -369,9 +398,9 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
     );
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Editable Pricing Table
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 type EditablePricing = Record<string, PricingEntry & { _editing?: boolean; _new?: boolean }>;
 
 function PricingEditor({ initialPricing, onSaved }: {
@@ -477,7 +506,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                 <div className="flex items-center gap-3">
                     <Info className="w-4 h-4 text-zinc-400" />
                     <span className="text-sm font-semibold text-white">Pricing Reference</span>
-                    <span className="text-xs text-zinc-500">— edit rates used for cost calculation (USD / 1M tokens)</span>
+                    <span className="text-xs text-zinc-500">-- edit rates used for cost calculation (USD / 1M tokens)</span>
                 </div>
                 <div className="flex items-center gap-3">
                     {saveMsg && (
@@ -604,12 +633,12 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             }}
                                             className="bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-white/40 transition-colors"
                                         >
-                                            <option value="">— select model —</option>
+                                            <option value="">-- select model --</option>
                                             {(availableModels[provider] ?? [])
                                                 .filter((m: string) => !pricing[m])
                                                 .map((m: string) => <option key={m} value={m}>{m}</option>)
                                             }
-                                            <option value="__custom__">Custom model ID…</option>
+                                            <option value="__custom__">Custom model ID...</option>
                                         </select>
                                     )}
                                     <div className="flex items-center gap-1 justify-end">
@@ -640,9 +669,9 @@ function PricingEditor({ initialPricing, onSaved }: {
     );
 }
 
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 // Main Component
-// ─────────────────────────────────────────────────────────────
+// -------------------------------------------------------------
 export function UsageTab() {
     const [summary, setSummary] = useState<UsageSummary | null>(null);
     const [pricing, setPricing] = useState<Record<string, PricingEntry>>({});
@@ -651,6 +680,10 @@ export function UsageTab() {
     const [error, setError] = useState<string | null>(null);
     const [sessionPage, setSessionPage] = useState(0);
     const PAGE_SIZE = 15;
+
+    // Session History filter state
+    type SessionFilterType = 'all' | 'orchestrations' | 'agents' | 'schedules';
+    const [sessionFilter, setSessionFilter] = useState<SessionFilterType>('all');
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -687,8 +720,39 @@ export function UsageTab() {
         }
     };
 
-    const sessions = summary?.by_session ?? [];
-    const pagedSessions = sessions.slice(0, (sessionPage + 1) * PAGE_SIZE);
+    // Merge chat/orch sessions  + schedule runs into one unified list
+    const sessions: SessionStat[] = [
+        ...(summary?.by_session ?? []),
+        ...(summary?.by_schedule ?? []).map(s => ({
+            session_id: s.run_id,   // use run_id as the session_id key
+            run_id: s.run_id,
+            agent_id: s.agent_id,
+            agents_used: s.agents_used,
+            requests: s.requests,
+            input_tokens: s.input_tokens,
+            output_tokens: s.output_tokens,
+            total_tokens: s.total_tokens,
+            context_chars: 0,
+            estimated_cost: s.estimated_cost,
+            models_used: s.models_used,
+            first_ts: s.first_ts,
+            last_ts: s.last_ts,
+            source: 'schedule',
+            schedule_id: s.schedule_id,
+        } as SessionStat)),
+    ].sort((a, b) => (b.last_ts ?? '').localeCompare(a.last_ts ?? ''));
+
+    // Derive filtered sessions
+    const filteredSessions = sessions.filter(s => {
+        if (sessionFilter === 'all') return true;
+        if (sessionFilter === 'orchestrations') return s.source === 'orchestration' || s.source?.startsWith('orchestration:');
+        if (sessionFilter === 'agents') return s.source !== 'orchestration' && !s.source?.startsWith('orchestration:') && s.session_id !== 'unknown' && s.source !== 'schedule';
+        if (sessionFilter === 'schedules') return s.source === 'schedule';
+        return true;
+    });
+
+    const finalSessions = filteredSessions;
+    const pagedSessions = finalSessions.slice(0, (sessionPage + 1) * PAGE_SIZE);
     const maxModelCost = Math.max(...(summary?.by_model.map(m => m.estimated_cost) ?? [0]));
 
     return (
@@ -769,28 +833,60 @@ export function UsageTab() {
                             ))}
                         </div>
 
-                        {/* Session History */}
+                        {/* Session History -- always visible, includes schedule info */}
                         <div className="bg-zinc-900/60 border border-white/5 p-5">
-                            <div className="flex items-center justify-between mb-5">
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-zinc-400" />
                                     <h2 className="text-sm font-semibold text-white tracking-wide">Session History</h2>
-                                    <span className="text-xs text-zinc-600">{sessions.length} sessions — click to expand per-turn breakdown</span>
+                                    <span className="text-xs text-zinc-600">{sessions.length} sessions -- click to expand per-turn breakdown</span>
                                 </div>
-                                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                                <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
                                     <span className="flex items-center gap-1.5"><Zap className="w-3 h-3 text-emerald-400" /> Chat</span>
                                     <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-violet-400" /> Orchestration</span>
-                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3 text-fuchsia-400" /> System Prompt Generation</span>
+                                    <span className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-sky-400" /> Schedule</span>
+                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3 text-fuchsia-400" /> System Prompt</span>
                                 </div>
+                            </div>
+
+                            {/* Filter bar */}
+                            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/5">
+                                <span className="text-xs text-zinc-500 shrink-0">Filter by</span>
+                                <select
+                                    value={sessionFilter}
+                                    onChange={e => {
+                                        setSessionFilter(e.target.value as SessionFilterType);
+                                        setSessionPage(0);
+                                    }}
+                                    className="bg-zinc-800 border border-white/10 text-white text-xs px-2.5 py-1.5 focus:outline-none focus:border-white/30 transition-colors cursor-pointer appearance-none pr-6"
+                                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+                                >
+                                    <option value="all">All Sessions</option>
+                                    <option value="orchestrations">Orchestrations</option>
+                                    <option value="agents">Agents</option>
+                                    <option value="schedules">Schedules</option>
+                                </select>
+
+                                <span className="text-xs text-zinc-600 ml-auto">
+                                    {finalSessions.length} result{finalSessions.length !== 1 ? 's' : ''}
+                                </span>
                             </div>
 
                             {pagedSessions.map(s => <SessionRow key={s.session_id} s={s} />)}
 
-                            {(sessionPage + 1) * PAGE_SIZE < sessions.length && (
+                            {pagedSessions.length === 0 && (
+                                <div className="flex flex-col items-center justify-center py-10 gap-2 text-zinc-700">
+                                    <BarChart3 className="w-6 h-6" />
+                                    <p className="text-xs">No sessions match the selected filter</p>
+                                </div>
+                            )}
+
+                            {(sessionPage + 1) * PAGE_SIZE < finalSessions.length && (
                                 <div className="flex justify-center mt-4 pt-4 border-t border-white/5">
                                     <button onClick={() => setSessionPage(p => p + 1)}
                                         className="px-4 py-2 text-xs border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition-all">
-                                        Load More ({sessions.length - (sessionPage + 1) * PAGE_SIZE} remaining)
+                                        Load More ({finalSessions.length - (sessionPage + 1) * PAGE_SIZE} remaining)
                                     </button>
                                 </div>
                             )}
@@ -798,7 +894,7 @@ export function UsageTab() {
                     </>
                 )}
 
-                {/* Editable Pricing Table — always visible */}
+                {/* Editable Pricing Table -- always visible */}
                 {Object.keys(pricing).length > 0 && (
                     <PricingEditor initialPricing={pricing} onSaved={setPricing} />
                 )}
@@ -811,7 +907,7 @@ export function UsageTab() {
                         <p>
                             Token counts are sourced from API response metadata for OpenAI, Anthropic, Gemini, Grok, and DeepSeek.
                             Ollama uses its <code>eval_count</code> field. AWS Bedrock does not expose token counts directly,
-                            so tokens are estimated from character length (chars ÷ 4) — costs for Bedrock calls may be less accurate.
+                            so tokens are estimated from character length (chars / 4) -- costs for Bedrock calls may be less accurate.
                             Edit prices above and click <strong>Save Pricing</strong> to update rates used for future cost calculations.
                         </p>
                     </div>

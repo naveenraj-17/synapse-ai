@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon } from 'lucide-react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
@@ -153,6 +153,153 @@ function formatRelativeTime(iso: string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// ─── Tip data ────────────────────────────────────────────────────────────────
+const TIPS = [
+  {
+    icon: <Cpu className="h-5 w-5 text-violet-400" />,
+    tag: 'Build Agents',
+    title: 'Create specialized AI agents',
+    desc: 'Design agents with custom system prompts, tools, and models. Each agent can be fine-tuned for a specific domain or task like research, coding, or analysis.',
+    accent: 'from-violet-500/10 to-transparent border-violet-800/40',
+    tagColor: 'text-violet-400 bg-violet-950/60 border-violet-800/50',
+  },
+  {
+    icon: <Wrench className="h-5 w-5 text-sky-400" />,
+    tag: 'Custom Tools',
+    title: 'Extend with custom tools',
+    desc: 'Add Python functions as tools your agents can call — web search, database queries, APIs, file operations — anything your workflow needs.',
+    accent: 'from-sky-500/10 to-transparent border-sky-800/40',
+    tagColor: 'text-sky-400 bg-sky-950/60 border-sky-800/50',
+  },
+  {
+    icon: <GitBranch className="h-5 w-5 text-emerald-400" />,
+    tag: 'Orchestration',
+    title: 'Orchestrate multi-agent flows',
+    desc: 'Chain agents together with sequential, parallel, or loop patterns. Build complex pipelines where each agent handles a specialized stage.',
+    accent: 'from-emerald-500/10 to-transparent border-emerald-800/40',
+    tagColor: 'text-emerald-400 bg-emerald-950/60 border-emerald-800/50',
+  },
+  {
+    icon: <Network className="h-5 w-5 text-amber-400" />,
+    tag: 'MCP Servers',
+    title: 'Connect MCP servers',
+    desc: 'Integrate any MCP (Model Context Protocol) server to supercharge your agents with external knowledge, file systems, browsers, and third-party services.',
+    accent: 'from-amber-500/10 to-transparent border-amber-800/40',
+    tagColor: 'text-amber-400 bg-amber-950/60 border-amber-800/50',
+  },
+  {
+    icon: <CalendarClock className="h-5 w-5 text-rose-400" />,
+    tag: 'Schedules',
+    title: 'Automate with schedules',
+    desc: 'Set up cron-based schedules to run your agents automatically. Perfect for daily reports, periodic data syncs, or recurring agentic tasks.',
+    accent: 'from-rose-500/10 to-transparent border-rose-800/40',
+    tagColor: 'text-rose-400 bg-rose-950/60 border-rose-800/50',
+  },
+  {
+    icon: <Sparkles className="h-5 w-5 text-purple-400" />,
+    tag: 'Pro Tips',
+    title: 'Get the most from Synapse AI',
+    desc: 'Use @ to mention context, attach images for vision tasks, switch agents mid-conversation, or orchestrate complex multi-step workflows — all from one chat interface.',
+    accent: 'from-purple-500/10 to-transparent border-purple-800/40',
+    tagColor: 'text-purple-400 bg-purple-950/60 border-purple-800/50',
+  },
+];
+
+// ─── Welcome Screen ──────────────────────────────────────────────────────────
+function WelcomeScreen({ agentName, onPrompt, onNavigate }: { agentName: string; onPrompt: (text: string) => void; onNavigate: (path: string) => void }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-advance carousel
+  useEffect(() => {
+    if (isPaused) return;
+    intervalRef.current = setInterval(() => {
+      setActiveIdx(prev => (prev + 1) % TIPS.length);
+    }, 3500);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [isPaused]);
+
+  const PILLS = [
+    { label: '🤖 Build an agent',     path: '/settings/agents' },
+    { label: '🔧 Add a tool',         path: '/settings/custom_tools' },
+    { label: '🔗 Orchestrate agents', path: '/settings/orchestrations' },
+    { label: '🌐 Connect MCP',        path: '/settings/mcp_servers' },
+    { label: '⏰ Schedule a task',    path: '/settings/schedules' },
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-56px)] px-4 pb-36 pt-10 select-none">
+      {/* Greeting */}
+      <div className="mb-2 flex items-center gap-2">
+        <div className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_8px_#4ade80] animate-pulse" />
+        <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-zinc-500">{agentName}&nbsp;· Ready</span>
+      </div>
+      <h2 className="text-3xl md:text-4xl font-bold text-zinc-100 tracking-tight mb-1 text-center">
+        What can I help you build?
+      </h2>
+      <p className="text-zinc-500 text-sm mb-10 text-center font-mono">
+        Synapse AI — Agents that think, tools that act
+      </p>
+
+      {/* Tips Carousel */}
+      <div
+        className="w-full max-w-xl mb-10"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+      >
+        {/* Card */}
+        <div
+          key={activeIdx}
+          className={`tip-card-animate relative overflow-hidden border rounded-sm p-5 bg-gradient-to-br ${TIPS[activeIdx].accent}`}
+          style={{ minHeight: 108 }}
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 shrink-0">{TIPS[activeIdx].icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-sm border ${TIPS[activeIdx].tagColor}`}>
+                  {TIPS[activeIdx].tag}
+                </span>
+              </div>
+              <div className="text-[14px] font-semibold text-zinc-100 mb-1 leading-snug">
+                {TIPS[activeIdx].title}
+              </div>
+              <p className="text-[12.5px] text-zinc-400 leading-relaxed">
+                {TIPS[activeIdx].desc}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Dot indicators */}
+        <div className="flex items-center justify-center gap-1.5 mt-3">
+          {TIPS.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => { setActiveIdx(i); setIsPaused(true); setTimeout(() => setIsPaused(false), 6000); }}
+              className={`transition-all duration-300 rounded-full cursor-pointer ${i === activeIdx ? 'w-5 h-1.5 bg-zinc-300' : 'w-1.5 h-1.5 bg-zinc-700 hover:bg-zinc-500'}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Quick action pills — navigate to settings */}
+      <div className="flex flex-wrap gap-2 justify-center max-w-lg">
+        {PILLS.map(({ label, path }) => (
+          <button
+            key={label}
+            onClick={() => onNavigate(path)}
+            className="px-3 py-1.5 text-[12px] font-mono border border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:text-zinc-100 hover:border-zinc-600 hover:bg-zinc-800/80 rounded-sm transition-all cursor-pointer"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -165,9 +312,7 @@ export default function Home() {
     return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   });
 
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'System Internal v1.0. Ready for input.' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [agentName, setAgentName] = useState('Loading...');
@@ -233,7 +378,7 @@ export default function Home() {
       const data = await res.json();
       const turns: SessionTurn[] = data.turns || [];
       if (turns.length === 0) return;
-      const restored: Message[] = [{ role: 'assistant', content: 'System Internal v1.0. Ready for input.' }];
+      const restored: Message[] = [];
       for (const t of turns) {
         restored.push({ role: 'user', content: t.user });
         restored.push({ role: 'assistant', content: t.assistant });
@@ -258,42 +403,32 @@ export default function Home() {
     }).catch(console.error);
   };
 
-  // Initialize Application State (Replaces Initial Data Fetch & Auto-Restore)
+  // Initialize Application State — always start fresh, only restore last agent
   useEffect(() => {
     // 1. Get Agent Name
     fetch('/api/settings')
       .then(r => r.json())
       .then(d => setAgentName(d.agent_name || 'System Agent'))
       .catch(() => setAgentName('Offline'));
-      
-    // 2. Auto-restore session and sync agent to backend sequentially
-    const initSessionAndAgent = async () => {
-      const savedSession = typeof window !== 'undefined' ? localStorage.getItem('synapseSessionId') : null;
-      const savedAgent = typeof window !== 'undefined' ? localStorage.getItem('synapseAgentId') : null;
 
-      if (savedSession) {
-        // Await the restoration of the chat history
-        await restoreSession(savedSession, savedAgent);
-        
-        if (savedAgent) {
-          try {
-            // Force the backend to align with the restored session's agent
-            await fetch('/api/agents/active', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ agent_id: savedAgent }),
-            });
-          } catch (e) {
-            console.error('Failed to sync active agent on load', e);
-          }
+    // 2. Restore last used agent (without restoring chat history)
+    const initAgent = async () => {
+      const savedAgent = typeof window !== 'undefined' ? localStorage.getItem('synapseAgentId') : null;
+      if (savedAgent) {
+        try {
+          await fetch('/api/agents/active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: savedAgent }),
+          });
+        } catch (e) {
+          console.error('Failed to restore last agent', e);
         }
       }
-      
-      // 4. Get Status (after session and agent sync)
       refreshSystemStatus();
     };
 
-    initSessionAndAgent();
+    initAgent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -301,7 +436,7 @@ export default function Home() {
     const c: any = (globalThis as any).crypto;
     const newSessionId = c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     setSessionId(newSessionId);
-    setMessages([{ role: 'assistant', content: 'System Internal v1.0. Ready for input.' }]);
+    setMessages([]);
     setStreamingActivity(null);
   };
 
@@ -360,8 +495,8 @@ export default function Home() {
         const newSessionId = c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         setSessionId(newSessionId);
 
-        // Clear chat messages for clean agent context
-        setMessages([{ role: 'assistant', content: `System: Switched to ${name}. Ready.` }]);
+        // Clear chat messages for clean agent context (no system bubble)
+        setMessages([]);
       }
     } catch (e) {
       console.error("Failed to switch agent", e);
@@ -946,13 +1081,13 @@ export default function Home() {
               <div className="h-3 w-3 shrink-0 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
               <h1 className="text-base font-bold tracking-widest uppercase text-zinc-100 flex items-center gap-2 min-w-0">
                 <span
-                  className="truncate max-w-[180px] md:max-w-[260px]"
+                  className="truncate max-w-[140px] md:max-w-[220px]"
                   title={agentName}
                 >
                   {agentName}
                 </span>
                 <span className="text-zinc-500 shrink-0">-</span>
-                <span className="text-zinc-400 shrink-0">Ask Anything</span>
+                <span className="text-zinc-400 shrink-0">Synapse AI</span>
               </h1>
             </div>
             <div className="flex items-center">
@@ -1058,55 +1193,58 @@ export default function Home() {
         </header>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar pb-32">
-          <div className="w-full md:max-w-5xl mx-auto space-y-6">
-            {messages.map((msg, idx) => renderMessage(msg, idx))}
+        <div className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar relative">
+          {messages.length === 0 && !isLoading ? (
+            /* ── Welcome Screen ── */
+            <WelcomeScreen agentName={agentName} onPrompt={(text) => { setInput(text); setTimeout(() => textareaRef.current?.focus(), 50); }} onNavigate={(path) => router.push(path)} />
+          ) : (
+            <div className="p-6 pb-36">
+              <div className="w-full md:max-w-5xl mx-auto space-y-6">
+                {messages.map((msg, idx) => renderMessage(msg, idx))}
 
-            {/* Loading Indicator */}
-            {isLoading && (
-              <div className="flex gap-4 max-w-3xl items-start">
-                {/* Spinning Bot Icon with Ring */}
-                <div className="relative h-8 w-8 shrink-0 mt-0.5">
-                  {/* Outer spinning ring */}
-                  <div className="absolute inset-0 border-2 border-transparent border-t-purple-500 border-r-purple-500/50 rounded-full animate-spin"></div>
-                  {/* Inner bot icon */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-purple-400" />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  {/* Primary status — last tool call, persists until next tool call */}
-                  <div className="flex items-baseline gap-0.5">
-                    <span className="text-sm text-zinc-300 font-medium">
-                      {streamingActivity || 'Processing'}
-                    </span>
-                    {!isThinking && (
-                      <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
-                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
-                        <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Thinking line — only shown when actively thinking */}
-                  {isThinking && (
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-xs text-zinc-500 font-mono">💭 Thinking</span>
-                      <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
-                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
-                        <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
-                      </span>
+                {/* Loading Indicator */}
+                {isLoading && (
+                  <div className="flex gap-4 max-w-3xl items-start">
+                    {/* Spinning Bot Icon with Ring */}
+                    <div className="relative h-8 w-8 shrink-0 mt-0.5">
+                      <div className="absolute inset-0 border-2 border-transparent border-t-purple-500 border-r-purple-500/50 rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Bot className="h-4 w-4 text-purple-400" />
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            <div ref={messagesEndRef} />
-          </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-baseline gap-0.5">
+                        <span className="text-sm text-zinc-300 font-medium">
+                          {streamingActivity || 'Processing'}
+                        </span>
+                        {!isThinking && (
+                          <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
+                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                          </span>
+                        )}
+                      </div>
+
+                      {isThinking && (
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="text-xs text-zinc-500 font-mono">💭 Thinking</span>
+                          <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
+                            <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Input Area */}

@@ -98,9 +98,14 @@ class OrchestrationLogger:
 
         if etype == "_log_prompt":
             prompt = event.get("prompt", "")
+            system_prompt_extra = event.get("system_prompt_extra", "")
             self._write(f"""
   📝 INPUT PROMPT:
 {self._indent(prompt)}
+""")
+            if system_prompt_extra:
+                self._write(f"""  🗺  SYSTEM CONTEXT (workflow graph + step position):
+{self._indent(system_prompt_extra)}
 """)
 
         elif etype == "_log_evaluator":

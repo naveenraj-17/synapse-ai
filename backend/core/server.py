@@ -43,6 +43,8 @@ from core.routes.messaging import router as messaging_router
 from core.routes.sessions import router as sessions_router
 from core.routes.usage import router as usage_router
 from core.routes.profiling import router as profiling_router
+from core.routes.schedules import router as schedules_router
+from core.routes.import_export import router as import_export_router
 from core.profiling import TimingMiddleware
 
 # Configuration
@@ -218,6 +220,7 @@ exit_stack: Optional[AsyncExitStack] = None
 memory_store: Any = None
 mcp_manager: Optional[MCPClientManager] = None
 messaging_manager: Any = None  # MessagingManager (set in lifespan if enabled)
+schedule_manager: Any = None   # ScheduleManager (set in lifespan)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -353,6 +356,18 @@ async def lifespan(app: FastAPI):
         else:
             app.state.messaging_manager = None
 
+        # --- Initialize Schedule Manager ---
+        try:
+            from core.scheduler import ScheduleManager
+            global schedule_manager
+            schedule_manager = ScheduleManager()
+            await schedule_manager.start(server_module=_self_module)
+            app.state.schedule_manager = schedule_manager
+            print("Schedule manager started.")
+        except Exception as e:
+            print(f"Warning: Failed to start schedule manager: {e}")
+            app.state.schedule_manager = None
+
         yield
         
     except Exception as e:
@@ -365,6 +380,11 @@ async def lifespan(app: FastAPI):
                 await messaging_manager.stop_all()
             except Exception as e:
                 print(f"Warning: Messaging manager shutdown error: {e}")
+        if schedule_manager:
+            try:
+                await schedule_manager.stop()
+            except Exception as e:
+                print(f"Warning: Schedule manager shutdown error: {e}")
         if exit_stack:
             await exit_stack.aclose()
 
@@ -439,7 +459,9 @@ app.include_router(logs_router)
 app.include_router(messaging_router)
 app.include_router(sessions_router)
 app.include_router(usage_router)
+app.include_router(schedules_router)
 app.include_router(profiling_router)
+app.include_router(import_export_router)
 
 if __name__ == "__main__":
     import uvicorn
