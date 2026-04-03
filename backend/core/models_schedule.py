@@ -21,7 +21,7 @@ class Schedule(BaseModel):
     # Cron fields
     cron_expression: str | None = None
     missed_run_policy: Literal["run_immediately", "skip"] = "skip"
-    # Server-computed state — never trust client-provided values
+    # Server-computed state -- never trust client-provided values
     last_run_at: str | None = None
     next_run_at: str | None = None
 

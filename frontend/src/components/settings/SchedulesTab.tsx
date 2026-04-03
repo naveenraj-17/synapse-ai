@@ -7,7 +7,7 @@ import {
     ToggleLeft, ToggleRight, Bot, Workflow, Info,
 } from 'lucide-react';
 
-// ── Types ────────────────────────────────────────────────────────────────
+// -- Types ----------------------------------------------------------------
 
 interface Schedule {
     id: string;
@@ -30,7 +30,7 @@ interface Schedule {
 interface Agent { id: string; name: string; }
 interface Orchestration { id: string; name: string; }
 
-// ── Cron presets ─────────────────────────────────────────────────────────
+// -- Cron presets ---------------------------------------------------------
 
 const CRON_PRESETS = [
     { label: 'Every day at...', buildExpr: (h: number) => `0 ${h} * * *` },
@@ -126,11 +126,11 @@ function describeSchedule(s: Schedule): string {
 }
 
 function fmtTime(iso: string | null | undefined): string {
-    if (!iso) return '—';
+    if (!iso) return '--';
     try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
-// ── Empty form ───────────────────────────────────────────────────────────
+// -- Empty form -----------------------------------------------------------
 
 function emptyForm(): Omit<Schedule, 'id' | 'created_at' | 'last_run_at' | 'next_run_at'> {
     return {
@@ -148,7 +148,7 @@ function emptyForm(): Omit<Schedule, 'id' | 'created_at' | 'last_run_at' | 'next
     };
 }
 
-// ── Main component ───────────────────────────────────────────────────────
+// -- Main component -------------------------------------------------------
 
 export const SchedulesTab = () => {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -188,7 +188,7 @@ export const SchedulesTab = () => {
 
     useEffect(() => { fetchAll(); }, [fetchAll]);
 
-    // ── Form helpers ───────────────────────────────────────────────────
+    // -- Form helpers ---------------------------------------------------
 
     function openCreate() {
         setEditingId(null);
@@ -248,7 +248,7 @@ export const SchedulesTab = () => {
         }
     }
 
-    // ── Save ───────────────────────────────────────────────────────────
+    // -- Save -----------------------------------------------------------
 
     async function saveSchedule() {
         if (!form.name.trim()) { showToast('Name is required', false); return; }
@@ -297,7 +297,7 @@ export const SchedulesTab = () => {
         }
     }
 
-    // ── Toggle enable/disable ──────────────────────────────────────────
+    // -- Toggle enable/disable ------------------------------------------
 
     async function toggleEnabled(s: Schedule) {
         const res = await fetch(`/api/schedules/${s.id}`, {
@@ -311,7 +311,7 @@ export const SchedulesTab = () => {
         }
     }
 
-    // ── Delete ─────────────────────────────────────────────────────────
+    // -- Delete ---------------------------------------------------------
 
     async function deleteSchedule(id: string) {
         if (!confirm('Delete this schedule?')) return;
@@ -322,7 +322,7 @@ export const SchedulesTab = () => {
         }
     }
 
-    // ── Run now ────────────────────────────────────────────────────────
+    // -- Run now --------------------------------------------------------
 
     async function runNow(id: string) {
         setRunningIds(prev => new Set(prev).add(id));
@@ -338,7 +338,7 @@ export const SchedulesTab = () => {
         }
     }
 
-    // ── Target label helper ────────────────────────────────────────────
+    // -- Target label helper --------------------------------------------
 
     function targetLabel(s: Schedule): string {
         if (s.target_type === 'agent') {
@@ -347,7 +347,7 @@ export const SchedulesTab = () => {
         return orchestrations.find(o => o.id === s.target_id)?.name ?? s.target_id;
     }
 
-    // ── Render ─────────────────────────────────────────────────────────
+    // -- Render ---------------------------------------------------------
 
     return (
         <div className="flex flex-col h-full overflow-hidden font-mono">
@@ -493,7 +493,7 @@ export const SchedulesTab = () => {
                             <h2 className="text-sm font-semibold text-white">
                                 {editingId ? 'Edit Schedule' : 'New Schedule'}
                             </h2>
-                            <button onClick={closeForm} className="text-zinc-500 hover:text-white text-xs">✕ Cancel</button>
+                            <button onClick={closeForm} className="text-zinc-500 hover:text-white text-xs">? Cancel</button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
@@ -513,20 +513,20 @@ export const SchedulesTab = () => {
                                 {showInstructions && (
                                     <div className="px-4 pb-4 text-xs text-zinc-500 space-y-3 border-t border-zinc-800">
                                         <div className="pt-3">
-                                            <p className="text-zinc-300 font-semibold mb-1">Interval — run every N minutes/hours/days</p>
+                                            <p className="text-zinc-300 font-semibold mb-1">Interval -- run every N minutes/hours/days</p>
                                             <ul className="space-y-1 text-zinc-500">
-                                                <li>• <span className="text-zinc-400">Every 5 minutes</span> — monitor a feed, poll an API</li>
-                                                <li>• <span className="text-zinc-400">Every 2 hours</span> — periodic summaries or reports</li>
-                                                <li>• <span className="text-zinc-400">Every 1 day</span> — daily digest or cleanup tasks</li>
+                                                <li>? <span className="text-zinc-400">Every 5 minutes</span> -- monitor a feed, poll an API</li>
+                                                <li>? <span className="text-zinc-400">Every 2 hours</span> -- periodic summaries or reports</li>
+                                                <li>? <span className="text-zinc-400">Every 1 day</span> -- daily digest or cleanup tasks</li>
                                             </ul>
                                             <p className="text-zinc-600 mt-1.5">Interval restarts from the last run time. If the server was offline and the schedule is overdue, it runs immediately on restart.</p>
                                         </div>
                                         <div>
-                                            <p className="text-zinc-300 font-semibold mb-1">Cron / Fixed Time — run at specific times</p>
+                                            <p className="text-zinc-300 font-semibold mb-1">Cron / Fixed Time -- run at specific times</p>
                                             <ul className="space-y-1 text-zinc-500">
-                                                <li>• <span className="text-zinc-400">Every day at 9 AM</span> — morning standup report</li>
-                                                <li>• <span className="text-zinc-400">Every Monday at 6 PM</span> — weekly digest</li>
-                                                <li>• <span className="text-zinc-400">1st of month</span> — monthly invoice summary</li>
+                                                <li>? <span className="text-zinc-400">Every day at 9 AM</span> -- morning standup report</li>
+                                                <li>? <span className="text-zinc-400">Every Monday at 6 PM</span> -- weekly digest</li>
+                                                <li>? <span className="text-zinc-400">1st of month</span> -- monthly invoice summary</li>
                                             </ul>
                                             <p className="text-zinc-600 mt-1.5">If a run was missed while offline, choose whether to run immediately or skip to the next scheduled time.</p>
                                         </div>

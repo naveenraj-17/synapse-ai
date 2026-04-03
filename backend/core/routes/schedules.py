@@ -25,7 +25,7 @@ def _get_manager(request: Request):
     return mgr
 
 
-# ── List ────────────────────────────────────────────────────────────────
+# -- List ----------------------------------------------------------------
 
 @router.get("/api/schedules")
 async def list_schedules():
@@ -33,7 +33,7 @@ async def list_schedules():
     return _store.load()
 
 
-# ── Create ──────────────────────────────────────────────────────────────
+# -- Create --------------------------------------------------------------
 
 @router.post("/api/schedules")
 async def create_schedule(body: ScheduleCreate, request: Request):
@@ -55,7 +55,7 @@ async def create_schedule(body: ScheduleCreate, request: Request):
     return schedule
 
 
-# ── Get one ─────────────────────────────────────────────────────────────
+# -- Get one -------------------------------------------------------------
 
 @router.get("/api/schedules/{schedule_id}")
 async def get_schedule(schedule_id: str):
@@ -67,7 +67,7 @@ async def get_schedule(schedule_id: str):
     return s
 
 
-# ── Full update ──────────────────────────────────────────────────────────
+# -- Full update ----------------------------------------------------------
 
 @router.put("/api/schedules/{schedule_id}")
 async def update_schedule(schedule_id: str, body: ScheduleCreate, request: Request):
@@ -94,7 +94,7 @@ async def update_schedule(schedule_id: str, body: ScheduleCreate, request: Reque
     return updated
 
 
-# ── Partial update (enable/disable, field patch) ─────────────────────────
+# -- Partial update (enable/disable, field patch) -------------------------
 
 @router.patch("/api/schedules/{schedule_id}")
 async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Request):
@@ -128,7 +128,7 @@ async def patch_schedule(schedule_id: str, body: ScheduleUpdate, request: Reques
     return s
 
 
-# ── Delete ───────────────────────────────────────────────────────────────
+# -- Delete ---------------------------------------------------------------
 
 @router.delete("/api/schedules/{schedule_id}")
 async def delete_schedule(schedule_id: str):
@@ -141,7 +141,7 @@ async def delete_schedule(schedule_id: str):
     return {"status": "deleted", "id": schedule_id}
 
 
-# ── Manual trigger ────────────────────────────────────────────────────────
+# -- Manual trigger --------------------------------------------------------
 
 @router.post("/api/schedules/{schedule_id}/run")
 async def run_schedule_now(schedule_id: str, request: Request):

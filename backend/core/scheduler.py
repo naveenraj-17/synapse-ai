@@ -1,5 +1,5 @@
 """
-Async scheduler — runs agents/orchestrations on interval or cron schedules.
+Async scheduler -- runs agents/orchestrations on interval or cron schedules.
 Started during server lifespan. Checks all enabled schedules every 30 seconds.
 Restart-proof: next_run_at is persisted so overdue schedules are handled on startup.
 """
@@ -117,7 +117,7 @@ class ScheduleManager:
         run_id = f"schedulerun_{short_id}_{int(time.time() * 1000)}"
         return run_id
 
-    # ── Internal loop ────────────────────────────────────────────────────
+    # -- Internal loop ----------------------------------------------------
 
     async def _loop(self) -> None:
         while self._running:
@@ -147,9 +147,9 @@ class ScheduleManager:
     async def _on_startup(self) -> None:
         """
         On server start, evaluate all enabled schedules.
-        - Interval schedules overdue → run immediately
-        - Cron schedules overdue → apply missed_run_policy (run_immediately or skip)
-        - Never-run schedules → compute next_run_at from now (run immediately for interval)
+        - Interval schedules overdue ? run immediately
+        - Cron schedules overdue ? apply missed_run_policy (run_immediately or skip)
+        - Never-run schedules ? compute next_run_at from now (run immediately for interval)
         Saves updated next_run_at values for any schedules that need recalculation.
         """
         schedules = _load_schedules()
@@ -163,12 +163,12 @@ class ScheduleManager:
             next_run_str = s.get("next_run_at")
 
             if not next_run_str:
-                # Never scheduled before — compute next_run_at
+                # Never scheduled before -- compute next_run_at
                 if s.get("schedule_type") == "interval":
-                    # Interval with no history → run immediately then set interval from now
+                    # Interval with no history ? run immediately then set interval from now
                     asyncio.create_task(self._execute_schedule(s["id"]))
                 else:
-                    # Cron with no history → compute from now, no immediate run
+                    # Cron with no history ? compute from now, no immediate run
                     next_dt = compute_next_run(s, now)
                     s["next_run_at"] = _iso(next_dt)
                     changed = True
@@ -180,7 +180,7 @@ class ScheduleManager:
                 continue
 
             if due_dt > now:
-                # Not yet due — nothing to do
+                # Not yet due -- nothing to do
                 continue
 
             # Overdue
@@ -189,7 +189,7 @@ class ScheduleManager:
                 # Always catch up overdue interval schedules
                 asyncio.create_task(self._execute_schedule(s["id"]))
             else:
-                # Cron — apply policy
+                # Cron -- apply policy
                 policy = s.get("missed_run_policy", "skip")
                 if policy == "run_immediately":
                     asyncio.create_task(self._execute_schedule(s["id"]))
@@ -206,7 +206,7 @@ class ScheduleManager:
         if changed:
             _save_schedules(schedules)
 
-    # ── Execution ────────────────────────────────────────────────────────
+    # -- Execution --------------------------------------------------------
 
     async def _execute_schedule(self, schedule_id: str) -> None:
         """
@@ -360,7 +360,7 @@ class ScheduleManager:
             chat_id = ch.get("notify_chat_id") or getattr(adapter, "_last_chat_id", None)
             if not chat_id:
                 logger.debug(
-                    "[Scheduler] No chat_id for channel %s — skipping notification", ch["id"]
+                    "[Scheduler] No chat_id for channel %s -- skipping notification", ch["id"]
                 )
                 continue
 
