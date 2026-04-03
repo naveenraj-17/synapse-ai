@@ -39,10 +39,10 @@ class ScheduleLogger:
         prompt: str,
     ):
         _ensure_logs_dir()
+
         # Sanitize schedule_id to prevent taint in self.path
         clean_sched_id = re.sub(r"[^a-zA-Z0-9_\-]", "", schedule_id)
         short_id = clean_sched_id.replace("sched_", "") if clean_sched_id.startswith("sched_") else clean_sched_id
-        
         self.run_id = f"schedulerun_{short_id}_{int(time.time() * 1000)}"
         self.path = LOGS_DIR / f"{self.run_id}.log"
         self._start_time = time.time()
