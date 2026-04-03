@@ -4,6 +4,8 @@ Mirrors the design of agent_logger.py exactly.
 """
 import asyncio
 import json
+import os
+import re
 import time
 from pathlib import Path
 
@@ -37,7 +39,12 @@ class ScheduleLogger:
         prompt: str,
     ):
         _ensure_logs_dir()
-        short_id = schedule_id.replace("sched_", "") if schedule_id.startswith("sched_") else schedule_id
+        # 1. Sanitize the incoming schedule_id to prevent path traversal in self.path
+        # Use regex to strip any non-safe characters as a primary sanitizer.
+        clean_sched_id = re.sub(r"[^a-zA-Z0-9_\-]", "", schedule_id)
+        short_id = clean_sched_id.replace("sched_", "") if clean_sched_id.startswith("sched_") else clean_sched_id
+        
+        # 2. Construct the run_id carefully
         self.run_id = f"schedulerun_{short_id}_{int(time.time() * 1000)}"
         self.path = LOGS_DIR / f"{self.run_id}.log"
         self._start_time = time.time()
@@ -141,12 +148,51 @@ class ScheduleLogger:
         prefix = " " * spaces
         return "\n".join(f"{prefix}{line}" for line in text.split("\n"))
 
+    @staticmethod
+    def _safe_log_path(run_id: str) -> Path | None:
+        """
+        Standardizes and sanitizes the run_id into a safe Path.
+        Uses os.path.basename and regex to satisfy security scanners (e.g. CodeQL).
+        """
+        if not run_id or not isinstance(run_id, str):
+            return None
+
+
+        # Primary sanitization: ensure it's just a filename and matches safe chars
+        # This breaks the taint from user-provided input.
+        safe_name = os.path.basename(run_id)
+        if safe_name != run_id or not re.match(r"^[a-zA-Z0-9_\-\.]+$", safe_name):
+            return None
+
+        try:
+            # Construct candidate path using sanitized components
+            log_filename = f"{safe_name}.log"
+            candidate = (LOGS_DIR / log_filename).resolve()
+            root = LOGS_DIR.resolve()
+
+            # Final containment check
+            try:
+                if not candidate.is_relative_to(root):
+                    return None
+            except AttributeError:
+                if root != candidate and root not in candidate.parents:
+                    return None
+
+            return candidate
+        except Exception:
+            return None
+
+
     # -- Query helpers (for API endpoints) -------------------------------
 
     @staticmethod
     def get_log(run_id: str) -> str | None:
-        path = LOGS_DIR / f"{run_id}.log"
-        if not path.exists():
+        # Sanitize input immediately to satisfy scanner trace
+        if not run_id or not re.match(r"^[a-zA-Z0-9_\-\.]+$", str(run_id)):
+            return None
+
+        path = ScheduleLogger._safe_log_path(run_id)
+        if not path or not path.exists():
             return None
         return path.read_text(encoding="utf-8")
 
@@ -182,8 +228,11 @@ class ScheduleLogger:
 
     @staticmethod
     def delete_log(run_id: str) -> bool:
-        path = LOGS_DIR / f"{run_id}.log"
-        if path.exists():
+        # Sanitize input immediately to satisfy scanner trace
+        if not run_id or not re.match(r"^[a-zA-Z0-9_\-\.]+$", str(run_id)):
+            return False
+        path = ScheduleLogger._safe_log_path(run_id)
+        if path and path.exists():
             path.unlink()
             return True
         return False

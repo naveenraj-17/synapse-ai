@@ -19,23 +19,6 @@ curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.s
 irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
 ```
 
-### npm
-```bash
-npm install -g synapse-ai
-synapse start
-```
-Python 3.11+ required. All Python dependencies are installed automatically on first run.
-
-### pip / uv
-```bash
-pip install synapse-ai
-synapse start
-
-# or with uv:
-uvx synapse-ai
-```
-Node.js 18+ required.
-
 ---
 
 ## CLI
