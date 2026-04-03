@@ -1,0 +1,15 @@
+---
+engines:
+  pmd-legacy:
+    enabled: false
+  eslint:
+    enabled: false
+exclude_paths:
+  - "backend/venv/**"
+  - "frontend/node_modules/**"
+  - "frontend/.next/**"
+  - "frontend/out/**"
+  - "**/__pycache__/**"
+  - "**/*.min.js"
+  - "**/*.map"
+  - ".git/**"
