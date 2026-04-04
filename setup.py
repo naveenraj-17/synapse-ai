@@ -429,7 +429,100 @@ def _find_all_node_versions():
     return candidates
 
 
+def _find_all_node_versions_win():
+    """Windows-specific: probe all known Node.js install locations.
+    Returns list of (version_tuple, node_exe_path, bin_dir) sorted newest-first."""
+    candidates = []
+    seen = set()
+
+    def _probe(node_exe):
+        if not node_exe or not os.path.isfile(node_exe):
+            return
+        real = os.path.realpath(node_exe).lower()
+        if real in seen:
+            return
+        seen.add(real)
+        try:
+            r = subprocess.run([node_exe, "--version"], capture_output=True, text=True, timeout=5)
+            ver_str = r.stdout.strip().lstrip("v")
+            ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+            candidates.append((ver_tuple, node_exe, os.path.dirname(node_exe)))
+        except Exception:
+            pass
+
+    pf   = os.environ.get("ProgramFiles",       r"C:\Program Files")
+    pf86 = os.environ.get("ProgramFiles(x86)",  r"C:\Program Files (x86)")
+    lad  = os.environ.get("LocalAppData",        "")
+    appd = os.environ.get("APPDATA",             "")
+
+    # Standard winget / MSI install directories
+    standard_dirs = [
+        os.path.join(pf,   "nodejs"),
+        os.path.join(pf86, "nodejs"),
+        os.path.join(lad,  "Programs", "nodejs"),
+        os.path.join(lad,  "nodejs"),
+    ]
+    for d in standard_dirs:
+        _probe(os.path.join(d, "node.exe"))
+
+    # nvm-windows: %APPDATA%\nvm\<version>\node.exe
+    nvm_root = os.path.join(appd, "nvm")
+    if os.path.isdir(nvm_root):
+        for entry in os.listdir(nvm_root):
+            _probe(os.path.join(nvm_root, entry, "node.exe"))
+
+    # fnm on Windows
+    for fnm_root in [
+        os.path.join(lad, "fnm", "node-versions"),
+        os.path.join(lad, ".fnm", "node-versions"),
+    ]:
+        if os.path.isdir(fnm_root):
+            for entry in os.listdir(fnm_root):
+                _probe(os.path.join(fnm_root, entry, "installation", "node.exe"))
+
+    # Also walk PATH entries — catches a freshly refreshed PATH
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        _probe(os.path.join(path_dir.strip(), "node.exe"))
+
+    candidates.sort(reverse=True)
+    return candidates  # (ver_tuple, node_exe, bin_dir)
+
+
+def _find_node_exe_win():
+    """Return (node_exe, bin_dir) for the best Node >= 20.9.0 on Windows, else (None, None)."""
+    MIN = (20, 9, 0)
+    for ver_tuple, node_exe, bin_dir in _find_all_node_versions_win():
+        if ver_tuple >= MIN:
+            return node_exe, bin_dir
+    return None, None
+
+
 def check_npm():
+    if IS_WIN:
+        # On Windows, shutil.which / os.environ["PATH"] may be stale after a
+        # winget install in the same session.  Probe known install paths directly.
+        step("Checking Node.js / npm (Windows)")
+        node_exe, bin_dir = _find_node_exe_win()
+        if node_exe:
+            try:
+                r = subprocess.run([node_exe, "--version"], capture_output=True, text=True, timeout=5)
+                ver_str = r.stdout.strip().lstrip("v")
+                ok(f"Node.js v{ver_str} found at {node_exe}")
+                # Prepend the bin dir so npm / npx resolve correctly for the rest of setup
+                if bin_dir.lower() not in os.environ.get("PATH", "").lower():
+                    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+                    info(f"Prepended {bin_dir} to PATH for this session.")
+                ok("npm ready")
+                return
+            except Exception as e:
+                warn(f"Failed to invoke node at {node_exe}: {e}")
+        # Nothing found — show a clear error
+        err("Node.js 20.9.0+ is required but was not found on this Windows system.")
+        info("Searched: Program Files\\nodejs, LocalAppData\\Programs\\nodejs, nvm-windows, fnm, PATH.")
+        info("Install the latest Node.js LTS from https://nodejs.org/ and re-run setup.")
+        sys.exit(1)
+
+    # ---- Non-Windows path (unchanged) ----
     if not shutil.which("npm"):
         warn("npm not found. Attempting to install Node.js and npm automatically...")
         install_npm()
