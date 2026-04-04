@@ -297,6 +297,36 @@ The included "Stock Intraday Trading" orchestration shows how to combine market 
 
 ---
 
+## Schedules
+
+Automate agent and orchestration runs on a recurring schedule.
+
+- **Interval** — run every N minutes/hours/days (e.g. monitor a feed, poll an API)
+- **Cron / Fixed Time** — run at specific times (e.g. every day at 9 AM for a morning standup report)
+- **Prompt** — The prompt is what the agent will receive each time the schedule fires. Think of it as a standing instruction.
+- **Messaging notifications** — If the selected agent has a connected messaging channel (Slack, Telegram, etc.), the result is sent there automatically after each run.
+
+---
+
+## Messaging
+
+Connect your agents to Telegram, Discord, Slack, Teams, or WhatsApp.
+
+Enable **Multi-Agent Mode** in a channel so users can switch agents mid-chat using `/agent <name>` and list them with `/agents`. The channel's bound agent is the default.
+
+---
+
+## Import / Export
+
+Export your orchestrations, agents, MCP servers, and tools as a portable bundle, or import one from another Synapse instance.
+
+**Example Packs:** Synapse includes curated collections of agents, orchestrations, and MCP servers. Select a pack to preview what will be imported before committing:
+- **Starter Pack** — Get up and running fast, includes a Personal Assistant with full tool access and a Web Research Agent.
+- **Developer Pack** — Built for engineering teams, includes a Code Review Agent, Software Engineer Agent, QA Engineer, and a Dev base orchestration.
+- **Productivity Pack** — Business and content power-users, includes a Data Analyst, Content Writer, Jira Analyst, Slack Notifier.
+
+---
+
 ## Configuration
 
 ### Supported LLM Providers
