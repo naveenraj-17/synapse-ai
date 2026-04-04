@@ -508,10 +508,11 @@ def check_npm():
                 r = subprocess.run([node_exe, "--version"], capture_output=True, text=True, timeout=5)
                 ver_str = r.stdout.strip().lstrip("v")
                 ok(f"Node.js v{ver_str} found at {node_exe}")
-                # Prepend the bin dir so npm / npx resolve correctly for the rest of setup
-                if bin_dir.lower() not in os.environ.get("PATH", "").lower():
-                    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-                    info(f"Prepended {bin_dir} to PATH for this session.")
+                # UNCONDITIONALLY prepend the bin dir to PATH for this Python session so that
+                # any subsequent `npm`/`npx` calls use this specific version, overriding any
+                # older versions that might be present earlier in the PATH.
+                os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+                info(f"Prepended {bin_dir} to PATH for this session.")
                 ok("npm ready")
                 return
             except Exception as e:
@@ -610,6 +611,10 @@ def load_settings():
 
 def save_settings(cfg):
     os.makedirs(DATA_DIR, exist_ok=True)
+    # Stamp installation date on first save (fresh install detection for in-app banner)
+    if "installed_at" not in cfg:
+        import datetime
+        cfg["installed_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(SETTINGS_FILE, "w") as f:
         json.dump(cfg, f, indent=4)
     # Persist the data directory path into .env so cli.py and synapse start
@@ -1155,32 +1160,68 @@ def ask_llm(cfg):
     ok(f"Provider configured. Model: {cfg.get('model', '(not set)')}")
 
 # ---------------------------------------------------------------------------
-# Q5 — Import examples
+# Default Agent Creation
 # ---------------------------------------------------------------------------
-def ask_examples():
-    step("Example Data")
-    info("Import example agents, MCP servers, and orchestrations to get started quickly.")
-    import_examples = ask_yn("Import example data?", default="y")
+DEFAULT_AGENT = {
+    "id": "agent_synapse_ai",
+    "name": "Synapse AI",
+    "description": "Your all-purpose AI assistant with access to every capability — browsing, code execution, file management, and more.",
+    "avatar": "default",
+    "type": "conversational",
+    "tools": ["all"],
+    "repos": [],
+    "system_prompt": (
+        "# Role & Identity\n"
+        "You are Synapse AI — an elite, all-purpose AI assistant with access to the full suite of tools on this platform. "
+        "You exist to help the user accomplish any task with speed, accuracy, and clarity.\n\n"
+        "# Core Capabilities\n"
+        "You can browse the web and extract real information from any source.\n"
+        "You can read, write, and manage files and directories on the local filesystem.\n"
+        "You can execute Python code for calculations, data processing, and automation.\n"
+        "You can interact with APIs, databases, and external services via configured tools.\n"
+        "You can store and retrieve information between sessions using vault tools.\n"
+        "You understand images, PDFs, spreadsheets, and structured data.\n\n"
+        "# Approach & Methodology\n"
+        "**Think before acting:** Understand the full request before choosing tools.\n"
+        "**Use tools over memory:** Always fetch real data with tools — never fabricate information.\n"
+        "**Be concise and direct:** Give the most useful answer with minimal fluff.\n"
+        "**Confirm and verify:** When you take an action (write a file, run code, browse a site), confirm what was done.\n"
+        "**Adapt to complexity:** Short answers for simple questions; structured, detailed responses for complex tasks.\n\n"
+        "# Output Style\n"
+        "Use Markdown for structured outputs — tables, lists, and code blocks where appropriate.\n"
+        "For multi-step tasks, briefly outline what you're doing before you do it.\n"
+        "When something fails or is uncertain, explain clearly and suggest next steps.\n\n"
+        "# Constraints\n"
+        "Never fabricate data, file contents, statistics, or API responses — use tools.\n"
+        "Never expose sensitive information (API keys, passwords) in responses.\n"
+        "Always respect the user's filesystem and data — ask before destructive operations."
+    ),
+}
 
-    if not import_examples:
-        ok("Starting fresh — no example data imported.")
-        return
-
-    import glob
-    example_files = glob.glob(os.path.join(EXAMPLES_DIR, "*.example.json"))
-    if not example_files:
-        warn("No *.example.json files found — nothing to import.")
-        return
-
+def create_default_agent():
+    """Ensure the default 'Synapse AI' agent exists in user_agents.json."""
+    step("Creating Default Agent")
+    agents_file = os.path.join(DATA_DIR, "user_agents.json")
     os.makedirs(DATA_DIR, exist_ok=True)
-    for src in example_files:
-        base_name = os.path.basename(src).replace(".example.json", ".json")
-        dest = os.path.join(DATA_DIR, base_name)
-        if os.path.exists(dest):
-            info(f"Skipping (already exists): {base_name}")
-        else:
-            shutil.copy2(src, dest)
-            ok(f"Imported: {base_name}")
+
+    agents = []
+    if os.path.exists(agents_file):
+        try:
+            with open(agents_file) as f:
+                agents = json.load(f)
+        except Exception:
+            agents = []
+
+    # Check if already exists
+    if any(a.get("id") == DEFAULT_AGENT["id"] for a in agents):
+        ok("Default 'Synapse AI' agent already exists — skipping.")
+        return
+
+    # Prepend so it appears first
+    agents.insert(0, DEFAULT_AGENT)
+    with open(agents_file, "w") as f:
+        json.dump(agents, f, indent=4)
+    ok("Created default 'Synapse AI' agent with access to all tools.")
 
 # ---------------------------------------------------------------------------
 # Install helpers
@@ -1456,11 +1497,12 @@ def main():
     ask_google_workspace(cfg)
     ask_agent_name(cfg)
     ask_llm(cfg)
-    ask_examples()
 
     step("Writing Settings")
     save_settings(cfg)
     ok(f"Settings saved to {SETTINGS_FILE}")
+
+    create_default_agent()
 
     try:
         install_backend(
