@@ -3,6 +3,13 @@
 
 $ErrorActionPreference = "Stop"
 
+function Update-Environment {
+    Write-Host "Refreshing PATH environment variable..." -ForegroundColor Cyan
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+    $env:Path = "$machinePath;$userPath"
+}
+
 # ---------------------------------------------------------------------------
 # Install Git if missing
 # ---------------------------------------------------------------------------
@@ -15,6 +22,7 @@ function Install-Git {
         Write-Host "Installing Git via winget..."
         winget install --id Git.Git -e --accept-source-agreements
         Write-Host "[OK] Git installed successfully" -ForegroundColor Green
+        Update-Environment
     } else {
         Write-Host "[WARN] winget not found. Please install Git manually:" -ForegroundColor Yellow
         Write-Host "  https://git-scm.com/download/win"
@@ -33,9 +41,7 @@ function Install-NodeJS {
         Write-Host "Installing Node.js via winget..."
         winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements
         Write-Host "[OK] Node.js installed successfully" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "[WARN] Please restart PowerShell for the new Node.js installation to be recognized."
-        exit 1
+        Update-Environment
     } else {
         Write-Host "[WARN] winget not found. Please install Node.js manually (v20.9.0 or higher):" -ForegroundColor Yellow
         Write-Host "  https://nodejs.org/"
@@ -69,9 +75,7 @@ function Install-Python {
         Write-Host "Installing Python 3.11 via winget..."
         winget install --id Python.Python.3.11 -e --accept-source-agreements
         Write-Host "[OK] Python installed successfully" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "[WARN] Please restart PowerShell for the new Python installation to be recognized."
-        exit 1
+        Update-Environment
     } else {
         Write-Host "[WARN] winget not found. Please install Python manually:" -ForegroundColor Yellow
         Write-Host "  https://www.python.org/downloads/"
@@ -184,6 +188,12 @@ function Invoke-PrerequisitesCheck {
         Write-Host "[WARN] git not found." -ForegroundColor Yellow
         Write-Host "Attempting to install Git..."
         Install-Git
+        
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Host "[FAIL] Failed to install Git automatically." -ForegroundColor Red
+            Write-Host "Please manually install Git and add it to your PATH." -ForegroundColor Red
+            exit 1
+        }
     }
 
     Write-Host "[OK] git found" -ForegroundColor Green
@@ -192,6 +202,12 @@ function Invoke-PrerequisitesCheck {
     if (-not (Test-NodeVersion)) {
         Write-Host "[WARN] Node.js 20.9.0+ not found." -ForegroundColor Yellow
         Install-NodeJS
+        
+        if (-not (Test-NodeVersion)) {
+            Write-Host "[FAIL] Failed to install Node.js 20.9.0+ automatically." -ForegroundColor Red
+            Write-Host "Please manually install Node.js (v20.9.0 or higher)." -ForegroundColor Red
+            exit 1
+        }
     }
 
     Write-Host "[OK] Node.js found ($(node -v))" -ForegroundColor Green
