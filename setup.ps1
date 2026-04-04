@@ -4,10 +4,14 @@
 $ErrorActionPreference = "Stop"
 
 function Update-Environment {
-    Write-Host "Refreshing PATH environment variable..." -ForegroundColor Cyan
-    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
-    $userPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
-    $env:Path = "$machinePath;$userPath"
+    try {
+        Write-Host "Refreshing PATH environment variable..." -ForegroundColor Cyan
+        $machinePath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+        $env:Path = "$machinePath;$userPath"
+    } catch {
+        Write-Host "[WARN] Failed to refresh environment variables automatically." -ForegroundColor Yellow
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -210,7 +214,8 @@ function Invoke-PrerequisitesCheck {
         }
     }
 
-    Write-Host "[OK] Node.js found ($(node -v))" -ForegroundColor Green
+    $nodeVer = try { (node -v).Trim() } catch { "Unknown" }
+    Write-Host "[OK] Node.js found ($nodeVer)" -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------------
@@ -279,4 +284,23 @@ function Start-SynapseSetup {
 }
 
 # Run the setup
-Start-SynapseSetup
+try {
+    Start-SynapseSetup
+} catch {
+    Write-Host ""
+    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+    Write-Host "   CRITICAL ERROR OCCURRED" -ForegroundColor Red
+    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "$($_.Exception.Message)"
+    Write-Host ""
+    if ($_.ScriptStackTrace) {
+        Write-Host "Stack Trace:" -ForegroundColor Gray
+        Write-Host $_.ScriptStackTrace -ForegroundColor Gray
+    }
+    Write-Host ""
+    Write-Host "The setup script has failed. Please capture the error above."
+    Write-Host "Press Enter to exit..."
+    $null = Read-Host
+    exit 1
+}
