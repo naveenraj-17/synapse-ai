@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Download, Upload, Sparkles } from "lucide-react";
 import { ExportView } from "./import-export/ExportView";
 import { ImportView } from "./import-export/ImportView";
@@ -13,6 +13,12 @@ export function ImportExportTab({ defaultView }: { defaultView?: TabView }) {
   const [view, setView] = useState<TabView>(defaultView ?? "export");
   // When a bundle is loaded from ExamplesView, store it so ImportView can consume it
   const [preloadedBundle, setPreloadedBundle] = useState<any>(null);
+
+  useEffect(() => {
+    if (defaultView) {
+      setView(defaultView);
+    }
+  }, [defaultView]);
 
   const handleLoadBundle = useCallback((bundle: any) => {
     setPreloadedBundle(bundle);
