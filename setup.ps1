@@ -55,10 +55,21 @@ function Install-NodeJS {
 
 function Test-NodeVersion {
     try {
+        if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+            # Fallback check in common install paths
+            $commonPath = "C:\Program Files\nodejs\node.exe"
+            if (Test-Path $commonPath) {
+                Write-Host "[INFO] node found at common path: $commonPath. Updating current session PATH..." -ForegroundColor Cyan
+                $env:Path = "$([System.IO.Path]::GetDirectoryName($commonPath));$env:Path"
+            }
+        }
+        
         if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return $false }
         $verStr = node -v
-        # Remove 'v' prefix
-        $verStr = $verStr.SubString(1)
+        # Remove 'v' prefix if present
+        if ($verStr.StartsWith("v")) {
+            $verStr = $verStr.SubString(1)
+        }
         $version = [version]$verStr
         # Check for 20.9.0 or higher
         return ($version -ge [version]"20.9.0")
@@ -179,13 +190,11 @@ function Invoke-PrerequisitesCheck {
         
         $global:PYTHON_CMD = Get-PythonPath
         if (-not $global:PYTHON_CMD) {
-            Write-Host "[FAIL] Failed to install Python 3.11+ automatically." -ForegroundColor Red
-            Write-Host "Please manually install Python 3.11 or higher." -ForegroundColor Red
-            exit 1
-        }
+        throw "Failed to install Python 3.11+ automatically. Please manually install Python 3.11 or higher."
     }
+}
 
-    Write-Host "[OK] Python found ($global:PYTHON_CMD)" -ForegroundColor Green
+Write-Host "[OK] Python found ($global:PYTHON_CMD)" -ForegroundColor Green
 
     # Check git
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -194,9 +203,7 @@ function Invoke-PrerequisitesCheck {
         Install-Git
         
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-            Write-Host "[FAIL] Failed to install Git automatically." -ForegroundColor Red
-            Write-Host "Please manually install Git and add it to your PATH." -ForegroundColor Red
-            exit 1
+            throw "Failed to install Git automatically. Please manually install Git and add it to your PATH."
         }
     }
 
@@ -208,9 +215,7 @@ function Invoke-PrerequisitesCheck {
         Install-NodeJS
         
         if (-not (Test-NodeVersion)) {
-            Write-Host "[FAIL] Failed to install Node.js 20.9.0+ automatically." -ForegroundColor Red
-            Write-Host "Please manually install Node.js (v20.9.0 or higher)." -ForegroundColor Red
-            exit 1
+            throw "Failed to install Node.js 20.9.0+ automatically. Please manually install Node.js (v20.9.0 or higher)."
         }
     }
 
@@ -278,8 +283,7 @@ function Start-SynapseSetup {
             & $global:PYTHON_CMD setup.py
         }
     } else {
-        Write-Host "[FAIL] Could not find repository directory: $DestDir" -ForegroundColor Red
-        exit 1
+        throw "Could not find repository directory: $DestDir"
     }
 }
 
