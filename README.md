@@ -113,18 +113,7 @@ Connect to any MCP server over the network — no code needed. Synapse supports 
 5. **Bearer Token / PAT** — leave empty to use OAuth (a browser window will open for authorization), or paste a personal access token for PAT-based servers (GitHub, Figma)
 6. Click **Connect Server**
 
-Synapse prefixes external tools with `ext_mcp_` to prevent naming collisions. Any MCP-compatible API becomes an agent tool instantly.
-
-**Built-in remote presets:**
-
-| Preset | URL | Auth |
-|---|---|---|
-| Vercel | `https://mcp.vercel.com` | OAuth |
-| GitHub Copilot | `https://api.githubcopilot.com/mcp/` | PAT (`GITHUB_PERSONAL_ACCESS_TOKEN`) |
-| Jira | `https://mcp.atlassian.com/v1/mcp` | OAuth |
-| Zapier | `https://mcp.zapier.com/api/mcp/mcp` | OAuth |
-| Figma | `https://mcp.figma.com/mcp` | PAT (`FIGMA_PERSONAL_ACCESS_TOKEN`) |
-| Fetch | `https://remote.mcpservers.org/fetch/mcp` | None |
+Synapse prefixes external tools with `<server-unique-name>__` followed by the tool name to prevent naming collisions. Any MCP-compatible API becomes an agent tool instantly.
 
 Find more on the [MCP servers registry](https://github.com/modelcontextprotocol/servers).
 
@@ -139,15 +128,15 @@ Arguments: mcp-server-git
 
 Use the **Git** preset to auto-fill this. Add environment variables (API keys, secrets) directly in the form — no config file editing required.
 
-### Custom Tools via n8n
+### Custom Tools (n8n & Python)
 
-Turn any automation workflow into an agent tool — without writing code.
+Turn any automation workflow or Python logic into an agent tool.
 
-1. Build a workflow in n8n (or any webhook-compatible tool)
+1. Build a workflow in n8n (or any webhook-compatible tool), or expose an API via a Python program
 2. Add it to Synapse in **Settings → Custom Tools**
 3. Your agent now has that tool — it sees the name, description, and schema, and calls it like any other tool
 
-This is the fastest way to give agents access to internal APIs, proprietary systems, or multi-step processes that you've already automated. n8n's 400+ node library becomes your agent's extended toolkit.
+This is the fastest way to give agents access to internal APIs, proprietary systems, or multi-step processes that you've already automated. n8n's 400+ node library or your own custom Python logic becomes your agent's extended toolkit.
 
 ---
 
