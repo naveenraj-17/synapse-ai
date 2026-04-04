@@ -53,7 +53,11 @@ function Get-PythonCmd {
         $c = Get-Command $cmd -ErrorAction SilentlyContinue
         if ($c) {
             if ($c.Source -match "WindowsApps") { continue }
-            $out = & $cmd -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            try {
+                $out = & $cmd -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>$null
+            } catch {
+                $out = $null
+            }
             if ($out) {
                 try {
                     if ([version]"$out.0" -ge [version]"3.11.0") { return $cmd }
