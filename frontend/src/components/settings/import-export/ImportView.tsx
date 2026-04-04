@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload, Package, CheckCircle2, AlertTriangle,
   SkipForward, XCircle, Workflow, Bot, Server, Wrench,
@@ -15,7 +15,10 @@ const inputCls = "w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-whi
 
 type ImportStep = "upload" | "preview" | "secrets" | "results";
 
-export function ImportView() {
+export function ImportView({ preloadedBundle, onReset }: {
+  preloadedBundle?: any;
+  onReset?: () => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState<ImportStep>("upload");
@@ -45,6 +48,38 @@ export function ImportView() {
 
   const selAgentRef = useRef<Set<string>>(selAgent);
   selAgentRef.current = selAgent;
+
+  // Auto-parse a bundle that was pushed from ExamplesView
+  useEffect(() => {
+    if (!preloadedBundle) return;
+    try {
+      if (!preloadedBundle.synapse_export) throw new Error("Not a valid Synapse export file.");
+      setBundle(preloadedBundle);
+      setParseError(null);
+      const orchIds = new Set<string>((preloadedBundle.orchestrations || []).map((o: OrchestrationType) => o.id));
+      const agentIds = new Set<string>((preloadedBundle.agents || []).map((a: AgentType) => a.id));
+      const mcpNames = new Set<string>((preloadedBundle.mcp_servers || []).map((m: McpServerType) => m.name));
+      const toolNames = new Set<string>((preloadedBundle.custom_tools || []).map((t: CustomToolType) => t.name));
+      setSelOrch(orchIds); setSelAgent(agentIds); setSelMcp(mcpNames); setSelTool(toolNames);
+      const ms: Record<string, Record<string, string>> = {};
+      for (const m of preloadedBundle.mcp_servers || []) {
+        if (m.env && Object.keys(m.env).length > 0)
+          ms[m.name] = Object.fromEntries(Object.keys(m.env).map((k: string) => [k, ""]));
+      }
+      setMcpSecrets(ms);
+      const ts: Record<string, Record<string, string>> = {};
+      for (const t of preloadedBundle.custom_tools || []) {
+        if (t.headers && Object.keys(t.headers).length > 0)
+          ts[t.name] = Object.fromEntries(Object.keys(t.headers).map((k: string) => [k, ""]));
+      }
+      setToolSecrets(ts);
+      recalcImport(orchIds, agentIds, preloadedBundle);
+      setStep("preview");
+    } catch (err: any) { setParseError(err.message); }
+  // Only run when preloadedBundle changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadedBundle]);
+
 
   const recalcImport = useCallback((newSelOrch: Set<string>, newSelAgent: Set<string>, b: ImportBundle) => {
     const orchLockedAgents = new Set<string>();
@@ -113,6 +148,7 @@ export function ImportView() {
     setSelOrch(new Set()); setSelAgent(new Set()); setSelMcp(new Set()); setSelTool(new Set());
     setLockedAgent(new Set()); setLockedMcp(new Set()); setLockedTool(new Set());
     setMcpSecrets({}); setToolSecrets({});
+    onReset?.();
   };
 
   const needsSecrets = bundle && (

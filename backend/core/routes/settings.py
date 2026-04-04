@@ -18,6 +18,9 @@ router = APIRouter()
 
 _settings_store = JsonStore(SETTINGS_FILE, default_factory=dict, cache_ttl=2.0)
 
+# Path to the examples directory (sibling of this file's package root)
+_EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "examples")
+
 
 def save_settings(settings: dict):
     _settings_store.save(settings)
@@ -220,3 +223,36 @@ async def get_file(path: str):
     if not os.path.exists(resolved) or not os.path.isfile(resolved):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(resolved)
+
+
+# --- Example Packs ---
+
+@router.get("/api/examples")
+async def get_examples():
+    """Return the list of available example packs from backend/examples/index.json."""
+    index_path = os.path.join(_EXAMPLES_DIR, "index.json")
+    if not os.path.exists(index_path):
+        return []
+    try:
+        with open(index_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load examples index: {e}")
+
+
+@router.get("/api/examples/{example_id}")
+async def get_example_bundle(example_id: str):
+    """Return the import bundle JSON for a specific example pack."""
+    # Sanitize: only alphanumeric and underscores
+    safe_id = "".join(c for c in example_id if c.isalnum() or c == "_")
+    bundle_path = os.path.realpath(os.path.join(_EXAMPLES_DIR, f"{safe_id}.bundle.json"))
+    # Ensure it stays within the examples directory
+    if not bundle_path.startswith(os.path.realpath(_EXAMPLES_DIR)):
+        raise HTTPException(status_code=403, detail="Invalid example ID")
+    if not os.path.exists(bundle_path):
+        raise HTTPException(status_code=404, detail=f"Example pack '{example_id}' not found")
+    try:
+        with open(bundle_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load example bundle: {e}")

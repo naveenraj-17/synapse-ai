@@ -1,0 +1,55 @@
+{
+  "synapse_export": true,
+  "version": "1.0",
+  "exported_at": "2026-04-04T00:00:00Z",
+  "has_python_tools": false,
+  "custom_tools": [],
+  "agents": [],
+  "orchestrations": [],
+  "mcp_servers": [
+    {
+      "name": "GitHub",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_pat_here"
+      }
+    },
+    {
+      "name": "Slack",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-your-bot-token-here",
+        "SLACK_TEAM_ID": "T0XXXXXXXXX"
+      }
+    },
+    {
+      "name": "Notion",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-notion"
+      ],
+      "env": {
+        "NOTION_API_TOKEN": "secret_your_notion_integration_token"
+      }
+    },
+    {
+      "name": "Jira & Confluence",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.atlassian.com/v1/mcp"
+      ],
+      "env": {}
+    }
+  ]
+}

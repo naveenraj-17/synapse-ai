@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles, Gift } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
@@ -332,6 +332,9 @@ export default function Home() {
   // Attached images (max 5)
   const [attachedImages, setAttachedImages] = useState<{ preview: string; base64: string }[]>([]);
 
+  // Welcome banner — shown for 12 days from installation date, dismissible per session
+  const [showExamplesBanner, setShowExamplesBanner] = useState(false);
+
   // Accumulate LLM thoughts per active step during streaming
   const pendingThoughtsRef = useRef<string[]>([]);
 
@@ -405,10 +408,20 @@ export default function Home() {
 
   // Initialize Application State — always start fresh, only restore last agent
   useEffect(() => {
-    // 1. Get Agent Name
+    // 1. Get Agent Name + check installation date for banner
     fetch('/api/settings')
       .then(r => r.json())
-      .then(d => setAgentName(d.agent_name || 'System Agent'))
+      .then(d => {
+        setAgentName(d.agent_name || 'System Agent');
+        // Show example banner if installed_at exists and within 12 days
+        if (d.installed_at) {
+          const installedMs = new Date(d.installed_at).getTime();
+          const twelvedays = 12 * 24 * 60 * 60 * 1000;
+          if (Date.now() - installedMs < twelvedays) {
+            setShowExamplesBanner(true);
+          }
+        }
+      })
       .catch(() => setAgentName('Offline'));
 
     // 2. Restore last used agent (without restoring chat history)
@@ -1194,6 +1207,38 @@ export default function Home() {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar relative">
+
+          {/* ── Welcome Examples Banner (12-day, session-dismissible) ── */}
+          {showExamplesBanner && (
+            <div className="sticky top-0 z-20 flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-violet-950/90 via-purple-950/90 to-violet-950/90 border-b border-violet-800/40 backdrop-blur-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <Gift className="h-4 w-4 text-violet-400 shrink-0" />
+                <p className="text-[12px] text-violet-200 font-mono truncate">
+                  <span className="font-bold">Welcome to Synapse AI!</span>
+                  <span className="text-violet-400 mx-2">·</span>
+                  Import example agents, orchestrations &amp; MCP servers to hit the ground running.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  id="examples-banner-link"
+                  onClick={() => router.push('/settings/import_export?tab=examples')}
+                  className="flex items-center gap-1 px-3 py-1 text-[11px] font-bold uppercase tracking-wider bg-violet-600 hover:bg-violet-500 text-white transition-colors rounded-sm"
+                >
+                  <Sparkles className="h-3 w-3" /> Browse Examples
+                </button>
+                <button
+                  id="examples-banner-close"
+                  onClick={() => setShowExamplesBanner(false)}
+                  className="p-1 text-violet-400 hover:text-white transition-colors"
+                  aria-label="Dismiss banner"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {messages.length === 0 && !isLoading ? (
             /* ── Welcome Screen ── */
             <WelcomeScreen agentName={agentName} onPrompt={(text) => { setInput(text); setTimeout(() => textareaRef.current?.focus(), 50); }} onNavigate={(path) => router.push(path)} />
