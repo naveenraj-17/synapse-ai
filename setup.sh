@@ -26,25 +26,25 @@ detect_os() {
 # ---------------------------------------------------------------------------
 install_git() {
     echo ""
-    echo "Installing Git…"
+    echo "Installing Git..."
     
     if [[ "$OS" == "linux" ]]; then
         if [[ "$DISTRO" == "ubuntu" ]] || [[ "$DISTRO" == "debian" ]]; then
-            echo "Installing Git on Ubuntu/Debian…"
+            echo "Installing Git on Ubuntu/Debian..."
             sudo apt-get update
             sudo apt-get install -y git
         elif [[ "$DISTRO" == "fedora" ]] || [[ "$DISTRO" == "rhel" ]] || [[ "$DISTRO" == "centos" ]]; then
-            echo "Installing Git on Fedora/RHEL…"
+            echo "Installing Git on Fedora/RHEL..."
             sudo dnf install -y git
         elif [[ "$DISTRO" == "arch" ]] || [[ "$DISTRO" == "manjaro" ]]; then
-            echo "Installing Git on Arch/Manjaro…"
+            echo "Installing Git on Arch/Manjaro..."
             sudo pacman -S --noconfirm git
         else
             echo "Unknown Linux distribution: $DISTRO"
             exit 1
         fi
     elif [[ "$OS" == "macos" ]]; then
-        echo "Installing Git via Homebrew…"
+        echo "Installing Git via Homebrew..."
         if ! command -v brew &> /dev/null; then
             echo "Homebrew not found. Please install from https://brew.sh"
             exit 1
@@ -63,34 +63,34 @@ install_git() {
 # ---------------------------------------------------------------------------
 install_python() {
     echo ""
-    echo "Installing Python 3.11+…"
+    echo "Installing Python 3.11+..."
     
     if [[ "$OS" == "linux" ]]; then
         if [[ "$DISTRO" == "ubuntu" ]] || [[ "$DISTRO" == "debian" ]]; then
-            echo "Installing Python 3.11 on Ubuntu/Debian…"
+            echo "Installing Python 3.11 on Ubuntu/Debian..."
             sudo apt-get update -qq
             # python3.11 is in the default repos on Ubuntu 22.04+; try that first
             if ! sudo apt-get install -y python3.11 python3.11-venv python3-pip 2>/dev/null; then
                 # Older distros (Ubuntu 20.04) need the deadsnakes PPA
-                echo "python3.11 not in default repos — adding deadsnakes PPA…"
+                echo "python3.11 not in default repos — adding deadsnakes PPA..."
                 sudo apt-get install -y software-properties-common
                 sudo add-apt-repository -y ppa:deadsnakes/ppa
                 sudo apt-get update -qq
                 sudo apt-get install -y python3.11 python3.11-venv python3-pip
             fi
         elif [[ "$DISTRO" == "fedora" ]] || [[ "$DISTRO" == "rhel" ]] || [[ "$DISTRO" == "centos" ]]; then
-            echo "Installing Python on Fedora/RHEL…"
+            echo "Installing Python on Fedora/RHEL..."
             sudo dnf install -y python3.11 python3-pip 2>/dev/null || \
                 sudo dnf install -y python3 python3-pip
         elif [[ "$DISTRO" == "arch" ]] || [[ "$DISTRO" == "manjaro" ]]; then
-            echo "Installing Python on Arch/Manjaro…"
+            echo "Installing Python on Arch/Manjaro..."
             sudo pacman -S --noconfirm python python-pip
         else
             echo "Unknown Linux distribution: $DISTRO"
             exit 1
         fi
     elif [[ "$OS" == "macos" ]]; then
-        echo "Installing Python via Homebrew…"
+        echo "Installing Python via Homebrew..."
         if ! command -v brew &> /dev/null; then
             echo "Homebrew not found. Please install from https://brew.sh"
             exit 1
@@ -160,6 +160,47 @@ check_python() {
     export PYTHON_CMD
 }
 
+# Returns true (0) if the given node command is >= 20.9.0
+_node_meets_minimum() {
+    local cmd="$1"
+    command -v "$cmd" &> /dev/null || return 1
+    local version_str
+    version_str=$("$cmd" -v 2>/dev/null | lstrip "v")
+    if [[ -z "$version_str" ]]; then return 1; fi
+    
+    # Simple semantic version comparison
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$version_str"
+    
+    if [[ "$major" -gt 20 ]]; then
+        return 0
+    elif [[ "$major" -eq 20 ]]; then
+        if [[ "$minor" -ge 9 ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+check_node() {
+    if ! command -v node &> /dev/null; then
+        echo "⚠ Node.js not found. setup.py will attempt to install it."
+        return 0
+    fi
+    
+    local node_ver
+    node_ver=$(node -v | sed 's/v//')
+    local major=$(echo $node_ver | cut -d. -f1)
+    local minor=$(echo $node_ver | cut -d. -f2)
+    
+    if [[ "$major" -lt 20 ]] || { [[ "$major" -eq 20 ]] && [[ "$minor" -lt 9 ]]; }; then
+        echo "⚠ Node.js version $node_ver is too old (>= 20.9.0 required)."
+        echo "  setup.py will attempt to update it."
+    else
+        echo "✓ Node.js $node_ver found"
+    fi
+}
+
 check_git() {
     if ! command -v git &> /dev/null; then
         echo "⚠ git not found."
@@ -181,6 +222,7 @@ main() {
     detect_os
     check_git
     check_python
+    check_node
     
     # Clone or update repo
     REPO_URL="https://github.com/naveenraj-17/synapse-ai.git"
@@ -188,11 +230,11 @@ main() {
     
     if [ -d "$DEST_DIR/.git" ]; then
         echo ""
-        echo "Repository already exists at ./$DEST_DIR — pulling latest…"
+        echo "Repository already exists at ./$DEST_DIR — pulling latest..."
         git -C "$DEST_DIR" pull --ff-only
     else
         echo ""
-        echo "Cloning Synapse AI…"
+        echo "Cloning Synapse AI..."
         git clone "$REPO_URL" "$DEST_DIR"
     fi
     

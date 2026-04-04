@@ -136,12 +136,12 @@ def install_npm():
     os_type = get_os_type()
     
     if IS_WIN:
-        info("Please download and install Node.js from https://nodejs.org/")
+        info("Please download and install Node.js (v20.9.0 or higher) from https://nodejs.org/")
         info("Then re-run this setup script.")
         err("Node.js installation required.")
         sys.exit(1)
     elif os_type == "darwin":
-        info("Installing Node.js via Homebrew…")
+        info("Installing Node.js via Homebrew...")
         try:
             subprocess.check_call(["brew", "install", "node"])
             ok("Node.js installed successfully.")
@@ -155,16 +155,25 @@ def install_npm():
         distro = get_linux_distro()
         
         if distro in ("ubuntu", "debian"):
-            info("Installing Node.js on Ubuntu/Debian…")
+            info("Installing Node.js on Ubuntu/Debian via NodeSource...")
             try:
-                subprocess.check_call(["sudo", "apt-get", "update"])
-                subprocess.check_call(["sudo", "apt-get", "install", "-y", "nodejs", "npm"])
+                # Use NodeSource setup script for latest LTS
+                subprocess.check_call(["curl", "-fsSL", "https://deb.nodesource.com/setup_20.x", "-o", "nodesource_setup.sh"])
+                subprocess.check_call(["sudo", "bash", "nodesource_setup.sh"])
+                subprocess.check_call(["sudo", "apt-get", "install", "-y", "nodejs"])
+                subprocess.check_call(["rm", "nodesource_setup.sh"])
                 ok("Node.js installed successfully.")
-            except subprocess.CalledProcessError:
-                err("Failed to install Node.js.")
-                sys.exit(1)
+            except Exception as e:
+                warn(f"NodeSource installation failed: {e}. Trying default repos...")
+                try:
+                    subprocess.check_call(["sudo", "apt-get", "update"])
+                    subprocess.check_call(["sudo", "apt-get", "install", "-y", "nodejs", "npm"])
+                    ok("Node.js installed successfully.")
+                except subprocess.CalledProcessError:
+                    err("Failed to install Node.js.")
+                    sys.exit(1)
         elif distro in ("fedora", "rhel", "centos"):
-            info("Installing Node.js on Fedora/RHEL…")
+            info("Installing Node.js on Fedora/RHEL...")
             try:
                 subprocess.check_call(["sudo", "dnf", "install", "-y", "nodejs", "npm"])
                 ok("Node.js installed successfully.")
@@ -172,7 +181,7 @@ def install_npm():
                 err("Failed to install Node.js.")
                 sys.exit(1)
         elif distro in ("arch", "manjaro"):
-            info("Installing Node.js on Arch/Manjaro…")
+            info("Installing Node.js on Arch/Manjaro...")
             try:
                 subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"])
                 ok("Node.js installed successfully.")
@@ -191,12 +200,20 @@ def install_postgresql():
     os_type = get_os_type()
     
     if IS_WIN:
-        info("Please download and install PostgreSQL from https://www.postgresql.org/download/")
-        info("Then re-run this setup script.")
-        err("PostgreSQL installation required.")
+        info("PostgreSQL installation is required for the Coding Agent on Windows.")
+        info("1. Download the installer from: https://www.postgresql.org/download/windows/")
+        info("2. Run the installer and follow the instructions.")
+        info("3. CRITICAL: Add the PostgreSQL bin directory to your System PATH:")
+        info("   - Example: C:\\Program Files\\PostgreSQL\\15\\bin")
+        info("   - Search for 'Environment Variables' in Start menu")
+        info("   - Edit 'Path' in System Variables and add the bin directory")
+        info("4. Verify by opening a NEW command prompt and running: psql --version")
+        info("")
+        warn("Please complete these steps, then re-run this setup script.")
+        err("PostgreSQL installation/PATH configuration required.")
         sys.exit(1)
     elif os_type == "darwin":
-        info("Installing PostgreSQL via Homebrew…")
+        info("Installing PostgreSQL via Homebrew...")
         try:
             subprocess.check_call(["brew", "install", "postgresql@15"])
             subprocess.check_call(["brew", "services", "start", "postgresql@15"])
@@ -211,7 +228,7 @@ def install_postgresql():
         distro = get_linux_distro()
         
         if distro in ("ubuntu", "debian"):
-            info("Installing PostgreSQL on Ubuntu/Debian…")
+            info("Installing PostgreSQL on Ubuntu/Debian...")
             try:
                 subprocess.check_call(["sudo", "apt-get", "update"])
                 subprocess.check_call(["sudo", "apt-get", "install", "-y", "postgresql", "postgresql-contrib"])
@@ -221,7 +238,7 @@ def install_postgresql():
                 err("Failed to install PostgreSQL.")
                 sys.exit(1)
         elif distro in ("fedora", "rhel", "centos"):
-            info("Installing PostgreSQL on Fedora/RHEL…")
+            info("Installing PostgreSQL on Fedora/RHEL...")
             try:
                 subprocess.check_call(["sudo", "dnf", "install", "-y", "postgresql-server", "postgresql-contrib"])
                 subprocess.check_call(["sudo", "systemctl", "start", "postgresql"])
@@ -230,7 +247,7 @@ def install_postgresql():
                 err("Failed to install PostgreSQL.")
                 sys.exit(1)
         elif distro in ("arch", "manjaro"):
-            info("Installing PostgreSQL on Arch/Manjaro…")
+            info("Installing PostgreSQL on Arch/Manjaro...")
             try:
                 subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "postgresql"])
                 ok("PostgreSQL installed. Start with: sudo systemctl start postgresql")
@@ -279,7 +296,7 @@ def create_postgresql_db(db_user, db_password, db_name="synapse"):
     try:
         # Try to create database and user using psql
         # First, get superuser password or use peer authentication
-        info(f"Creating database '{db_name}' and user '{db_user}'…")
+        info(f"Creating database '{db_name}' and user '{db_user}'...")
         
         # Create user if not exists
         create_user_sql = f"CREATE USER {db_user} PASSWORD '{db_password}';"
@@ -414,7 +431,7 @@ def _find_all_node_versions():
 
 def check_npm():
     if not shutil.which("npm"):
-        warn("npm not found. Attempting to install Node.js and npm automatically…")
+        warn("npm not found. Attempting to install Node.js and npm automatically...")
         install_npm()
 
     # Verify the *currently active* Node.js version.
@@ -423,22 +440,26 @@ def check_npm():
         try:
             result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
             version_str = result.stdout.strip().lstrip("v")  # e.g. "18.17.0"
-            major = int(version_str.split(".")[0])
-            if major < 16:
-                warn(f"Active Node.js version is v{version_str} (< 16). Searching for a newer install…")
+            parts = [int(p) for p in version_str.split(".")[:3]]
+            major = parts[0]
+            minor = parts[1] if len(parts) > 1 else 0
+
+            # Require >= 20.9.0
+            if major < 20 or (major == 20 and minor < 9):
+                warn(f"Active Node.js version is v{version_str} (< 20.9.0). Searching for a newer install...")
                 all_versions = _find_all_node_versions()
-                suitable = [(v, d) for v, d in all_versions if v[0] >= 16]
+                suitable = [(v, d) for v, d in all_versions if v[0] > 20 or (v[0] == 20 and v[1] >= 9)]
                 if suitable:
                     best_ver, best_dir = suitable[0]
                     best_ver_str = ".".join(str(x) for x in best_ver)
                     ok(f"Found Node.js v{best_ver_str} at {best_dir}")
                     # Prepend the better node's bin dir so all subsequent subprocess
-                    # calls (npm install, npm run build, …) use the right version.
+                    # calls (npm install, npm run build, ...) use the right version.
                     os.environ["PATH"] = best_dir + os.pathsep + os.environ.get("PATH", "")
                     ok(f"Switched to Node.js v{best_ver_str} for this setup session.")
                 else:
-                    err(f"Node.js 16+ required. Active version: v{version_str}, none found ≥ 16.")
-                    info("Install Node.js 16+ from https://nodejs.org/ or via nvm/fnm, then re-run setup.")
+                    err(f"Node.js 20.9.0+ required. Active version: v{version_str}, none found ≥ 20.9.0.")
+                    info("Install the latest Node.js from https://nodejs.org/ or via nvm/fnm, then re-run setup.")
                     sys.exit(1)
             else:
                 ok(f"Node.js v{version_str}")
@@ -525,7 +546,7 @@ def ask_coding_agent(cfg):
 
     # Check if PostgreSQL is installed, install if needed
     if not psql_was_preinstalled:
-        warn("PostgreSQL not found. Installing PostgreSQL…")
+        warn("PostgreSQL not found. Installing PostgreSQL...")
         install_postgresql()
         # Use default credentials for auto-installed PostgreSQL
         db_user = "postgres"
@@ -535,7 +556,7 @@ def ask_coding_agent(cfg):
     else:
         ok("PostgreSQL is already installed.")
         # Ask for credentials only if user had it pre-installed
-        info("Configuring PostgreSQL database for Coding Agent…")
+        info("Configuring PostgreSQL database for Coding Agent...")
         db_user = ask("PostgreSQL username", default="postgres")
         db_password = ask("PostgreSQL password", default="")
         db_name = ask("Database name", default="synapse")
@@ -551,7 +572,7 @@ def ask_coding_agent(cfg):
         ok(f"Database URL: {db_url}")
         
         # Test connection
-        info("Testing PostgreSQL connection…")
+        info("Testing PostgreSQL connection...")
         try:
             import psycopg2  # type: ignore
             try:
@@ -931,7 +952,7 @@ def ask_llm(cfg):
     step("LLM Provider & Model")
 
     # Try Ollama first
-    info("Checking for Ollama…")
+    info("Checking for Ollama...")
     ollama_models = _ollama_models()
     if ollama_models:
         ok(f"Ollama detected with {len(ollama_models)} model(s).")
@@ -946,7 +967,7 @@ def ask_llm(cfg):
         base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
         cfg["ollama_base_url"] = base_url
         os.environ["OLLAMA_HOST"] = base_url  # ollama CLI respects OLLAMA_HOST
-        info("Checking for models at that URL…")
+        info("Checking for models at that URL...")
         ollama_models = _ollama_models()
         if ollama_models:
             ok(f"Found {len(ollama_models)} model(s).")
@@ -967,7 +988,7 @@ def ask_llm(cfg):
         key = ask("Enter Gemini API key")
         cfg["gemini_key"] = key
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_gemini_models(key)
         if not models:
             warn("No models returned. Check your key.")
@@ -979,7 +1000,7 @@ def ask_llm(cfg):
         key = ask("Enter OpenAI API key")
         cfg["openai_key"] = key
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_openai_models(key)
         if not models:
             warn("No models returned. Check your key.")
@@ -991,7 +1012,7 @@ def ask_llm(cfg):
         key = ask("Enter Anthropic API key")
         cfg["anthropic_key"] = key
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_anthropic_models(key)
         if not models:
             warn("No models returned. Check your key.")
@@ -1003,7 +1024,7 @@ def ask_llm(cfg):
         key = ask("Enter DeepSeek API key")
         cfg["deepseek_key"] = key
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_deepseek_models(key)
         if not models:
             warn("No models returned. Check your key.")
@@ -1015,7 +1036,7 @@ def ask_llm(cfg):
         key = ask("Enter xAI API key")
         cfg["xai_key"] = key
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_grok_models(key)
         if not models:
             warn("No models returned. Check your key.")
@@ -1029,7 +1050,7 @@ def ask_llm(cfg):
         cfg["bedrock_api_key"] = key
         cfg["aws_region"] = region
         cfg["mode"] = "cloud"
-        info("Fetching available models…")
+        info("Fetching available models...")
         models = _fetch_bedrock_models(key, region)
         if not models:
             model_id = ask("Enter Bedrock model ID manually")
@@ -1081,7 +1102,7 @@ def _run_with_retry(cmd, retries=4, delay=5, **kwargs):
         except subprocess.CalledProcessError as e:
             last_exc = e
             if attempt < retries:
-                warn(f"Command failed (attempt {attempt}/{retries}). Retrying in {delay}s…")
+                warn(f"Command failed (attempt {attempt}/{retries}). Retrying in {delay}s...")
                 time.sleep(delay)
             else:
                 raise last_exc
@@ -1093,12 +1114,12 @@ def install_backend(coding_enabled, messaging_enabled=False):
     step("Installing Backend Dependencies")
 
     if os.path.exists(VENV_DIR):
-        info("Removing existing virtual environment…")
+        info("Removing existing virtual environment...")
         shutil.rmtree(VENV_DIR)
-    info("Creating virtual environment…")
+    info("Creating virtual environment...")
     subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR])
 
-    info("Installing base requirements…")
+    info("Installing base requirements...")
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "--upgrade", "pip"])
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt")])
     ok("Base dependencies installed.")
@@ -1106,7 +1127,7 @@ def install_backend(coding_enabled, messaging_enabled=False):
     if coding_enabled:
         coding_req = os.path.join(BACKEND_DIR, "requirements-coding.txt")
         if os.path.exists(coding_req):
-            info("Installing coding-agent dependencies (cocoindex, psycopg)…")
+            info("Installing coding-agent dependencies (cocoindex, psycopg)...")
             _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", coding_req])
             ok("Coding-agent dependencies installed.")
         else:
@@ -1115,13 +1136,13 @@ def install_backend(coding_enabled, messaging_enabled=False):
     if messaging_enabled:
         messaging_req = os.path.join(BACKEND_DIR, "requirements-messaging.txt")
         if os.path.exists(messaging_req):
-            info("Installing messaging integration dependencies…")
+            info("Installing messaging integration dependencies...")
             _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", messaging_req])
             ok("Messaging dependencies installed.")
         else:
             warn(f"requirements-messaging.txt not found at {messaging_req}")
 
-    info("Installing Synapse package (editable mode)…")
+    info("Installing Synapse package (editable mode)...")
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-e", ROOT_DIR])
     ok("Synapse package installed.")
 
@@ -1132,13 +1153,13 @@ def install_frontend():
         sys.exit(1)
     node_modules = os.path.join(FRONTEND_DIR, "node_modules")
     if os.path.exists(node_modules):
-        info("Removing existing node_modules…")
+        info("Removing existing node_modules...")
         shutil.rmtree(node_modules)
-    info("Running npm install (this may take a while)…")
+    info("Running npm install (this may take a while)...")
     _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
     ok("Frontend dependencies installed.")
     
-    info("Building frontend…")
+    info("Building frontend...")
     _run_with_retry(["npm", "run", "build"], cwd=FRONTEND_DIR, shell=IS_WIN)
     ok("Frontend built.")
 
@@ -1293,7 +1314,7 @@ def setup_path():
         ok("Windows setup complete.")
     else:
         # Unix: Try to add to .bashrc / .zshrc
-        info("Checking for shell configuration files…")
+        info("Checking for shell configuration files...")
         add_to_bashrc()
         add_to_zshrc()
         
@@ -1396,7 +1417,7 @@ def main():
                 err("Frontend crashed! Check the logs above.")
                 break
     except KeyboardInterrupt:
-        print("\nStopping servers…")
+        print("\nStopping servers...")
         backend_proc.terminate()
         if not IS_WIN:
             try:
