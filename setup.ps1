@@ -44,33 +44,71 @@ function Install-NodeJS {
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Write-Host "Installing Node.js via winget..."
         winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements
-        Write-Host "[OK] Node.js installed successfully" -ForegroundColor Green
+        Write-Host "[OK] Node.js installed (via winget). Refreshing PATH..." -ForegroundColor Green
+        # Give the installer a moment to finish writing files
+        Start-Sleep -Seconds 3
         Update-Environment
+        # Force-add all known Node.js install locations to current session PATH
+        $knownNodeDirs = @(
+            "$env:ProgramFiles\nodejs",
+            "$env:ProgramFiles(x86)\nodejs",
+            "$env:LocalAppData\Programs\nodejs",
+            "$env:AppData\npm"
+        )
+        foreach ($dir in $knownNodeDirs) {
+            if ((Test-Path $dir) -and ($env:Path -notlike "*$dir*")) {
+                Write-Host "[INFO] Prepending $dir to session PATH" -ForegroundColor Cyan
+                $env:Path = "$dir;$env:Path"
+            }
+        }
     } else {
         Write-Host "[WARN] winget not found. Please install Node.js manually (v20.9.0 or higher):" -ForegroundColor Yellow
         Write-Host "  https://nodejs.org/"
-        exit 1
+        throw "winget not available for Node.js installation."
     }
+}
+
+function Find-NodeExe {
+    # Returns the full path to node.exe if found in known locations, or $null
+    $candidates = @(
+        "$env:ProgramFiles\nodejs\node.exe",
+        "$env:ProgramFiles(x86)\nodejs\node.exe",
+        "$env:LocalAppData\Programs\nodejs\node.exe"
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) { return $p }
+    }
+    # Also try resolving via PATH (may be cached, so use Get-Command -All)
+    try {
+        $cmds = Get-Command node -All -ErrorAction SilentlyContinue
+        foreach ($c in $cmds) {
+            if ($c.Source -and (Test-Path $c.Source)) { return $c.Source }
+        }
+    } catch {}
+    return $null
 }
 
 function Test-NodeVersion {
     try {
-        if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-            # Fallback check in common install paths
-            $commonPath = "C:\Program Files\nodejs\node.exe"
-            if (Test-Path $commonPath) {
-                Write-Host "[INFO] node found at common path: $commonPath. Updating current session PATH..." -ForegroundColor Cyan
-                $env:Path = "$([System.IO.Path]::GetDirectoryName($commonPath));$env:Path"
+        # Always probe known paths directly to bypass Get-Command caching
+        $nodeExe = Find-NodeExe
+        if ($nodeExe) {
+            $nodeDir = [System.IO.Path]::GetDirectoryName($nodeExe)
+            if ($env:Path -notlike "*$nodeDir*") {
+                Write-Host "[INFO] Adding $nodeDir to current session PATH" -ForegroundColor Cyan
+                $env:Path = "$nodeDir;$env:Path"
             }
+        } else {
+            return $false
         }
-        
-        if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return $false }
-        $verStr = node -v
+
+        $verStr = & $nodeExe -v 2>$null
+        if (-not $verStr) { return $false }
         # Remove 'v' prefix if present
-        if ($verStr.StartsWith("v")) {
-            $verStr = $verStr.SubString(1)
+        if ($verStr.TrimStart().StartsWith("v")) {
+            $verStr = $verStr.TrimStart().SubString(1)
         }
-        $version = [version]$verStr
+        $version = [version]$verStr.Trim()
         # Check for 20.9.0 or higher
         return ($version -ge [version]"20.9.0")
     } catch {
