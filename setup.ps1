@@ -261,11 +261,15 @@ function Install-Uv {
 function Test-Uv {
     # Check common locations where uv may be installed
     $uvLocations = @(
-        (Get-Command uv -ErrorAction SilentlyContinue)?.Source,
         "$env:USERPROFILE\.local\bin\uv.exe",
         "$env:USERPROFILE\.cargo\bin\uv.exe",
         "$env:APPDATA\Python\Scripts\uv.exe"
     )
+    
+    $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+    if ($uvCmd) {
+        $uvLocations += $uvCmd.Source
+    }
     foreach ($loc in $uvLocations) {
         if ($loc -and (Test-Path $loc)) {
             if ($env:Path -notlike "*$(Split-Path $loc)*") {
