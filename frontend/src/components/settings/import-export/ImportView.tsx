@@ -5,7 +5,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Upload, Package, CheckCircle2, AlertTriangle,
   SkipForward, XCircle, Workflow, Bot, Server, Wrench,
-  AlertCircle, Loader2,
+  AlertCircle, Loader2, Cpu, RotateCcw, ChevronDown, ChevronUp,
 } from "lucide-react";
 import type { ImportBundle, ImportResult, OrchestrationType, AgentType, McpServerType, CustomToolType } from "./types";
 import { orchAgentDeps, agentMcpDeps, agentToolDeps } from "./utils";
@@ -14,6 +14,60 @@ import { SectionTable } from "./SectionTable";
 const inputCls = "w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700";
 
 type ImportStep = "upload" | "preview" | "secrets" | "results";
+
+// ── Utility: collect all non-null/default models from a bundle ────────────────
+interface ModelEntry {
+  model: string;
+  usedIn: string[];
+}
+
+function collectModels(bundle: ImportBundle): ModelEntry[] {
+  const map = new Map<string, Set<string>>();
+
+  const add = (model: string | null | undefined, source: string) => {
+    if (!model || model.trim().toLowerCase() === "default") return;
+    if (!map.has(model)) map.set(model, new Set());
+    map.get(model)!.add(source);
+  };
+
+  // Orchestration step models
+  for (const orch of bundle.orchestrations || []) {
+    for (const step of orch.steps || []) {
+      add(step.model, `${orch.name} › ${step.name}`);
+    }
+  }
+
+  // Agent models
+  for (const agent of bundle.agents || []) {
+    add(agent.model, `Agent: ${agent.name}`);
+  }
+
+  const result: ModelEntry[] = [];
+  for (const [model, sources] of map.entries()) {
+    result.push({ model, usedIn: Array.from(sources) });
+  }
+  return result;
+}
+
+// ── Strip all model/provider fields (set to null = "default") ─────────────────
+function applyDefaultModels(bundle: ImportBundle): ImportBundle {
+  return {
+    ...bundle,
+    agents: (bundle.agents || []).map(agent => ({
+      ...agent,
+      model: null,
+      provider: null,
+    })),
+    orchestrations: (bundle.orchestrations || []).map(orch => ({
+      ...orch,
+      steps: (orch.steps || []).map(step => ({
+        ...step,
+        model: null,
+      })),
+    })),
+  };
+}
+
 
 export function ImportView({ preloadedBundle, onReset }: {
   preloadedBundle?: any;
@@ -25,6 +79,8 @@ export function ImportView({ preloadedBundle, onReset }: {
   const [bundle, setBundle] = useState<ImportBundle | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [useDefaultModels, setUseDefaultModels] = useState(false);
+  const [modelsExpanded, setModelsExpanded] = useState(false);
 
   const [selOrch, setSelOrch] = useState<Set<string>>(new Set());
   const [selAgent, setSelAgent] = useState<Set<string>>(new Set());
@@ -38,8 +94,7 @@ export function ImportView({ preloadedBundle, onReset }: {
   const [toolSecrets, setToolSecrets] = useState<Record<string, Record<string, string>>>({});
   const [results, setResults] = useState<Record<string, ImportResult[]>>({});
 
-  // Refs for always-current selection state — same pattern as bundleRef.
-  // Used to avoid stale closures in toggle handlers without calling setState inside state updaters.
+  // Refs for always-current selection state
   const bundleRef = useRef<ImportBundle | null>(null);
   bundleRef.current = bundle;
 
@@ -148,6 +203,7 @@ export function ImportView({ preloadedBundle, onReset }: {
     setSelOrch(new Set()); setSelAgent(new Set()); setSelMcp(new Set()); setSelTool(new Set());
     setLockedAgent(new Set()); setLockedMcp(new Set()); setLockedTool(new Set());
     setMcpSecrets({}); setToolSecrets({});
+    setUseDefaultModels(false); setModelsExpanded(false);
     onReset?.();
   };
 
@@ -160,10 +216,21 @@ export function ImportView({ preloadedBundle, onReset }: {
     if (!bundle) return;
     setImporting(true);
     try {
+      // Apply default model stripping if toggled
+      const bundleToSend = useDefaultModels ? applyDefaultModels(bundle) : bundle;
+
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bundle, mcp_secrets: mcpSecrets, tool_secrets: toolSecrets, selected_orchestration_ids: [...selOrch], selected_agent_ids: [...selAgent], selected_mcp_server_names: [...selMcp], selected_custom_tool_names: [...selTool] }),
+        body: JSON.stringify({
+          bundle: bundleToSend,
+          mcp_secrets: mcpSecrets,
+          tool_secrets: toolSecrets,
+          selected_orchestration_ids: [...selOrch],
+          selected_agent_ids: [...selAgent],
+          selected_mcp_server_names: [...selMcp],
+          selected_custom_tool_names: [...selTool],
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Import failed");
@@ -198,6 +265,9 @@ export function ImportView({ preloadedBundle, onReset }: {
   // ── Preview ───────────────────────────────────────────────────────────────
   if (step === "preview" && bundle) {
     const total = selOrch.size + selAgent.size + selMcp.size + selTool.size;
+    const allModels = collectModels(bundle);
+    const hasModels = allModels.length > 0;
+
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900">
@@ -218,6 +288,73 @@ export function ImportView({ preloadedBundle, onReset }: {
               <p className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Python Tools Included</p>
               <p className="text-yellow-600 text-xs mt-1">Review all Python tool code carefully for hardcoded secrets before importing.</p>
             </div>
+          </div>
+        )}
+
+        {/* ── Models Info Panel ─────────────────────────────────────────── */}
+        {hasModels ? (
+          <div className="border border-blue-900/40 bg-blue-950/10">
+            {/* Header row */}
+            <div className="flex items-center gap-3 px-4 py-3">
+              <Cpu className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-blue-400 text-xs font-bold uppercase tracking-wider">Models Used in This Bundle</p>
+                <p className="text-blue-700 text-xs mt-0.5">
+                  {allModels.length} model{allModels.length !== 1 ? "s" : ""} found across agents &amp; orchestration steps.
+                </p>
+              </div>
+              <button
+                onClick={() => setModelsExpanded(v => !v)}
+                className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-400 transition-colors"
+              >
+                {modelsExpanded ? <><ChevronUp className="h-3 w-3" />Hide</> : <><ChevronDown className="h-3 w-3" />Show</>}
+              </button>
+            </div>
+
+            {/* Model list (collapsible) */}
+            {modelsExpanded && (
+              <div className="border-t border-blue-900/30 divide-y divide-blue-900/20">
+                {allModels.map(entry => (
+                  <div key={entry.model} className="px-4 py-2.5 flex items-start gap-3">
+                    <span className="font-mono text-xs text-blue-300 font-bold min-w-0 break-all pt-px">{entry.model}</span>
+                    <div className="flex-1 min-w-0">
+                      {entry.usedIn.map(src => (
+                        <p key={src} className="text-[10px] text-blue-700 truncate">{src}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Use default toggle */}
+            <div className="border-t border-blue-900/30 px-4 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-blue-300">Use default model for everything</p>
+                  <p className="text-[10px] text-blue-700 mt-0.5">
+                    Strips all model &amp; provider overrides from agents and orchestration steps — they will use your global default model instead.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUseDefaultModels(v => !v)}
+                className={`relative flex-shrink-0 w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none ${useDefaultModels ? "bg-blue-500" : "bg-zinc-700"}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${useDefaultModels ? "translate-x-5" : "translate-x-0"}`}
+                />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* No explicit models → neutral info */
+          <div className="flex items-start gap-3 p-3.5 border border-zinc-800 bg-zinc-900/40">
+            <Cpu className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0 mt-0.5" />
+            <p className="text-zinc-500 text-xs leading-relaxed">
+              No explicit model overrides found — agents &amp; orchestration steps will use your global default model.
+            </p>
           </div>
         )}
 
@@ -268,6 +405,16 @@ export function ImportView({ preloadedBundle, onReset }: {
             }}
           />
         </div>
+
+        {/* Default-model active badge */}
+        {useDefaultModels && hasModels && (
+          <div className="flex items-center gap-2 px-3 py-2 border border-blue-800/50 bg-blue-950/20">
+            <RotateCcw className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
+            <p className="text-blue-400 text-xs">
+              <span className="font-bold">Default model active</span> — {allModels.length} model override{allModels.length !== 1 ? "s" : ""} will be stripped on import.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-4 pt-2">
           <button onClick={reset} className="px-4 py-2 text-sm font-bold border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white transition-colors">
@@ -399,6 +546,7 @@ export function ImportView({ preloadedBundle, onReset }: {
             <p className="text-green-700 text-xs mt-0.5">
               {importedCount} item{importedCount !== 1 ? "s" : ""} imported.
               {all.some(r => r.status === "skipped_existing") && " Some MCP servers were skipped (already exist)."}
+              {useDefaultModels && " · All model overrides were reset to default."}
             </p>
           </div>
         </div>

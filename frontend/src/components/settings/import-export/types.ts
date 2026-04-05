@@ -1,10 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export interface OrchStepType {
+  id: string;
+  name: string;
+  type: string;
+  agent_id?: string | null;
+  model?: string | null;
+  [key: string]: unknown;
+}
+
 export interface OrchestrationType {
   id: string;
   name: string;
   description?: string;
-  steps?: Array<{ agent_id?: string }>;
+  steps?: OrchStepType[];
 }
 
 export interface AgentType {
@@ -12,6 +21,8 @@ export interface AgentType {
   name: string;
   description?: string;
   tools?: string[];
+  model?: string | null;
+  provider?: string | null;
 }
 
 export interface McpServerType {
