@@ -137,7 +137,7 @@ def install_npm():
     
     if IS_WIN:
         info("Please download and install Node.js (v20.9.0 or higher) from https://nodejs.org/")
-        info("Then re-run this setup script.")
+        info("Once installed, restart your terminal and re-run this setup script.")
         err("Node.js installation required.")
         sys.exit(1)
     elif os_type == "darwin":
@@ -200,17 +200,19 @@ def install_postgresql():
     os_type = get_os_type()
     
     if IS_WIN:
-        info("PostgreSQL installation is required for the Coding Agent on Windows.")
+        info("PostgreSQL is required for the Coding Agent on Windows.")
         info("1. Download the installer from: https://www.postgresql.org/download/windows/")
-        info("2. Run the installer and follow the instructions.")
-        info("3. CRITICAL: Add the PostgreSQL bin directory to your System PATH:")
-        info("   - Example: C:\\Program Files\\PostgreSQL\\15\\bin")
-        info("   - Search for 'Environment Variables' in Start menu")
-        info("   - Edit 'Path' in System Variables and add the bin directory")
-        info("4. Verify by opening a NEW command prompt and running: psql --version")
+        info("2. Run the installer and follow the on-screen prompts.")
+        info("3. IMPORTANT: Add the PostgreSQL bin directory to your System PATH:")
+        info("   - Search for 'Edit the system environment variables' in the Start menu")
+        info("   - Click 'Environment Variables', then find 'Path' under System variables")
+        info("   - Click 'Edit' → 'New', and add the bin path (e.g. C:\\Program Files\\PostgreSQL\\17\\bin)")
+        info("4. Restart your terminal so the updated PATH takes effect.")
+        info("5. Verify the installation by running: psql --version")
+        info("   Make sure it prints a version number before continuing.")
         info("")
-        warn("Please complete these steps, then re-run this setup script.")
-        err("PostgreSQL installation/PATH configuration required.")
+        warn("Please complete all steps above, then re-run this setup script.")
+        err("PostgreSQL installation or PATH configuration is required.")
         sys.exit(1)
     elif os_type == "darwin":
         info("Installing PostgreSQL via Homebrew...")
@@ -704,8 +706,8 @@ def ask_coding_agent(cfg):
 # ---------------------------------------------------------------------------
 def ask_browser_automation(cfg):
     step("Browser Automation")
-    info("Allows Agents to use the browser and browse the web.")
-    if ask_yn("Do your Agents need to use the browser and browse?", default="y"):
+    info("Allows your agents to use the browser and browse the web.")
+    if ask_yn("Do your agents need to use the browser?", default="y"):
         cfg["browser_automation_enabled"] = True
         
         # Determine default playwright path
@@ -725,7 +727,14 @@ def ask_browser_automation(cfg):
         else:
             info("Playwright browsers not found. Installing... (this may take a minute)")
             try:
-                subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"], shell=IS_WIN)
+                if IS_WIN:
+                    npx_exe, bin_dir = _find_node_exe_win()
+                    npx_cmd = os.path.join(os.path.dirname(npx_exe) if npx_exe else "", "npx.cmd")
+                    if not os.path.isfile(npx_cmd):
+                        npx_cmd = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+                    subprocess.check_call([npx_cmd, "-y", "playwright", "install", "chromium"])
+                else:
+                    subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"])
                 ok("Playwright installed successfully.")
                 cfg["playwright_browsers_path"] = default_pw_path
             except subprocess.CalledProcessError as e:
@@ -744,14 +753,14 @@ def ask_browser_automation(cfg):
 # ---------------------------------------------------------------------------
 def ask_messaging_app(cfg):
     step("Messaging App Integration")
-    info("Lets your agents be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
-    info("You will configure individual bots later in Settings → Messaging.")
+    info("Allows your agents to be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
+    info("You can configure individual bots later in Settings → Messaging.")
     enabled = ask_yn("Enable Messaging App support?", default="n")
     cfg["messaging_enabled"] = enabled
     if not enabled:
         ok("Messaging disabled — skipping.")
         return
-    ok("Messaging enabled. Messaging libraries will be installed now.")
+    ok("Messaging enabled. Required libraries will be installed now.")
 
 
 
@@ -853,28 +862,28 @@ def ask_google_workspace(cfg):
             if project_id else
             "https://console.cloud.google.com/apis/credentials"
         )
-        info("gcloud CLI cannot create OAuth Desktop App clients automatically.")
+        info("The gcloud CLI cannot create OAuth Desktop App clients automatically.")
         info(f"Open this link to create one (pre-filled to your project):")
         print(f"\n   {_c(C.CYAN, console_url)}\n")
         info("Instructions:")
         info("  1. Choose 'OAuth client ID'")
-        info("  2. Application type → 'Web application'")
+        info("  2. Set application type to 'Web application'")
         info(f"  3. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
-        info("  4. Ensure OAuth consent screen has all required scopes configured")
-        info("  5. Click Create → Download JSON")
+        info("  4. Make sure the OAuth consent screen has all required scopes configured")
+        info("  5. Click Create, then download the JSON file")
     else:
         # No gcloud — full manual flow
         info("gcloud CLI not found — using manual setup.")
-        info("Quick link to create OAuth credentials:")
+        info("Use this link to create OAuth credentials:")
         print(f"\n   {_c(C.CYAN, 'https://console.cloud.google.com/apis/credentials')}\n")
-        info("  1. Create Project (or pick existing)")
+        info("  1. Create a project (or select an existing one)")
         print(f"   Enable APIs: {_c(C.CYAN, 'https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,drive.googleapis.com,calendar-json.googleapis.com,docs.googleapis.com,sheets.googleapis.com,slides.googleapis.com,forms.googleapis.com,tasks.googleapis.com,people.googleapis.com')}")
-        info("  2. Configure OAuth consent screen and add these scopes:")
+        info("  2. Configure the OAuth consent screen and add these scopes:")
         info("     userinfo.email, userinfo.profile, gmail.modify, gmail.send, drive, calendar,")
         info("     documents, spreadsheets, presentations, forms, tasks, contacts")
-        info("  3. Create Credentials → OAuth Client ID → Web application")
+        info("  3. Go to Credentials → Create Credentials → OAuth Client ID → Web application")
         info(f"  4. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
-        info("  5. Download JSON and paste below.")
+        info("  5. Download the JSON file and paste its contents below.")
 
     # Paste area
     print()
@@ -1282,19 +1291,23 @@ def install_backend(coding_enabled, messaging_enabled=False):
 
 def install_frontend():
     step("Installing Frontend Dependencies")
-    if not shutil.which("npm"):
-        err("npm not found.")
-        sys.exit(1)
+    if IS_WIN:
+        npm = _find_npm_cmd_win()
+    else:
+        npm = shutil.which("npm")
+        if not npm:
+            err("npm not found.")
+            sys.exit(1)
     node_modules = os.path.join(FRONTEND_DIR, "node_modules")
     if os.path.exists(node_modules):
         info("Removing existing node_modules...")
         shutil.rmtree(node_modules)
     info("Running npm install (this may take a while)...")
-    _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
+    _run_with_retry([npm, "install"], cwd=FRONTEND_DIR)
     ok("Frontend dependencies installed.")
-    
+
     info("Building frontend...")
-    _run_with_retry(["npm", "run", "build"], cwd=FRONTEND_DIR, shell=IS_WIN)
+    _run_with_retry([npm, "run", "build"], cwd=FRONTEND_DIR)
     ok("Frontend built.")
 
 # ---------------------------------------------------------------------------
@@ -1354,15 +1367,33 @@ def start_backend(backend_port: int = DEFAULT_BACKEND_PORT):
     env["SYNAPSE_DATA_DIR"] = os.path.abspath(DATA_DIR)
     return subprocess.Popen([PYTHON_EXE, "main.py"], cwd=BACKEND_DIR, env=env)
 
+def _find_npm_cmd_win():
+    """Return the full path to npm.cmd on Windows."""
+    # Look next to the node.exe we already discovered
+    node_exe, bin_dir = _find_node_exe_win()
+    if bin_dir:
+        npm_cmd = os.path.join(bin_dir, "npm.cmd")
+        if os.path.isfile(npm_cmd):
+            return npm_cmd
+    # Fallback: let shutil.which find it (may work if PATH is current)
+    return shutil.which("npm.cmd") or shutil.which("npm") or "npm"
+
+
 def start_frontend(frontend_port: int = DEFAULT_FRONTEND_PORT, backend_port: int = DEFAULT_BACKEND_PORT):
     step("Starting Frontend Server")
     env = os.environ.copy()
     env["SYNAPSE_FRONTEND_PORT"] = str(frontend_port)
     env["BACKEND_URL"] = f"http://127.0.0.1:{backend_port}"
+    if IS_WIN:
+        npm = _find_npm_cmd_win()
+        return subprocess.Popen(
+            [npm, "run", "start", "--", "-p", str(frontend_port)],
+            cwd=FRONTEND_DIR,
+            env=env,
+        )
     return subprocess.Popen(
         ["npm", "run", "start", "--", "-p", str(frontend_port)],
         cwd=FRONTEND_DIR,
-        shell=IS_WIN,
         env=env,
     )
 
@@ -1437,21 +1468,53 @@ def add_to_zshrc():
     ok(f"Added Synapse to PATH (zshrc)")
     return True
 
+def _add_to_windows_path(bin_dir):
+    """Persist bin_dir in the user PATH via setx and the PowerShell profile."""
+    # 1. setx — persists across new cmd/powershell sessions
+    try:
+        current = subprocess.run(
+            ["reg", "query", "HKCU\\Environment", "/v", "PATH"],
+            capture_output=True, text=True
+        ).stdout
+        # Extract existing user PATH
+        user_path = ""
+        for line in current.splitlines():
+            if "PATH" in line and "REG_" in line:
+                parts = line.split(None, 2)
+                if len(parts) >= 3:
+                    user_path = parts[2].strip()
+                    break
+        if bin_dir.lower() not in user_path.lower():
+            new_path = (user_path + ";" + bin_dir) if user_path else bin_dir
+            subprocess.run(["setx", "PATH", new_path], capture_output=True)
+            ok(f"Added {bin_dir} to user PATH (setx). Changes take effect in new terminals.")
+        else:
+            ok("Synapse bin directory is already in user PATH.")
+    except Exception as e:
+        warn(f"setx PATH update failed: {e}")
+
+    # 2. Also prepend to the current process PATH so synapse.bat is findable now
+    if bin_dir.lower() not in os.environ.get("PATH", "").lower():
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
+
 def setup_path():
     """Setup PATH for the current platform"""
     step("Setting up Synapse command")
     bin_dir = os.path.join(ROOT_DIR, "bin")
-    
+
     if IS_WIN:
-        # Windows: Just inform user about python -m synapse start
-        info("On Windows, use: python -m synapse start")
-        ok("Windows setup complete.")
+        info("Registering 'synapse' command in PATH...")
+        _add_to_windows_path(bin_dir)
+        info("In your CURRENT session you can already run: synapse start")
+        info(f"(If 'synapse' is not found, open a new terminal — setx takes effect then.)")
+        ok("Windows PATH setup complete.")
     else:
         # Unix: Try to add to .bashrc / .zshrc
         info("Checking for shell configuration files...")
         add_to_bashrc()
         add_to_zshrc()
-        
+
         # Update PATH in the current process so synapse is immediately usable
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
         ok("PATH setup complete.")
@@ -1459,10 +1522,19 @@ def setup_path():
 def show_restart_instructions():
     """Show instructions for restarting Synapse"""
     step("To Start Synapse Again Later")
-    
+
     if IS_WIN:
-        info("From anywhere in Windows:")
+        info("Open a new terminal (cmd or PowerShell) and run:")
+        info("  synapse start")
+        info("")
+        info("If 'synapse' is not recognised yet (PATH not refreshed), use:")
         info(f"  python -m synapse start")
+        info(f"  (run this from inside the synapse-ai folder)")
+        info("")
+        info("Other useful commands:")
+        info("  synapse stop      # Stop running services")
+        info("  synapse status    # Check service status")
+        info("  synapse restart   # Restart services")
     else:
         info("Simply run:")
         info(f"  synapse start")

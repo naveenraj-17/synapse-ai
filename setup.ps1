@@ -271,15 +271,15 @@ function Show-PostgresInstructions {
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
     Write-Host "1. Download the installer from:"
     Write-Host "   https://www.postgresql.org/download/windows/"
-    Write-Host "2. Run the installer and follow the prompts."
-    Write-Host "3. CRITICAL: Add the PostgreSQL bin directory to your PATH:"
-    Write-Host "   - Open 'Edit the system environment variables'"
+    Write-Host "2. Run the installer and follow the on-screen prompts."
+    Write-Host "3. IMPORTANT: Add the PostgreSQL bin directory to your System PATH:"
+    Write-Host "   - Search for 'Edit the system environment variables' in the Start menu"
     Write-Host "   - Click 'Environment Variables'"
     Write-Host "   - Under 'System variables', find 'Path' and click 'Edit'"
-    Write-Host "   - Click 'New' and add the path (e.g., C:\Program Files\PostgreSQL\15\bin)"
-    Write-Host "4. Verify the installation by opening a NEW terminal and running:"
-    Write-Host "   psql --version"
-    Write-Host "   Make sure it returns a version before trying setup again."
+    Write-Host "   - Click 'New' and add the bin path (e.g. C:\Program Files\PostgreSQL\17\bin)"
+    Write-Host "4. Restart your terminal so the updated PATH takes effect."
+    Write-Host "5. Verify the installation by running: psql --version"
+    Write-Host "   Make sure it prints a version number before continuing."
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
 }
@@ -298,30 +298,52 @@ function Start-SynapseSetup {
 
     $RepoUrl = "https://github.com/naveenraj-17/synapse-ai.git"
     $DestDir = "synapse-ai"
+    # Use absolute path so we never need to cd into the repo
+    $AbsDestDir = Join-Path (Get-Location).Path $DestDir
 
-    if (Test-Path "$DestDir\.git") {
+    if (Test-Path (Join-Path $AbsDestDir ".git")) {
         Write-Host ""
-        Write-Host "Repository already exists at .\$DestDir -- pulling latest..."
-        git -C $DestDir pull --ff-only
+        Write-Host "Repository already exists at $AbsDestDir -- pulling latest..."
+        git -C $AbsDestDir pull --ff-only
     } else {
         Write-Host ""
-        Write-Host "Cloning Synapse AI..."
-        git clone $RepoUrl $DestDir
+        Write-Host "Cloning Synapse AI into $AbsDestDir ..."
+        git clone $RepoUrl $AbsDestDir
     }
 
-    if (Test-Path $DestDir) {
-        Set-Location $DestDir
+    if (Test-Path $AbsDestDir) {
         Write-Host ""
-        
+        $SetupScript = Join-Path $AbsDestDir "setup.py"
+
         # We need to handle cases where the command has arguments like "py -3.11"
         if ($global:PYTHON_CMD -match " ") {
             $parts = $global:PYTHON_CMD -split " "
-            & $parts[0] $parts[1..($parts.Length-1)] setup.py
+            & $parts[0] $parts[1..($parts.Length-1)] $SetupScript
         } else {
-            & $global:PYTHON_CMD setup.py
+            & $global:PYTHON_CMD $SetupScript
         }
+
+        # After setup completes, add the synapse bin dir to PowerShell profile
+        # so that 'synapse' command is available in future PS sessions too.
+        $BinDir = Join-Path $AbsDestDir "bin"
+        $ProfileFile = $PROFILE.CurrentUserAllHosts
+        if (-not (Test-Path $ProfileFile)) {
+            New-Item -ItemType File -Path $ProfileFile -Force | Out-Null
+        }
+        $ProfileContent = Get-Content $ProfileFile -Raw -ErrorAction SilentlyContinue
+        if ($ProfileContent -notlike "*synapse-ai*") {
+            Add-Content -Path $ProfileFile -Value "`n# Synapse AI`n`$env:Path = `"$BinDir;`$env:Path`""
+            Write-Host "[OK] Added Synapse to PowerShell profile ($ProfileFile)" -ForegroundColor Green
+        }
+
+        Write-Host ""
+        Write-Host "========================================================" -ForegroundColor Green
+        Write-Host "   Synapse AI setup complete!" -ForegroundColor Green
+        Write-Host "   To start Synapse again later, open a new terminal" -ForegroundColor Green
+        Write-Host "   and run:  synapse start" -ForegroundColor Cyan
+        Write-Host "========================================================" -ForegroundColor Green
     } else {
-        throw "Could not find repository directory: $DestDir"
+        throw "Could not find repository directory: $AbsDestDir"
     }
 }
 
