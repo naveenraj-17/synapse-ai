@@ -430,8 +430,14 @@ function Start-SynapseSetup {
         # ---------------------------------------------------------------
         Write-Host ""
         Write-Host "==> Pulling latest changes..." -ForegroundColor Cyan
+        
+        $oldErrPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         $pullResult = git -C $InstallDir pull --ff-only 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldErrPref
+        
+        if ($exitCode -eq 0) {
             if ($pullResult -match "Already up to date") {
                 Write-Host "[OK] Already up to date -- no code changes." -ForegroundColor Green
             } else {
@@ -490,7 +496,10 @@ function Start-SynapseSetup {
     if (Test-Path (Join-Path $InstallDir ".git")) {
         Write-Host ""
         Write-Host "Repository found at $InstallDir -- pulling latest changes..."
+        $oldErrPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         git -C $InstallDir pull --ff-only
+        $ErrorActionPreference = $oldErrPref
     } else {
         Write-Host ""
         Write-Host "Installing Synapse AI to: $InstallDir"
@@ -499,7 +508,10 @@ function Start-SynapseSetup {
         if (-not (Test-Path $ParentDir)) {
             New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null
         }
+        $oldErrPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         git clone $RepoUrl $InstallDir
+        $ErrorActionPreference = $oldErrPref
     }
 
     if (Test-Path $InstallDir) {
