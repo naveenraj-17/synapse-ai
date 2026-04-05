@@ -215,6 +215,84 @@ function Get-PythonPath {
 }
 
 # ---------------------------------------------------------------------------
+# Install uv (and uvx) if missing
+# ---------------------------------------------------------------------------
+function Install-Uv {
+    Write-Host ""
+    Write-Host "Installing uv (Python package manager)..." -ForegroundColor Cyan
+
+    # Try winget first
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            winget install --id astral-sh.uv -e --accept-source-agreements 2>$null
+            Write-Host "[OK] uv installed via winget." -ForegroundColor Green
+            Update-Environment
+            return
+        } catch {
+            Write-Host "[WARN] winget install of uv failed, trying pip..." -ForegroundColor Yellow
+        }
+    }
+
+    # Fallback: install via pip into user site
+    if ($global:PYTHON_CMD) {
+        try {
+            if ($global:PYTHON_CMD -match " ") {
+                $parts = $global:PYTHON_CMD -split " "
+                & $parts[0] $parts[1..($parts.Length-1)] -m pip install --user uv 2>$null
+            } else {
+                & $global:PYTHON_CMD -m pip install --user uv 2>$null
+            }
+            Write-Host "[OK] uv installed via pip." -ForegroundColor Green
+            # Add user Scripts dir to PATH for this session
+            $userScripts = & $global:PYTHON_CMD -c "import site, os; print(os.path.join(site.getusersitepackages(), '..', 'Scripts'))" 2>$null
+            if ($userScripts -and (Test-Path $userScripts)) {
+                $env:Path = "$userScripts;$env:Path"
+            }
+            return
+        } catch {
+            Write-Host "[WARN] pip install uv failed." -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host "[WARN] Could not install uv automatically." -ForegroundColor Yellow
+    Write-Host "  Install manually: https://github.com/astral-sh/uv or 'pip install uv'" -ForegroundColor Gray
+}
+
+function Test-Uv {
+    # Check common locations where uv may be installed
+    $uvLocations = @(
+        (Get-Command uv -ErrorAction SilentlyContinue)?.Source,
+        "$env:USERPROFILE\.local\bin\uv.exe",
+        "$env:USERPROFILE\.cargo\bin\uv.exe",
+        "$env:APPDATA\Python\Scripts\uv.exe"
+    )
+    foreach ($loc in $uvLocations) {
+        if ($loc -and (Test-Path $loc)) {
+            if ($env:Path -notlike "*$(Split-Path $loc)*") {
+                $env:Path = "$(Split-Path $loc);$env:Path"
+            }
+            return $true
+        }
+    }
+    return $false
+}
+
+function Invoke-UvCheck {
+    # Refresh PATH to pick up newly installed uv
+    Update-Environment
+    if (-not (Test-Uv)) {
+        Write-Host "[WARN] uv/uvx not found. Attempting to install..." -ForegroundColor Yellow
+        Install-Uv
+    }
+    if (Test-Uv) {
+        $uvVer = try { (uv --version 2>$null).Trim() } catch { "unknown" }
+        Write-Host "[OK] $uvVer found (uvx available)" -ForegroundColor Green
+    } else {
+        Write-Host "[WARN] uv/uvx not available. Install from https://astral.sh/uv" -ForegroundColor Yellow
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Check and Install Requirements
 # ---------------------------------------------------------------------------
 function Invoke-PrerequisitesCheck {
@@ -259,6 +337,9 @@ Write-Host "[OK] Python found ($global:PYTHON_CMD)" -ForegroundColor Green
 
     $nodeVer = try { (node -v).Trim() } catch { "Unknown" }
     Write-Host "[OK] Node.js found ($nodeVer)" -ForegroundColor Green
+
+    # Check uv / uvx
+    Invoke-UvCheck
 }
 
 # ---------------------------------------------------------------------------

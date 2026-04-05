@@ -3,6 +3,7 @@ Step executors for each orchestration step type.
 Each executor is an async generator that yields SSE-compatible events.
 """
 import asyncio
+import datetime
 import json
 import re
 import subprocess
@@ -17,6 +18,17 @@ from core.models_orchestration import StepConfig, StepType, OrchestrationRun
 if TYPE_CHECKING:
     from .engine import OrchestrationEngine
 
+
+def _datetime_context() -> str:
+    """Return a markdown block with the current date, time, and timezone."""
+    now = datetime.datetime.now().astimezone()
+    tz_name = now.strftime("%Z") or str(now.tzinfo)
+    return (
+        "### CURRENT DATE & TIME CONTEXT\n"
+        f"**Current Date:** {now.strftime('%A, %B %d, %Y')}\n"
+        f"**Current Time:** {now.strftime('%I:%M %p')}\n"
+        f"**Timezone:** {tz_name}\n"
+    )
 
 
 class AgentStepExecutor:
@@ -186,8 +198,6 @@ class EvaluatorStepExecutor:
                 label = f"{engine.agent_names[producer.agent_id]} → {key}"
 
             val_str = str(val)
-            if len(val_str) > 5000:
-                val_str = val_str[:5000] + "...(truncated)"
             context_parts.append(f"[{label}]:\n{val_str}")
 
         context_block = "\n\n".join(context_parts) if context_parts else "(no context available)"
@@ -213,6 +223,7 @@ class EvaluatorStepExecutor:
 
         prompt = (
             f"{evaluator_instructions}"
+            f"{_datetime_context()}\n"
             f"Based on the context below, decide which route to take.\n\n"
             f"CONTEXT:\n{context_block}\n\n"
             f"AVAILABLE ROUTES:\n{routes_text}\n\n"
@@ -245,7 +256,7 @@ class EvaluatorStepExecutor:
                 source="orchestration",
                 run_id=run.run_id,
             )
-            print(f"DEBUG: 🔀 Evaluator LLM response: {response[:500]}")
+            print(f"DEBUG: 🔀 Evaluator LLM response: {response}")
 
             # Emit evaluator LLM response for the logger
             yield {"type": "_log_evaluator", "orch_step_id": step.id, "prompt": prompt, "llm_response": response}
@@ -642,7 +653,7 @@ class TransformStepExecutor:
             yield {
                 "type": "transform_result",
                 "orch_step_id": step.id,
-                "result": str(result)[:2000] if result else None,
+                "result": str(result) if result is not None else None,
             }
         except Exception as e:
             yield {"type": "step_error", "orch_step_id": step.id, "error": f"Transform error: {e}"}
@@ -673,12 +684,12 @@ else:
                 timeout=min(timeout, 60),
             )
             if proc.returncode != 0:
-                raise RuntimeError(f"Transform failed: {proc.stderr[:1000]}")
+                raise RuntimeError(f"Transform failed: {proc.stderr}")
             try:
                 output = json.loads(proc.stdout)
                 return output.get("result")
             except json.JSONDecodeError:
-                return proc.stdout.strip()[:2000] if proc.stdout.strip() else None
+                return proc.stdout.strip() if proc.stdout.strip() else None
 
         return await loop.run_in_executor(None, _run)
 
@@ -720,7 +731,7 @@ class LLMStepExecutor:
         try:
             response = await llm_generate(
                 prompt_msg=prompt,
-                sys_prompt="You are a helpful assistant. Be concise and accurate.",
+                sys_prompt=f"You are a helpful assistant. Be concise and accurate.\n\n{_datetime_context()}",
                 mode=mode,
                 current_model=model,
                 current_settings=settings,

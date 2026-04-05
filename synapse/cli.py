@@ -499,6 +499,196 @@ def _status_command():
         print(f"{name}: {'running' if running else 'stale pid ' + str(pid)}")
 
 
+def _upgrade_command():
+    """Pull latest code, rebuild venv + pip deps, rebuild frontend."""
+    print("\n=== Synapse AI -- Upgrade ===")
+
+    # 1. Stop running services first
+    print("\nStopping running services...")
+    _stop_command()
+
+    # 2. Pull latest code
+    print("\n==> Pulling latest code...")
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT_DIR), "pull", "--ff-only"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            output_text = result.stdout.strip()
+            if "Already up to date" in output_text:
+                print("  Already up to date.")
+            else:
+                print(f"  Updated:\n{output_text}")
+        else:
+            print(f"  Warning: git pull failed (exit {result.returncode}).")
+            if result.stderr.strip():
+                print(f"  {result.stderr.strip()}")
+    except FileNotFoundError:
+        print("  Warning: git not found -- skipping update.")
+    except Exception as e:
+        print(f"  Warning: git pull error: {e}")
+
+    # 3. Rebuild Python venv
+    print("\n==> Rebuilding backend virtual environment...")
+    venv_dir = BACKEND_DIR / "venv"
+    python_exe = venv_dir / ("Scripts/python.exe" if IS_WIN else "bin/python")
+
+    # Re-create venv
+    if venv_dir.exists():
+        print("  Removing old virtual environment...")
+        shutil.rmtree(venv_dir)
+    print("  Creating virtual environment...")
+    subprocess.check_call([sys.executable, "-m", "venv", str(venv_dir)])
+
+    # Upgrade pip
+    print("  Upgrading pip...")
+    subprocess.run([str(python_exe), "-m", "pip", "install", "--upgrade", "pip"],
+                   capture_output=True)
+
+    # Install requirements
+    req_txt = BACKEND_DIR / "requirements.txt"
+    if req_txt.exists():
+        print("  Installing backend requirements...")
+        subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(req_txt)])
+    else:
+        print(f"  Warning: {req_txt} not found -- skipping requirements.")
+
+    # Re-install synapse package in editable mode
+    print("  Reinstalling Synapse package...")
+    subprocess.check_call([str(python_exe), "-m", "pip", "install", "-e", str(ROOT_DIR)])
+    print("  Backend rebuild complete.")
+
+    # 4. Rebuild frontend
+    print("\n==> Rebuilding frontend (npm install + npm run build)...")
+    npm = _npm_command()
+
+    # Remove node_modules so we get a clean install
+    node_modules = FRONTEND_DIR / "node_modules"
+    if node_modules.exists():
+        print("  Removing old node_modules...")
+        shutil.rmtree(node_modules)
+
+    print("  Running npm install...")
+    subprocess.check_call([npm, "install"], cwd=str(FRONTEND_DIR))
+
+    print("  Building frontend...")
+    subprocess.check_call([npm, "run", "build"], cwd=str(FRONTEND_DIR))
+    print("  Frontend rebuild complete.")
+
+    print("\n=== Upgrade complete! ===")
+    print("Run 'synapse start' to launch the updated Synapse.")
+
+
+def _uninstall_command(keep_data: bool = False):
+    """Stop services and remove all Synapse AI files."""
+    print("\n=== Synapse AI -- Uninstall ===")
+    print()
+
+    # Confirm
+    try:
+        answer = input(
+            "This will PERMANENTLY remove Synapse AI and all its files.\n"
+            "Type 'yes' to confirm: "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted.")
+        return
+
+    if answer != "yes":
+        print("Aborted.")
+        return
+
+    # 1. Stop running services
+    print("\nStopping running services...")
+    try:
+        _stop_command()
+    except Exception as e:
+        print(f"  Warning: could not stop services cleanly: {e}")
+
+    # 2. Remove startup entries (systemd / LaunchAgent / Registry)
+    print("Removing startup registration...")
+    _platform = sys.platform
+    if IS_WIN:
+        try:
+            import winreg  # type: ignore
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                0, winreg.KEY_SET_VALUE,
+            )
+            try:
+                winreg.DeleteValue(key, "SynapseAI")
+                print("  Removed Windows startup entry.")
+            except FileNotFoundError:
+                pass
+            winreg.CloseKey(key)
+        except Exception:
+            pass
+    elif _platform == "darwin":
+        plist = Path.home() / "Library" / "LaunchAgents" / "com.synapse-ai.server.plist"
+        if plist.exists():
+            try:
+                subprocess.run(["launchctl", "unload", str(plist)], check=False, capture_output=True)
+                plist.unlink()
+                print("  Removed macOS LaunchAgent.")
+            except Exception:
+                pass
+    else:  # Linux
+        service = Path.home() / ".config" / "systemd" / "user" / "synapse-ai.service"
+        if service.exists():
+            try:
+                subprocess.run(["systemctl", "--user", "disable", "synapse-ai.service"],
+                               check=False, capture_output=True)
+                service.unlink()
+                subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+                print("  Removed systemd user service.")
+            except Exception:
+                pass
+
+    # 3. Remove data directory (optional)
+    if not keep_data and DATA_DIR.exists():
+        try:
+            shutil.rmtree(DATA_DIR)
+            print(f"  Removed data directory: {DATA_DIR}")
+        except Exception as e:
+            print(f"  Warning: could not remove data dir {DATA_DIR}: {e}")
+
+    # 4. Remove the installation directory
+    print(f"\nRemoving installation directory: {ROOT_DIR}")
+    try:
+        # Remove large subdirectories first
+        venv_dir = BACKEND_DIR / "venv"
+        if venv_dir.exists():
+            shutil.rmtree(venv_dir)
+        node_modules = FRONTEND_DIR / "node_modules"
+        if node_modules.exists():
+            shutil.rmtree(node_modules)
+        # Remove root directory
+        shutil.rmtree(ROOT_DIR)
+        print("  Removed.")
+    except Exception as e:
+        print(f"  Warning: could not fully remove {ROOT_DIR}: {e}")
+        print("  You may need to delete it manually.")
+
+    # 5. Clean PATH entries from shell rc files
+    if not IS_WIN:
+        bin_dir = str(ROOT_DIR / "bin")
+        for rc_file in (Path.home() / ".bashrc", Path.home() / ".zshrc"):
+            if rc_file.exists():
+                try:
+                    lines = rc_file.read_text().splitlines(keepends=True)
+                    new_lines = [l for l in lines
+                                 if bin_dir not in l and "Synapse AI" not in l]
+                    if len(new_lines) != len(lines):
+                        rc_file.write_text("".join(new_lines))
+                        print(f"  Cleaned PATH entry from {rc_file}")
+                except Exception:
+                    pass
+
+    print("\n=== Synapse AI has been uninstalled. Goodbye! ===")
+
+
 def _profile_command(action: str, output: str | None = None, limit: int = 20, duration: int = 30):
     backend_port = int(os.getenv("SYNAPSE_BACKEND_PORT", str(DEFAULT_BACKEND_PORT)))
     base_url = f"http://127.0.0.1:{backend_port}/api/profiling"
@@ -634,6 +824,19 @@ def main():
     )
     sub.add_parser("setup", help="Run interactive setup wizard to configure Synapse")
 
+    # upgrade: pull code and rebuild everything
+    sub.add_parser(
+        "upgrade",
+        help="Pull latest code, rebuild backend venv + requirements, rebuild frontend (npm install + npm run build)",
+    )
+
+    # uninstall: stop + wipe everything
+    p_uninstall = sub.add_parser("uninstall", help="Stop services and remove all Synapse AI files")
+    p_uninstall.add_argument(
+        "--keep-data", action="store_true",
+        help="Keep the data directory (~/.synapse) when uninstalling",
+    )
+
     p_profile = sub.add_parser("profile", help="Query and control backend performance profiling")
     p_profile.add_argument(
         "action",
@@ -672,6 +875,10 @@ def main():
             backend_port=getattr(args, "backend_port", None),
             frontend_port=getattr(args, "frontend_port", None),
         )
+    elif args.cmd == "upgrade":
+        _upgrade_command()
+    elif args.cmd == "uninstall":
+        _uninstall_command(keep_data=getattr(args, "keep_data", False))
     elif args.cmd == "profile":
         _profile_command(
             action=args.action,

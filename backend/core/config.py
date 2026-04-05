@@ -35,7 +35,7 @@ def load_settings():
         "n8n_url": "http://localhost:5678",
         "n8n_api_key": "",
         "vault_enabled": True,
-        "vault_threshold": 15000,
+        "vault_threshold": 100000,
         "coding_agent_enabled": False,
     }
     

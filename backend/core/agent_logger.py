@@ -54,7 +54,7 @@ class AgentLogger:
   Session ID      : {session_id}
   Source          : {source}
   Started at      : {_ts()}
-  User Input      : {user_message[:300] + '...' if len(user_message) > 300 else user_message}
+  User Input      : {user_message}
 {'='*80}
 """)
 
@@ -116,14 +116,22 @@ class AgentLogger:
             preview = event.get("preview", "")
             self._write_bg(f"""
   📤 TOOL RESULT: {tool_name}
-     Preview: {preview[:500]}
+     Preview: {preview}
+""")
+
+        elif etype == "llm_thought":
+            thought = event.get("thought", "")
+            turn = event.get("turn", "")
+            self._write_bg(f"""
+  🧠 LLM THOUGHT (turn {turn}):
+{self._indent(thought)}
 """)
 
         elif etype == "final":
             response = event.get("response", "")
             self._write_bg(f"""
   ✅ AGENT RESPONSE:
-{self._indent(response[:3000])}
+{self._indent(response)}
 """)
 
         elif etype == "error":

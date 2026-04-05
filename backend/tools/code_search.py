@@ -266,11 +266,42 @@ def _glob_files(
     return results
 
 
-def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100) -> dict:
+def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100, repo_id: str | None = None) -> dict:
     """Read lines [start_line, end_line] (1-indexed, inclusive) from a file."""
-    resolved = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
-    if not os.path.exists(resolved):
-        return {"error": f"File not found: {file_path}. Use an absolute path."}
+    resolved = None
+    if os.path.isabs(file_path):
+        if os.path.exists(file_path):
+            resolved = file_path
+            
+    if not resolved:
+        cwd = os.getcwd()
+        
+        # Check vault directory relative to cwd
+        if file_path.startswith("data/vault/"):
+            candidate = os.path.join(cwd, file_path)
+            if os.path.exists(candidate):
+                resolved = candidate
+                
+        if not resolved:
+            clean_path = file_path[11:] if file_path.startswith("data/vault/") else file_path
+            candidate = os.path.join(cwd, "data", "vault", clean_path)
+            if os.path.exists(candidate):
+                resolved = candidate
+
+        if not resolved:
+            repo_path_map = _load_repo_paths()
+            if repo_id and repo_id in repo_path_map:
+                candidate = os.path.join(repo_path_map[repo_id], file_path)
+                if os.path.exists(candidate):
+                    resolved = candidate
+            
+            if not resolved:
+                candidate = os.path.join(cwd, file_path)
+                if os.path.exists(candidate):
+                    resolved = candidate
+
+    if not resolved or not os.path.exists(resolved):
+        return {"error": f"File not found: {file_path}. Checked absolute path, vault directory, and passed repo."}
     if not os.path.isfile(resolved):
         return {"error": f"Not a file: {file_path}."}
     try:
@@ -378,12 +409,14 @@ async def list_tools() -> list[types.Tool]:
                 "Read a specific range of lines from a file (1-indexed, inclusive). Returns the content, "
                 "start/end line numbers, and total line count. Use this instead of read_file when you only "
                 "need a slice of a large file or a vault file. "
-                "IMPORTANT: `file_path` must be an absolute path."
+                "You can provide an absolute path, or a relative file name (e.g. for vault files or repo files). "
+                "The tool will automatically search in the active repositories and vault folder if a direct path is not found."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "Absolute path to the file to read"},
+                    "file_path": {"type": "string", "description": "Absolute path, or relative path (e.g., filename in vault or repo)"},
+                    "repo_id": {"type": "string", "description": "Optional: Repository ID if using a relative file_path"},
                     "start_line": {"type": "integer", "description": "First line to read (1-indexed, inclusive)", "default": 1},
                     "end_line": {"type": "integer", "description": "Last line to read (1-indexed, inclusive)", "default": 100},
                 },
@@ -451,7 +484,8 @@ async def call_tool(
                 return [types.TextContent(type="text", text=json.dumps({"error": "'file_path' is required."}))]
             start_line = int(arguments.get("start_line", 1))
             end_line = int(arguments.get("end_line", 100))
-            result = _read_file_by_lines(file_path, start_line=start_line, end_line=end_line)
+            repo_id = arguments.get("repo_id")
+            result = _read_file_by_lines(file_path, start_line=start_line, end_line=end_line, repo_id=repo_id)
             return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
         return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]

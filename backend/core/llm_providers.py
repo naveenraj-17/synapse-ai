@@ -97,7 +97,7 @@ def detect_mode_from_model(model_name: str) -> str:
         return "cloud"
     if m.startswith("claude"):
         return "cloud"
-    if m.startswith("gemini"):
+    if m.startswith("gemini") or m.startswith("gemma") or m.startswith("lyria"):
         return "cloud"
     if m.startswith("bedrock"):
         return "bedrock"
@@ -117,7 +117,7 @@ def detect_provider_from_model(model_name: str) -> str:
         return "openai"
     if m.startswith("claude"):
         return "anthropic"
-    if m.startswith("gemini"):
+    if m.startswith("gemini") or m.startswith("gemma") or m.startswith("lyria"):
         return "gemini"
     if m.startswith("bedrock"):
         return "bedrock"
@@ -1105,7 +1105,7 @@ async def generate_response(
                     tools=tools,
                     images=images,
                 )
-            elif current_model.startswith("gemini"):
+            elif current_model.startswith("gemini") or current_model.startswith("gemma") or current_model.startswith("lyria"):
                 result_text, input_tokens, output_tokens = await call_gemini(
                     current_model,
                     messages,

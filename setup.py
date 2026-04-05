@@ -579,6 +579,92 @@ def check_npm():
 
     ok("npm found")
 
+
+# ---------------------------------------------------------------------------
+# Check / install uv + uvx
+# ---------------------------------------------------------------------------
+def _install_uv_unix():
+    """Install uv via the official installer (Linux / macOS)."""
+    try:
+        curl = shutil.which("curl")
+        wget = shutil.which("wget")
+        if curl:
+            subprocess.check_call(
+                f'{curl} -LsSf https://astral.sh/uv/install.sh | sh',
+                shell=True,
+            )
+        elif wget:
+            subprocess.check_call(
+                f'{wget} -qO- https://astral.sh/uv/install.sh | sh',
+                shell=True,
+            )
+        else:
+            # Fallback to pip install
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "uv"])
+        # Extend PATH so uv is findable in this process
+        for extra in (
+            os.path.join(os.path.expanduser("~"), ".local", "bin"),
+            os.path.join(os.path.expanduser("~"), ".cargo", "bin"),
+        ):
+            if extra not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = extra + os.pathsep + os.environ.get("PATH", "")
+        return True
+    except Exception as e:
+        warn(f"uv auto-install failed: {e}")
+        return False
+
+
+def check_uvx():
+    """Ensure uv (and therefore uvx) is available.  Auto-installs if missing."""
+    step("Checking uv / uvx")
+
+    # Extend PATH to common install locations before the first check
+    for extra in (
+        os.path.join(os.path.expanduser("~"), ".local", "bin"),
+        os.path.join(os.path.expanduser("~"), ".cargo", "bin"),
+    ):
+        if extra not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = extra + os.pathsep + os.environ.get("PATH", "")
+
+    if shutil.which("uv"):
+        try:
+            r = subprocess.run(["uv", "--version"], capture_output=True, text=True, timeout=5)
+            ver = r.stdout.strip()
+            ok(f"{ver} found (uvx available)")
+            return
+        except Exception:
+            pass
+
+    warn("uv/uvx not found. Attempting to install...")
+    if IS_WIN:
+        # Try pip install on Windows
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "uv"])
+            # Add user Scripts to PATH
+            try:
+                import site as _site
+                scripts = os.path.join(_site.getusersitepackages(), "..", "Scripts")
+                scripts = os.path.normpath(scripts)
+                if os.path.isdir(scripts) and scripts not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = scripts + os.pathsep + os.environ.get("PATH", "")
+            except Exception:
+                pass
+        except Exception as e:
+            warn(f"pip install uv failed: {e}")
+    else:
+        _install_uv_unix()
+
+    if shutil.which("uv"):
+        try:
+            r = subprocess.run(["uv", "--version"], capture_output=True, text=True, timeout=5)
+            ok(f"{r.stdout.strip()} installed and available.")
+        except Exception:
+            ok("uv installed.")
+    else:
+        warn("uv/uvx not available -- install from https://astral.sh/uv")
+        info("  Some CLI tools that rely on uvx will not work until uv is installed.")
+
+
 # ---------------------------------------------------------------------------
 # Settings helpers
 # ---------------------------------------------------------------------------
@@ -606,7 +692,7 @@ DEFAULT_SETTINGS = {
     "n8n_table_id": "",
     "global_config": {},
     "vault_enabled": True,
-    "vault_threshold": 20000,
+    "vault_threshold": 100000,
     "coding_agent_enabled": False,
     "report_agent_enabled": False,
     "browser_automation_enabled": True,
@@ -2038,6 +2124,7 @@ def main():
         print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
         check_python()
         check_npm()
+        check_uvx()
         try:
             _rebuild_backend(ROOT_DIR)
         except Exception as e:
@@ -2064,6 +2151,7 @@ def main():
 
     check_python()
     check_npm()
+    check_uvx()
 
     cfg = load_settings()
 

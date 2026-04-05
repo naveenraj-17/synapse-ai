@@ -14,7 +14,7 @@ from pathlib import Path
 
 from core.config import DATA_DIR
 VAULT_DIR = Path(DATA_DIR) / "vault"
-VAULT_THRESHOLD = 15000  # characters (fallback default)
+VAULT_THRESHOLD = 100000  # characters (fallback default)
 
 
 def _make_vault_path(tool_name: str, ext: str) -> Path:

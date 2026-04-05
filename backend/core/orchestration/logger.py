@@ -133,14 +133,22 @@ class OrchestrationLogger:
             preview = event.get("preview", "")
             self._write(f"""
   📤 TOOL RESULT: {tool_name}
-     Preview: {preview[:500]}
+     Preview: {preview}
+""")
+
+        elif etype == "llm_thought":
+            thought = event.get("thought", "")
+            turn = event.get("turn", "")
+            self._write(f"""
+  🧠 LLM THOUGHT (turn {turn}):
+{self._indent(thought)}
 """)
 
         elif etype == "final":
             response = event.get("response", "")
             self._write(f"""
   ✅ AGENT RESPONSE:
-{self._indent(response[:3000])}
+{self._indent(response)}
 """)
 
         elif etype == "routing_decision":
@@ -178,7 +186,7 @@ class OrchestrationLogger:
 
         elif etype == "transform_result":
             result = event.get("result", "")
-            self._write(f"  ⚙️ TRANSFORM RESULT: {str(result)[:500]}\n")
+            self._write(f"  ⚙️ TRANSFORM RESULT: {str(result)}\n")
 
         elif etype == "human_input_required":
             self._write(f"  ⏸️ HUMAN INPUT REQUIRED: {event.get('prompt', '')}\n")

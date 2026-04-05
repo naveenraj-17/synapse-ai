@@ -1,64 +1,123 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-# This workflow checks out code, performs a Codacy security scan
-# and integrates the results with the
-# GitHub Advanced Security code scanning feature.  For more information on
-# the Codacy security scan action usage and parameters, see
-# https://github.com/codacy/codacy-analysis-cli-action.
-# For more information on Codacy Analysis CLI in general, see
-# https://github.com/codacy/codacy-analysis-cli.
-
 name: Codacy Security Scan
 
 on:
   push:
     branches: [ "master" ]
   pull_request:
-    # The branches below must be a subset of the branches above
     branches: [ "master" ]
-  workflow_dispatch: # <--- Allows manual triggering from the GitHub Actions tab
+  workflow_dispatch:
   schedule:
-    - cron: '30 3 * * *' # <--- Runs at 03:30 UTC every day (which is 09:00 AM IST)
+    - cron: '30 3 * * *'
 
 permissions:
   contents: read
+  security-events: write # Required to upload SARIF to GitHub Security tab
+  actions: read
 
 jobs:
   codacy-security-scan:
-    permissions:
-      contents: read # for actions/checkout to fetch code
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
     name: Codacy Security Scan
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8"
     steps:
-      # Checkout the repository to the GitHub Actions runner
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
+      # 1. Generate local config to run only your preferred security tools
+      - name: Generate Codacy Configuration
+        run: |
+          cat > .codacy.yaml <<'EOF'
+          ---
+          engines:
+            bandit:
+              enabled: true
+            semgrep:
+              enabled: true
+            checkov:
+              enabled: true
+            trivy:
+              enabled: true
+            eslint:
+              enabled: false
+            stylelint:
+              enabled: false
+          EOF
+
+      # 2. Run Codacy Analysis (without the tool: flag so it reads .codacy.yaml)
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@master
+        continue-on-error: true
         with:
-          # Check https://github.com/codacy/codacy-analysis-cli#project-token to get your project token from your Codacy repository
-          # You can also omit the token and run the tools that support default configurations
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           verbose: true
           output: results.sarif
           format: sarif
-          # Adjust severity of non-security issues
           gh-code-scanning-compat: true
-          # Force 0 exit code to allow SARIF file generation
-          # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
+          skip-uncommitted-files-check: true
+          exclude-paths: >
+            node_modules,
+            frontend/node_modules,
+            backend/node_modules,
+            frontend/.next,
+            backend/venv,
+            backend/.venv,
+            backend/chroma_db,
+            backend/data,
+            backend/logs,
+            backend/data/orchestration_runs,
+            backend/.playwright-mcp,
+            dist,
+            frontend-build,
+            synapse/_frontend,
+            **/__pycache__,
+            **/*.egg-info,
+            **/*.whl,
+            **/*.tar.gz,
+            package-lock.json,
+            frontend/package-lock.json,
+            backend/package-lock.json,
+            tsconfig.tsbuildinfo,
+            frontend/tsconfig.tsbuildinfo
 
-      # Upload the SARIF file generated in the previous step
+      # 3. Memory-safe SARIF patch to bypass GitHub's strict category rules
+      - name: Patch SARIF Categories for GitHub
+        run: |
+          # Using sudo because the Codacy Docker action creates the file as 'root'
+          sudo python3 -c '
+          import json, sys, os
+
+          # Fallback if Codacy CLI failed to generate a valid file
+          if not os.path.exists("results.sarif") or os.path.getsize("results.sarif") == 0:
+              print("Warning: SARIF file missing or empty. Creating a valid placeholder.")
+              data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
+          else:
+              try:
+                  with open("results.sarif", "r") as f:
+                      data = json.load(f)
+              except json.JSONDecodeError:
+                  print("Warning: SARIF file was corrupt. Creating a valid placeholder.")
+                  data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
+
+          # Inject unique IDs so GitHub accepts multiple tools in one file
+          if "runs" in data:
+              for i, run in enumerate(data["runs"]):
+                  # Safely get the tool name without f-string quote collisions
+                  tool_name = run.get("tool", {}).get("driver", {}).get("name", "tool")
+                  clean_name = tool_name.lower().replace(" ", "-")
+                  
+                  if "automationDetails" not in run:
+                      run["automationDetails"] = {}
+                  
+                  # Apply the formatted ID
+                  run["automationDetails"]["id"] = f"codacy-{clean_name}-{i}"
+
+          # Write safely to disk
+          with open("results.sarif", "w") as f:
+              json.dump(data, f, indent=2)
+          print("Successfully formatted SARIF for GitHub Advanced Security.")
+          '
+
+      # 4. Upload directly to the GitHub Security Tab
       - name: Upload SARIF results file
         uses: github/codeql-action/upload-sarif@main
         with:

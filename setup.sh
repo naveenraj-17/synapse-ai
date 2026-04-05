@@ -106,6 +106,56 @@ install_python() {
 }
 
 # ---------------------------------------------------------------------------
+# Install uv (and uvx) if missing
+# ---------------------------------------------------------------------------
+install_uv() {
+    echo ""
+    echo "Installing uv (Python package manager)..."
+
+    if [[ "$OS" == "linux" ]] || [[ "$OS" == "macos" ]]; then
+        echo "Installing uv via official installer..."
+        if command -v curl &> /dev/null; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+        elif command -v wget &> /dev/null; then
+            wget -qO- https://astral.sh/uv/install.sh | sh
+        else
+            # Fallback: install via pip
+            echo "curl/wget not found — attempting pip install uv..."
+            $PYTHON_CMD -m pip install --user uv
+        fi
+        # Reload PATH so uv is found in this session
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    elif [[ "$OS" == "windows" ]]; then
+        echo "On Windows, please install uv from https://github.com/astral-sh/uv"
+        echo "Or run: pip install uv"
+    fi
+
+    if command -v uv &> /dev/null; then
+        echo "✓ uv installed successfully"
+    else
+        echo "[WARN] uv could not be installed automatically. Some features may not work."
+        echo "  Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    fi
+}
+
+check_uvx() {
+    # Reload PATH to pick up ~/.local/bin, ~/.cargo/bin where uv is commonly installed
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+    if ! command -v uv &> /dev/null; then
+        echo "⚠ uv/uvx not found. Attempting to install..."
+        install_uv
+    fi
+
+    if command -v uv &> /dev/null; then
+        UV_VERSION=$(uv --version 2>/dev/null | head -1)
+        echo "✓ $UV_VERSION found (uvx available)"
+    else
+        echo "[WARN] uv/uvx not available — install from https://astral.sh/uv"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Check and validate requirements
 # ---------------------------------------------------------------------------
 
@@ -223,6 +273,7 @@ main() {
     check_git
     check_python
     check_node
+    check_uvx
     
     # Clone or update repo
     REPO_URL="https://github.com/naveenraj-17/synapse-ai.git"

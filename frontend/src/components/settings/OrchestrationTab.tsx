@@ -1,7 +1,8 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X } from 'lucide-react';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import { ReactFlowProvider } from '@xyflow/react';
 import { WorkflowCanvas } from '../orchestration/WorkflowCanvas';
@@ -15,7 +16,8 @@ import { ToastNotification } from './ToastNotification';
 
 type ToolCallLogEntry = { kind: 'tool_call'; tool_name: string; args: Record<string, any>; step_name?: string };
 type ToolResultLogEntry = { kind: 'tool_result'; tool_name: string; preview: string };
-type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry;
+type StepResultLogEntry = { kind: 'step_result'; step_name: string; step_type: 'agent' | 'llm'; content: string };
+type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry | StepResultLogEntry;
 
 const STEP_ICONS: Record<StepType, React.FC<{ size?: number }>> = {
     llm: Zap, agent: Bot, tool: Wrench, evaluator: Scale, parallel: GitBranch,
@@ -79,6 +81,9 @@ export function OrchestrationTab() {
     const [humanContext, setHumanContext] = useState<string | null>(null);
     const [humanResponse, setHumanResponse] = useState('');
     const abortRef = useRef<AbortController | null>(null);
+    // Map of orch_step_id -> pending step result (supports parallel branches)
+    const pendingStepResultRef = useRef<Map<string, { step_name: string; step_type: 'agent' | 'llm'; content: string }>>(new Map());
+    const [responseModal, setResponseModal] = useState<{ step_name: string; content: string } | null>(null);
     const [confirmDeleteOrchId, setConfirmDeleteOrchId] = useState<string | null>(null);
 
     // --- Active runs (for reconnect banner) ---
@@ -415,29 +420,62 @@ export function OrchestrationTab() {
     };
 
     const handleSSEEvent = (data: any) => {
-        if (data.type && !['chunk', 'thinking', 'token_usage'].includes(data.type)) {
-            console.log('[SSE]', data.type, data.orch_step_id || '', data);
-        }
         switch (data.type) {
             case 'orchestration_start':
                 setRunId(data.run_id);
                 setRunLog(prev => [...prev, `Started run ${data.run_id}`]);
                 break;
 
-            case 'step_start':
+            case 'step_start': {
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'running' }));
                 setRunLog(prev => [...prev, `▶ ${data.step_name} (${data.step_type})`]);
+                // Begin tracking response for agent/llm steps, keyed by step id
+                if (data.step_type === 'agent' || data.step_type === 'llm') {
+                    pendingStepResultRef.current.set(data.orch_step_id, {
+                        step_name: data.step_name,
+                        step_type: data.step_type as 'agent' | 'llm',
+                        content: '',
+                    });
+                } else {
+                    pendingStepResultRef.current.delete(data.orch_step_id);
+                }
                 break;
+            }
 
-            case 'step_complete':
+            case 'step_complete': {
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'completed' }));
-                setRunLog(prev => [...prev, `✓ ${data.step_name} completed (${data.duration_seconds?.toFixed(1)}s)`]);
+                const pendingForStep = pendingStepResultRef.current.get(data.orch_step_id);
+                setRunLog(prev => {
+                    const next = [...prev, `✓ ${data.step_name} completed (${data.duration_seconds?.toFixed(1)}s)`];
+                    if (pendingForStep && pendingForStep.content.trim()) {
+                        next.splice(next.length - 1, 0, {
+                            kind: 'step_result',
+                            step_name: pendingForStep.step_name,
+                            step_type: pendingForStep.step_type,
+                            content: pendingForStep.content.trim(),
+                        } as StepResultLogEntry);
+                    }
+                    return next;
+                });
+                pendingStepResultRef.current.delete(data.orch_step_id);
                 break;
+            }
 
             case 'step_error':
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'failed' }));
                 setRunLog(prev => [...prev, `✗ Step error: ${data.error}`]);
+                pendingStepResultRef.current.delete(data.orch_step_id);
                 break;
+
+            case 'final': {
+                // Capture the full final response keyed by step id
+                const response = data.response || '';
+                const stepId = data.orch_step_id || '';
+                if (stepId && pendingStepResultRef.current.has(stepId) && response) {
+                    pendingStepResultRef.current.get(stepId)!.content = response;
+                }
+                break;
+            }
 
             case 'routing_decision':
                 setRunLog(prev => [...prev, `🔀 Evaluator routed → ${data.decision} (${data.reasoning || ''})`]);
@@ -515,7 +553,9 @@ export function OrchestrationTab() {
                 break;
 
             default:
-                if (data.type === 'chunk' && data.content) {
+                // chunk events are accumulated in pendingStepResultRef (via 'final'),
+                // so we only show a live streaming indicator if there's no pending capture
+                if (data.type === 'chunk' && data.content && !pendingStepResultRef.current) {
                     setRunLog(prev => {
                         const last = prev[prev.length - 1];
                         if (last && typeof last === 'string' && last.startsWith('  ')) {
@@ -776,8 +816,18 @@ export function OrchestrationTab() {
                             humanResponse={humanResponse}
                             setHumanResponse={setHumanResponse}
                             onSubmitHuman={submitHumanInput}
+                            onOpenResponseModal={setResponseModal}
                         />
                     </div>
+
+                    {/* Response detail modal */}
+                    {responseModal && (
+                        <ResponseModal
+                            stepName={responseModal.step_name}
+                            content={responseModal.content}
+                            onClose={() => setResponseModal(null)}
+                        />
+                    )}
                 </div>
             )}
 
@@ -795,10 +845,78 @@ export function OrchestrationTab() {
     );
 }
 
+// --- Response detail modal ---
+function ResponseModal({ stepName, content, onClose }: { stepName: string; content: string; onClose: () => void }) {
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [onClose]);
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            {/* Panel */}
+            <div className="relative z-10 w-full max-w-3xl max-h-[80vh] flex flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-700 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <Bot size={14} className="text-blue-400" />
+                        <span className="text-sm font-semibold text-zinc-100">{stepName}</span>
+                        <span className="text-xs text-zinc-500">— full response</span>
+                    </div>
+                    <button onClick={onClose} className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-zinc-700">
+                        <X size={15} />
+                    </button>
+                </div>
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-5">
+                    <div className="prose prose-sm prose-invert max-w-none text-zinc-300 text-sm leading-relaxed">
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                                h1: ({ children }) => <h1 className="text-lg font-bold text-zinc-100 mb-2 mt-4 first:mt-0">{children}</h1>,
+                                h2: ({ children }) => <h2 className="text-base font-semibold text-zinc-100 mb-2 mt-3">{children}</h2>,
+                                h3: ({ children }) => <h3 className="text-sm font-semibold text-zinc-200 mb-1 mt-2">{children}</h3>,
+                                ul: ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>,
+                                li: ({ children }) => <li className="text-zinc-300">{children}</li>,
+                                code: ({ children, className }) => {
+                                    const isBlock = className?.includes('language-');
+                                    return isBlock
+                                        ? <code className={`block bg-zinc-800 rounded px-3 py-2 text-xs font-mono text-zinc-200 overflow-x-auto ${className}`}>{children}</code>
+                                        : <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-300">{children}</code>;
+                                },
+                                pre: ({ children }) => <pre className="bg-zinc-800/60 rounded-lg p-3 mb-3 overflow-x-auto border border-zinc-700/50">{children}</pre>,
+                                blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-3 text-zinc-400 italic">{children}</blockquote>,
+                                a: ({ href, children }) => <a href={href} className="text-blue-400 underline hover:text-blue-300" target="_blank" rel="noreferrer">{children}</a>,
+                                strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                                em: ({ children }) => <em className="italic text-zinc-300">{children}</em>,
+                                hr: () => <hr className="border-zinc-700 my-4" />,
+                                table: ({ children }) => <table className="w-full text-xs border-collapse mb-3">{children}</table>,
+                                th: ({ children }) => <th className="border border-zinc-700 px-2 py-1 text-zinc-200 font-semibold bg-zinc-800">{children}</th>,
+                                td: ({ children }) => <td className="border border-zinc-700 px-2 py-1 text-zinc-300">{children}</td>,
+                            }}
+                        >
+                            {content}
+                        </ReactMarkdown>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
 // --- Bottom panel with collapsible sections ---
 function BottomPanel({
     draft, setDraft, runStatus, runLog, runInput, setRunInput,
-    humanPrompt, humanContext, humanResponse, setHumanResponse, onSubmitHuman,
+    humanPrompt, humanContext, humanResponse, setHumanResponse, onSubmitHuman, onOpenResponseModal,
 }: {
     draft: Orchestration;
     setDraft: (o: Orchestration) => void;
@@ -811,6 +929,7 @@ function BottomPanel({
     humanResponse: string;
     setHumanResponse: (v: string) => void;
     onSubmitHuman: () => void;
+    onOpenResponseModal: (entry: { step_name: string; content: string }) => void;
 }) {
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
@@ -1031,11 +1150,47 @@ function BottomPanel({
                                                 </div>
                                             );
                                         }
-                                        return (
-                                            <div key={i} className="text-zinc-500 pl-4 text-[10px]">
-                                                ↳ {entry.preview.slice(0, 200)}{entry.preview.length > 200 ? '…' : ''}
-                                            </div>
-                                        );
+                                        if (entry.kind === 'tool_result') {
+                                            return (
+                                                <div key={i} className="text-zinc-500 pl-4 text-[10px]">
+                                                    ↳ {entry.preview.slice(0, 200)}{entry.preview.length > 200 ? '…' : ''}
+                                                </div>
+                                            );
+                                        }
+                                        if (entry.kind === 'step_result') {
+                                            const preview = entry.content.slice(0, 200).replace(/\n+/g, ' ').trim();
+                                            const isTruncated = entry.content.length > 200;
+                                            const isAgent = entry.step_type === 'agent';
+                                            return (
+                                                <div key={i} className="my-1.5">
+                                                    {/* Header label */}
+                                                    <div className="flex items-center gap-1.5 mb-1 pl-1">
+                                                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAgent ? 'bg-emerald-400' : 'bg-teal-400'}`} />
+                                                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${isAgent ? 'text-emerald-400' : 'text-teal-400'}`}>
+                                                            {entry.step_name}
+                                                        </span>
+                                                        <span className="text-[9px] text-zinc-600 uppercase tracking-wide">
+                                                            {isAgent ? 'agent response' : 'llm output'}
+                                                        </span>
+                                                    </div>
+                                                    {/* Content bubble */}
+                                                    <div className="flex items-start gap-2 bg-zinc-800/70 border border-zinc-700/50 rounded-lg px-3 py-2 group ml-3">
+                                                        <div className="flex-1 min-w-0 text-zinc-300 leading-relaxed">
+                                                            {preview}{isTruncated ? '\u2026' : ''}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => onOpenResponseModal({ step_name: entry.step_name, content: entry.content })}
+                                                            className="shrink-0 flex items-center gap-1 text-[10px] text-zinc-500 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100 ml-1 whitespace-nowrap self-center"
+                                                            title="View full response"
+                                                        >
+                                                            <ExternalLink size={10} />
+                                                            View full
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
                                     }
                                     return (
                                         <div key={i} className={

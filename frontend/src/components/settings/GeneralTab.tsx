@@ -42,6 +42,10 @@ export const GeneralTab = ({ agentName, setAgentName, vaultEnabled, setVaultEnab
             {vaultEnabled && (
                 <div className="space-y-2">
                     <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Character Threshold</label>
+                    <p className="text-xs text-zinc-500">
+                        ≈ <span className="text-zinc-300 font-semibold">{Math.round(vaultThreshold / 4).toLocaleString()}</span> tokens
+                        <span className="text-zinc-600 ml-1">(at ~4 chars / token)</span>
+                    </p>
                     <input
                         type="number"
                         value={vaultThreshold}

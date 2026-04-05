@@ -29,31 +29,47 @@ MAX_TURNS = 30
 
 
 def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
-    """Extract a tool call JSON from LLM text output."""
+    """Extract a tool call JSON from LLM text output.
+
+    Searches the entire output for a JSON object containing a 'tool' or 'name'
+    key.  This tolerates LLM outputs that include a reasoning preamble before
+    the actual tool-call JSON (common in orchestration agents that plan before
+    acting).  JSON objects that appear at or near the start of the output are
+    tried first so the fast path is preserved for well-behaved models.
+    """
     cleaned = llm_output.replace("```json", "").replace("```", "").strip()
 
     if "{" not in cleaned:
         return None, None
 
-    first_brace = cleaned.find("{")
-    if first_brace > 20:
-        return None, None
+    decoder = json.JSONDecoder()
 
-    try:
-        obj = json.loads(cleaned)
-        if isinstance(obj, dict) and ("tool" in obj or "name" in obj):
-            return obj, None
-    except json.JSONDecodeError:
-        pass
+    # Collect all '{' positions so we can try each candidate in order.
+    brace_positions = [i for i, ch in enumerate(cleaned) if ch == "{"]
 
-    try:
-        obj, _ = json.JSONDecoder().raw_decode(cleaned[first_brace:])
-        if isinstance(obj, dict) and ("tool" in obj or "name" in obj):
-            return obj, None
-    except json.JSONDecodeError:
-        pass
+    # Try the earliest position first (fast path for well-behaved models),
+    # then fall back to later positions when there is a preamble.
+    for pos in brace_positions:
+        try:
+            obj, _ = decoder.raw_decode(cleaned[pos:])
+            if isinstance(obj, dict) and ("tool" in obj or "name" in obj):
+                if pos > 0:
+                    # LLM prefixed the JSON with preamble text — log it so we
+                    # can monitor how often this happens.
+                    preamble_preview = cleaned[:min(pos, 120)].replace("\n", " ")
+                    print(
+                        f"DEBUG parse_tool_call: ⚠️  JSON tool call found after "
+                        f"{pos} chars of preamble: «{preamble_preview}…»",
+                        flush=True,
+                    )
+                return obj, None
+        except json.JSONDecodeError:
+            continue
 
-    if first_brace == 0:
+    # No valid tool-call JSON found anywhere in the output.
+    # If the output starts with '{' it looks like the LLM tried to produce
+    # JSON but got the syntax wrong — surface that as a parse error.
+    if brace_positions and brace_positions[0] == 0:
         return None, "Output starts with '{' but is not a valid tool call JSON"
 
     return None, None
@@ -256,24 +272,25 @@ async def run_agent_step(
     last_tool_logged = None  # track tool from previous turn for usage log
     tools_used_summary = []
     tool_repetition_counts = {}
+    # Compact log of browser actions taken this run — prepended before the live
+    # <<BROWSER_STATE>> block so the agent retains full action history even
+    # though the DOM snapshot is replaced on each navigation/click.
+    browser_action_history: list[str] = []
 
     # Build type-aware set of always-allowed tools
     always_allowed = set(DEFAULT_TOOLS_BY_TYPE.get("all_types", set()))
     always_allowed |= set(DEFAULT_TOOLS_BY_TYPE.get(agent_type, set()))
 
     MAX_PROMPT_CHARS = 400000
-    MAX_TOOL_OUTPUT_CHARS = 8000  # Per-tool output limit for context
 
     # Browser tools produce DOM snapshots that are only useful for the current turn.
     # Previous snapshots become stale the moment the page changes, so we skip
     # appending them to the accumulated context and only keep a short summary.
     BROWSER_TOOL_PREFIXES = ("browser_",)
 
-    def _truncate_tool_output(text: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
-        """Truncate tool output to prevent context bloat."""
-        if len(text) <= limit:
-            return text
-        return text[:limit] + f"...(truncated {len(text) - limit} chars)"
+    def _truncate_tool_output(text: str, limit: int = 0) -> str:
+        """No-op: returns the full tool output without any truncation."""
+        return text
 
     def _is_browser_tool(name: str) -> bool:
         return name.startswith(BROWSER_TOOL_PREFIXES)
@@ -291,6 +308,12 @@ async def run_agent_step(
                 _get_session_state, server_module.memory_store, agent_id=agent_id_for_session,
                 turns_remaining=turns_remaining, max_turns=max_turns,
             )
+            # Re-inject orchestration context (system_prompt_extra) on every turn.
+            # This block is built once before the loop and must survive every
+            # rebuild of active_sys_prompt so the agent never loses orchestration
+            # step context, shared state, or turn-budget instructions.
+            if system_prompt_extra:
+                active_sys_prompt = active_sys_prompt + "\n\n" + system_prompt_extra
 
             # Determine prompt
             if turn == 0:
@@ -345,6 +368,12 @@ async def run_agent_step(
                 break
 
             if tool_call and isinstance(tool_call, dict):
+                # Persist the LLM's reasoning into context so it carries across turns.
+                # This gives the agent full visibility into its own chain-of-thought
+                # (including the tool-call JSON) when building the next turn's prompt.
+                if llm_output.strip():
+                    current_context_text += f"\nAssistant Thought: {llm_output}\n"
+
                 tool_name = tool_call.get("tool") or tool_call.get("name")
                 tool_args = tool_call.get("arguments", {})
                 last_tool_logged = tool_name  # record for next turn's log entry
@@ -352,6 +381,30 @@ async def run_agent_step(
                 # Apply sticky args
                 tool_schema = tool_schema_map.get(tool_name)
                 tool_args = _apply_sticky_args(session_id, tool_name, tool_args, tool_schema)
+
+                # ── browser_snapshot filename guard ────────────────────────────
+                # Ensure the `filename` arg always lives under data/vault/ so
+                # snapshots are persisted in the correct location regardless of
+                # what the LLM provides.
+                if tool_name == "browser_snapshot" and "filename" in tool_args:
+                    _snap_fname = tool_args["filename"]
+                    _vault_prefix = "data/vault/"
+                    if not _snap_fname.startswith(_vault_prefix):
+                        # Strip any leading slashes / accidental partial paths
+                        # then prepend the canonical prefix.
+                        _snap_fname = _snap_fname.lstrip("/")
+                        # If it already contains "data/" or "vault/" as a fragment,
+                        # strip that too so we never end up with double prefixes.
+                        for _bad_prefix in ("data/vault/", "vault/", "data/"):
+                            if _snap_fname.startswith(_bad_prefix):
+                                _snap_fname = _snap_fname[len(_bad_prefix):]
+                                break
+                        tool_args = dict(tool_args)  # don't mutate original
+                        tool_args["filename"] = _vault_prefix + _snap_fname
+                        print(
+                            f"DEBUG: 📸 browser_snapshot filename normalised → {tool_args['filename']}",
+                            flush=True,
+                        )
 
                 yield {"type": "tool_execution", "tool_name": tool_name, "args": tool_args}
                 print(f"DEBUG: 🔧 Tool Call: {tool_name}")
@@ -482,10 +535,10 @@ async def run_agent_step(
                                     _shutil.rmtree(tmp_dir, ignore_errors=True)
 
                                 raw_output = maybe_vault(tool_name, raw_output)
-                                current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
-                                tools_used_summary.append(f"{tool_name}: {raw_output[:500]}...")
-                                print(f"DEBUG: 🐍 Python Tool Result ({tool_name}): {raw_output[:300]}")
-                                preview = raw_output[:100] + "..." if len(raw_output) > 100 else raw_output
+                                current_context_text += f"\nTool '{tool_name}' Output: {raw_output}\n"
+                                tools_used_summary.append(f"{tool_name}: {raw_output}")
+                                print(f"DEBUG: 🐍 Python Tool Result ({tool_name}): {raw_output}")
+                                preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
                                 yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
                                 last_intent = "custom_tool"
                                 last_data = json.loads(raw_output) if raw_output else {}
@@ -520,10 +573,10 @@ async def run_agent_step(
                             # Vault large outputs
                             raw_output = maybe_vault(tool_name, raw_output)
 
-                            current_context_text += f"\nTool '{tool_name}' Output: {_truncate_tool_output(raw_output)}\n"
-                            tools_used_summary.append(f"{tool_name}: {raw_output[:500]}...")
-                            print(f"DEBUG: 📤 Tool Result ({tool_name}): {raw_output[:500]}{'...(truncated)' if len(raw_output) > 500 else ''}")
-                            preview = raw_output[:100] + "..." if len(raw_output) > 100 else raw_output
+                            current_context_text += f"\nTool '{tool_name}' Output: {raw_output}\n"
+                            tools_used_summary.append(f"{tool_name}: {raw_output}")
+                            print(f"DEBUG: 📤 Tool Result ({tool_name}): {raw_output}")
+                            preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
                             yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
 
                             last_intent = "custom_tool"
@@ -627,28 +680,50 @@ async def run_agent_step(
 
                     if _is_browser_tool(tool_name):
                         # Browser snapshots go stale on every navigation/click.
-                        # Replace previous browser block with only the latest result.
+                        # Keep a compact action history log + only the latest DOM snapshot.
                         BROWSER_MARKER = "\n<<BROWSER_STATE>>\n"
                         BROWSER_END = "\n<</BROWSER_STATE>>\n"
-                        # Remove previous browser block if present
+                        BROWSER_HISTORY_MARKER = "\n<<BROWSER_HISTORY>>\n"
+                        BROWSER_HISTORY_END = "\n<</BROWSER_HISTORY>>\n"
+
+                        # Record a one-line summary of this browser action in the history log
+                        args_summary = ", ".join(f"{k}={str(v)[:80]}" for k, v in tool_args.items())
+                        snapshot_preview = raw_output[:200].replace("\n", " ")
+                        browser_action_history.append(
+                            f"[Step {turn + 1}] {tool_name}({args_summary}) → {snapshot_preview}..."
+                        )
+
+                        # Remove previous browser history block if present
+                        bhstart = current_context_text.find(BROWSER_HISTORY_MARKER)
+                        if bhstart != -1:
+                            bhend = current_context_text.find(BROWSER_HISTORY_END, bhstart)
+                            if bhend != -1:
+                                current_context_text = current_context_text[:bhstart] + current_context_text[bhend + len(BROWSER_HISTORY_END):]
+
+                        # Remove previous live browser snapshot block if present
                         bstart = current_context_text.find(BROWSER_MARKER)
                         if bstart != -1:
                             bend = current_context_text.find(BROWSER_END, bstart)
                             if bend != -1:
                                 current_context_text = current_context_text[:bstart] + current_context_text[bend + len(BROWSER_END):]
-                        # Append latest browser result (truncated)
-                        brief = _truncate_tool_output(raw_output, 5000)
-                        current_context_text += f"{BROWSER_MARKER}Tool '{tool_name}' Output: {brief}{BROWSER_END}"
-                        print(f"DEBUG: 📤 Tool Result ({tool_name}): [browser, {len(raw_output)} chars → {len(brief)} in context]")
+
+                        # Append updated history log + latest snapshot
+                        history_text = "\n".join(browser_action_history)
+                        current_context_text += (
+                            f"{BROWSER_HISTORY_MARKER}Previous browser actions (oldest→newest):\n"
+                            f"{history_text}"
+                            f"{BROWSER_HISTORY_END}"
+                        )
+                        current_context_text += f"{BROWSER_MARKER}Tool '{tool_name}' Output (current page state): {raw_output}{BROWSER_END}"
+                        print(f"DEBUG: 📤 Tool Result ({tool_name}): [browser, {len(raw_output)} chars in context, history={len(browser_action_history)} actions]")
                     else:
-                        display_output = _truncate_tool_output(raw_output)
-                        current_context_text += f"\nTool '{tool_name}' Output: {display_output}\n"
-                        print(f"DEBUG: 📤 Tool Result ({tool_name}): {display_output[:500]}{'...(truncated)' if len(display_output) > 500 else ''}")
+                        current_context_text += f"\nTool '{tool_name}' Output: {raw_output}\n"
+                        print(f"DEBUG: 📤 Tool Result ({tool_name}): {raw_output}")
 
                     # MCP tool results are no longer embedded in ChromaDB
-                    preview = raw_output[:100] + "..." if len(raw_output) > 100 else raw_output
+                    preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
-                    tools_used_summary.append(f"{tool_name}: {raw_output[:200]}...")
+                    tools_used_summary.append(f"{tool_name}: {raw_output}")
                 except Exception as e:
                     error_msg = str(e)
                     print(f"DEBUG: ❌ Tool '{tool_name}' failed: {error_msg}", flush=True)

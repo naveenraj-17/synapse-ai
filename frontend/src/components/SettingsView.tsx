@@ -51,7 +51,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
     // Vault settings
     const [vaultEnabled, setVaultEnabled] = useState(true);
-    const [vaultThreshold, setVaultThreshold] = useState(15000);
+    const [vaultThreshold, setVaultThreshold] = useState(100000);
     const [allowDbWrite, setAllowDbWrite] = useState(false);
 
     // Keys
@@ -404,7 +404,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setN8nUrl(data.n8n_url || 'http://localhost:5678');
                 setN8nApiKey(data.n8n_api_key || '');
                 setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
-                setVaultThreshold(data.vault_threshold || 15000);
+                setVaultThreshold(data.vault_threshold || 100000);
                 setAllowDbWrite(data.allow_db_write || false);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);

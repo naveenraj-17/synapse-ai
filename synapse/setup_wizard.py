@@ -43,7 +43,7 @@ DEFAULT_SETTINGS = {
     "n8n_table_id": "",
     "global_config": {},
     "vault_enabled": True,
-    "vault_threshold": 20000,
+    "vault_threshold": 100000,
     "coding_agent_enabled": False,
     "report_agent_enabled": False,
 }

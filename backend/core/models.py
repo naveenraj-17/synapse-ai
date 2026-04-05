@@ -95,7 +95,7 @@ class Settings(BaseModel):
     n8n_table_id: str = ""
     global_config: dict[str, str] = {}
     vault_enabled: bool = True
-    vault_threshold: int = 15000
+    vault_threshold: int = 100000
     allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
     report_agent_enabled: bool = True
     coding_agent_enabled: bool = True
