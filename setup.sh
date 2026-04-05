@@ -275,21 +275,94 @@ main() {
     check_node
     check_uvx
     
+    # OS-specific installation directory
+    if [[ "$OS" == "macos" ]]; then
+        INSTALL_DIR="$HOME/Library/Application Support/SynapseAI"
+    else
+        INSTALL_DIR="$HOME/.local/share/SynapseAI"
+    fi
+    MARKER_FILE="$INSTALL_DIR/.installed"
+
+    # Already installed check
+    if [ -f "$MARKER_FILE" ]; then
+        echo ""
+        echo "======================================================"
+        echo -e "\033[92m   Synapse AI is already installed!\033[0m"
+        echo "======================================================"
+        echo ""
+        echo -e "   \033[96mLocation: $INSTALL_DIR\033[0m"
+        echo ""
+
+        # 1. Stop running services
+        echo -e "\033[96m==> Stopping running services...\033[0m"
+        SYNAPSE_BIN="$INSTALL_DIR/bin/synapse"
+        if [ -x "$SYNAPSE_BIN" ]; then
+            "$SYNAPSE_BIN" stop >/dev/null 2>&1 && echo -e "\033[92m[OK] Services stopped.\033[0m" || echo -e "\033[93m[WARN] Could not run synapse stop cleanly.\033[0m"
+        fi
+
+        # Fallback: kill via PID files
+        RUN_DIR="$INSTALL_DIR/run"
+        for pidFile in "backend.pid" "frontend.pid"; do
+            if [ -f "$RUN_DIR/$pidFile" ]; then
+                pid=$(cat "$RUN_DIR/$pidFile" 2>/dev/null)
+                if [ -n "$pid" ]; then
+                    kill -9 "$pid" 2>/dev/null && echo -e "\033[92m[OK] Stopped PID $pid ($pidFile).\033[0m"
+                    rm -f "$RUN_DIR/$pidFile"
+                fi
+            fi
+        done
+        sleep 2
+
+        # 2. Pull latest changes
+        echo ""
+        echo -e "\033[96m==> Pulling latest changes...\033[0m"
+        if git -C "$INSTALL_DIR" pull --ff-only >/dev/null 2>&1; then
+            echo -e "\033[92m[OK] Updated to the latest version.\033[0m"
+        else
+            echo -e "\033[93m[WARN] Could not pull latest changes cleanly.\033[0m"
+        fi
+
+        # 3. Rebuild via setup.py
+        echo ""
+        echo -e "\033[96m==> Rebuilding Synapse AI...\033[0m"
+        cd "$INSTALL_DIR"
+        if [ -t 1 ]; then
+            $PYTHON_CMD setup.py --upgrade < /dev/tty
+        else
+            $PYTHON_CMD setup.py --upgrade
+        fi
+
+        echo ""
+        echo "======================================================"
+        echo -e "\033[92m   Synapse AI has been updated and rebuilt!\033[0m"
+        echo "======================================================"
+        echo ""
+        echo "To start Synapse:"
+        echo -e "  \033[96msynapse start\033[0m"
+        echo ""
+        echo "Other commands:"
+        echo "  synapse stop      -- stop running services"
+        echo "  synapse status    -- check service status"
+        echo "  synapse restart   -- restart services"
+        echo ""
+        exit 0
+    fi
+
     # Clone or update repo
     REPO_URL="https://github.com/naveenraj-17/synapse-ai.git"
-    DEST_DIR="synapse-ai"
-    
-    if [ -d "$DEST_DIR/.git" ]; then
+
+    if [ -d "$INSTALL_DIR/.git" ]; then
         echo ""
-        echo "Repository already exists at ./$DEST_DIR — pulling latest..."
-        git -C "$DEST_DIR" pull --ff-only
+        echo -e "\033[96mRepository found at $INSTALL_DIR -- pulling latest changes...\033[0m"
+        git -C "$INSTALL_DIR" pull --ff-only
     else
         echo ""
-        echo "Cloning Synapse AI..."
-        git clone "$REPO_URL" "$DEST_DIR"
+        echo -e "\033[96mInstalling Synapse AI to: $INSTALL_DIR\033[0m"
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        git clone "$REPO_URL" "$INSTALL_DIR"
     fi
     
-    cd "$DEST_DIR"
+    cd "$INSTALL_DIR"
     
     echo ""
     if [ -t 1 ]; then
@@ -297,6 +370,26 @@ main() {
     else
         $PYTHON_CMD setup.py
     fi
+
+    # Add bin dir to profile if missing
+    BIN_DIR="$INSTALL_DIR/bin"
+    for profile in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
+        if [ -f "$profile" ]; then
+            if ! grep -q "Synapse AI" "$profile"; then
+                echo "" >> "$profile"
+                echo "# Synapse AI" >> "$profile"
+                echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$profile"
+                echo -e "\033[92m[OK] Added Synapse to profile ($profile)\033[0m"
+            fi
+        fi
+    done
+
+    echo ""
+    echo "========================================================"
+    echo -e "\033[92m   Synapse AI setup complete!\033[0m"
+    echo -e "   To start Synapse:  \033[96msynapse start\033[0m"
+    echo -e "   Installed at:      \033[96m$INSTALL_DIR\033[0m"
+    echo "========================================================"
 }
 
 main

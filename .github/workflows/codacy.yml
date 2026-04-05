@@ -79,7 +79,7 @@ jobs:
             tsconfig.tsbuildinfo,
             frontend/tsconfig.tsbuildinfo
 
-      # 3. Memory-safe SARIF patch to merge runs and bypass GitHub's strict limits
+      # 3. Memory-safe SARIF patch to merge ALL results into exactly ONE run
       - name: Patch SARIF Categories for GitHub
         run: |
           sudo python3 -c '
@@ -97,42 +97,45 @@ jobs:
                   print("Warning: SARIF file was corrupt. Creating a valid placeholder.")
                   data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
 
-          # GitHub limits SARIF files to 20 runs. We will group all runs by tool name.
-          if "runs" in data:
-              grouped_runs = {}
-              for run in data["runs"]:
-                  # Get the tool name (e.g., "Bandit", "Semgrep")
-                  tool_name = run.get("tool", {}).get("driver", {}).get("name", "Codacy-Tool")
-                  clean_name = tool_name.lower().replace(" ", "-")
-                  
-                  if tool_name not in grouped_runs:
-                      # First time seeing this tool, initialize its grouped run
-                      grouped_runs[tool_name] = {
-                          "tool": run.get("tool", {"driver": {"name": tool_name, "rules": []}}),
-                          "results": [],
-                          "automationDetails": {"id": f"codacy-{clean_name}"}
+          # GitHub limit is 20. We will compress EVERYTHING into exactly 1 master run.
+          if "runs" in data and len(data["runs"]) > 0:
+              master_run = {
+                  "tool": {
+                      "driver": {
+                          "name": "Codacy Security Scan",
+                          "rules": []
                       }
-                  else:
-                      # We already have a run for this tool. Merge the rules to avoid duplicates.
-                      existing_rules = grouped_runs[tool_name].get("tool", {}).get("driver", {}).get("rules", [])
-                      existing_rule_ids = {r.get("id") for r in existing_rules if "id" in r}
-                      
-                      new_rules = run.get("tool", {}).get("driver", {}).get("rules", [])
-                      for rule in new_rules:
-                          if rule.get("id") not in existing_rule_ids:
-                              grouped_runs[tool_name]["tool"]["driver"]["rules"].append(rule)
-                              existing_rule_ids.add(rule.get("id"))
+                  },
+                  "results": [],
+                  "automationDetails": {"id": "codacy-combined-scan-master"}
+              }
+              
+              seen_rule_ids = set()
+              
+              for run in data["runs"]:
+                  # Extract and merge rules safely
+                  driver = run.get("tool", {}).get("driver", {})
+                  rules = driver.get("rules", [])
+                  for rule in rules:
+                      rule_id = rule.get("id")
+                      if rule_id and rule_id not in seen_rule_ids:
+                          master_run["tool"]["driver"]["rules"].append(rule)
+                          seen_rule_ids.add(rule_id)
+                          
+                  # Extract and merge results
+                  results = run.get("results", [])
+                  master_run["results"].extend(results)
                   
-                  # Merge the actual vulnerabilities/results into the group
-                  grouped_runs[tool_name]["results"].extend(run.get("results", []))
-                  
-              # Replace the 33 fragment runs with our cleanly grouped runs (max 4)
-              data["runs"] = list(grouped_runs.values())
+              # Replace the 22 fragment runs with our 1 unified master run
+              data["runs"] = [master_run]
 
           # Write safely to disk
           with open("results.sarif", "w") as f:
               json.dump(data, f, indent=2)
-          print(f"Successfully compressed into {len(data.get('runs', []))} runs for GitHub Advanced Security.")
+          
+          # Safely print the final run count without breaking Bash quotes
+          num_runs = len(data.get("runs", []))
+          print("Successfully compressed into " + str(num_runs) + " master run for GitHub Advanced Security.")
           '
 
       # 4. Upload directly to the GitHub Security Tab
