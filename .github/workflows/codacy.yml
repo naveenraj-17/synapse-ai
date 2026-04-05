@@ -41,6 +41,25 @@ jobs:
       # Checkout the repository to the GitHub Actions runner
       - name: Checkout code
         uses: actions/checkout@v4
+        # NEW STEP: Generate Codacy config on the fly to run specific tools
+      - name: Generate Codacy Configuration
+        run: |
+          cat > .codacy.yaml <<'EOF'
+          ---
+          engines:
+            bandit:
+              enabled: true
+            semgrep:
+              enabled: true
+            checkov:
+              enabled: true
+            trivy:
+              enabled: true
+            eslint:
+              enabled: false
+            stylelint:
+              enabled: false
+          EO
 
       # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
       - name: Run Codacy Analysis CLI
@@ -59,7 +78,6 @@ jobs:
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
           # Disable CSS and ESLint linters (security scan only)
-          tool: bandit,semgrep,checkov,trivy
           # Exclude generated/dependency/build directories and files that don't need scanning
           skip-uncommitted-files-check: true
           exclude-paths: >
