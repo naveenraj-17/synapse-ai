@@ -118,6 +118,13 @@ jobs:
           }
           EOF
           fi
+      
+      # NEW STEP: Patch the SARIF file to bypass GitHub's strict category rules
+      - name: Patch SARIF with unique categories
+        run: |
+          echo "Injecting unique automationDetails.id into each run so GitHub accepts it..."
+          jq '.runs |= [to_entries[] | .value * {automationDetails: {id: "codacy-\(.key)"}}]' results.sarif > patched.sarif
+          mv patched.sarif results.sarif
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
