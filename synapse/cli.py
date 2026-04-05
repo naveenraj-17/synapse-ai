@@ -30,7 +30,7 @@ ROOT_DIR = PACKAGE_DIR.parent
 _ENV_FILE = ROOT_DIR / ".env"
 
 def _load_dotenv(path: Path):
-    """Minimal .env loader — only sets vars that are NOT already in the environment."""
+    """Minimal .env loader -- only sets vars that are NOT already in the environment."""
     if not path.exists():
         return
     try:
@@ -46,7 +46,7 @@ def _load_dotenv(path: Path):
                 if _key and _key not in os.environ:
                     os.environ[_key] = _val
     except Exception:
-        pass  # non-fatal — env vars can still be set manually
+        pass  # non-fatal -- env vars can still be set manually
 
 _load_dotenv(_ENV_FILE)
 
@@ -63,7 +63,7 @@ else:
 DEFAULT_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
 DEFAULT_FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))
 
-# Runtime ports (may be overridden by CLI args — module-level aliases kept for
+# Runtime ports (may be overridden by CLI args -- module-level aliases kept for
 # backwards compatibility; actual values are resolved in _start_command)
 BACKEND_PORT = DEFAULT_BACKEND_PORT
 FRONTEND_PORT = DEFAULT_FRONTEND_PORT
@@ -159,14 +159,14 @@ def _npm_command():
 def check_prerequisites():
     errors = []
     if IS_WIN:
-        # On Windows, PATH may be stale after a fresh install — probe directly
+        # On Windows, PATH may be stale after a fresh install -- probe directly
         if not _ensure_node_in_path_win():
-            errors.append("Node.js 20.9.0+ not found — install from https://nodejs.org/ and re-run.")
+            errors.append("Node.js 20.9.0+ not found -- install from https://nodejs.org/ and re-run.")
     else:
         if shutil.which("node") is None:
-            errors.append("node not found — install Node.js from https://nodejs.org/")
+            errors.append("node not found -- install Node.js from https://nodejs.org/")
         if shutil.which("npm") is None:
-            errors.append("npm not found — install Node.js from https://nodejs.org/")
+            errors.append("npm not found -- install Node.js from https://nodejs.org/")
     if shutil.which("ollama") is None:
         print("Warning: ollama not found. Local models won't work; cloud API models (Anthropic, OpenAI, Gemini) still work.")
     if errors:
@@ -291,7 +291,7 @@ def _kill_proc_tree(proc: subprocess.Popen, timeout: int = 5) -> None:
     child node.exe processes become orphans.  taskkill /F /T kills the whole
     process tree including every grandchild.
 
-    On Unix, send SIGTERM to the process group so npm → node children all die.
+    On Unix, send SIGTERM to the process group so npm -> node children all die.
     """
     if IS_WIN:
         try:
@@ -305,7 +305,7 @@ def _kill_proc_tree(proc: subprocess.Popen, timeout: int = 5) -> None:
             except Exception:
                 pass
     else:
-        # Try to kill the entire process group (handles npm → node chains)
+        # Try to kill the entire process group (handles npm -> node chains)
         try:
             pgid = os.getpgid(proc.pid)
             os.killpg(pgid, signal.SIGTERM)
@@ -443,7 +443,7 @@ def _start_command(
 
     def _shutdown(sig, frame):
         print("\nStopping Synapse...")
-        # Kill full process trees — on Windows terminate() leaves node children alive
+        # Kill full process trees -- on Windows terminate() leaves node children alive
         _kill_proc_tree(frontend_proc)
         _kill_proc_tree(backend_proc)
         try:

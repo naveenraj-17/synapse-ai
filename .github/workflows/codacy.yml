@@ -36,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8"
     steps:
       # Checkout the repository to the GitHub Actions runner
       - name: Checkout code

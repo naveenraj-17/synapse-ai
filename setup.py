@@ -1,5 +1,5 @@
 """
-Synapse AI — Interactive Setup Wizard
+Synapse AI -- Interactive Setup Wizard
 Guides the user through configuration, installs dependencies, and starts both servers.
 Uses only Python stdlib so it works before the venv exists.
 """
@@ -27,7 +27,7 @@ ENV_FILE = os.path.join(ROOT_DIR, ".env")
 # agree on the same data directory (e.g. SYNAPSE_DATA_DIR=backend/data).
 # ---------------------------------------------------------------------------
 def _load_dotenv_early(path):
-    """Minimal .env loader — only sets vars not already in the environment."""
+    """Minimal .env loader -- only sets vars not already in the environment."""
     if not os.path.exists(path):
         return
     try:
@@ -57,7 +57,7 @@ EXAMPLES_DIR = os.path.join(BACKEND_DIR, "examples")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
 
-# Port defaults — read from env first so an existing .env is respected
+# Port defaults -- read from env first so an existing .env is respected
 DEFAULT_BACKEND_PORT = int(os.environ.get("SYNAPSE_BACKEND_PORT", "8000"))
 DEFAULT_FRONTEND_PORT = int(os.environ.get("SYNAPSE_FRONTEND_PORT", "3000"))
 
@@ -80,9 +80,9 @@ class C:
 
 def _c(color, text): return f"{color}{text}{C.RESET}"
 def step(msg):    print(f"\n{C.BLUE}{C.BOLD}==> {msg}{C.RESET}")
-def ok(msg):      print(f"{C.GREEN}✓  {msg}{C.RESET}")
-def warn(msg):    print(f"{C.YELLOW}⚠  {msg}{C.RESET}")
-def err(msg):     print(f"{C.RED}✗  {msg}{C.RESET}")
+def ok(msg):      print(f"{C.GREEN}[OK]  {msg}{C.RESET}")
+def warn(msg):    print(f"{C.YELLOW}[!!]  {msg}{C.RESET}")
+def err(msg):     print(f"{C.RED}[X]  {msg}{C.RESET}")
 def info(msg):    print(f"   {msg}")
 
 # ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ def install_postgresql():
         info("3. IMPORTANT: Add the PostgreSQL bin directory to your System PATH:")
         info("   - Search for 'Edit the system environment variables' in the Start menu")
         info("   - Click 'Environment Variables', then find 'Path' under System variables")
-        info("   - Click 'Edit' → 'New', and add the bin path (e.g. C:\\Program Files\\PostgreSQL\\17\\bin)")
+        info("   - Click 'Edit' -> 'New', and add the bin path (e.g. C:\\Program Files\\PostgreSQL\\17\\bin)")
         info("4. Restart your terminal so the updated PATH takes effect.")
         info("5. Verify the installation by running: psql --version")
         info("   Make sure it prints a version number before continuing.")
@@ -419,7 +419,7 @@ def _find_all_node_versions():
     for p in ["/usr/local/bin/node", "/usr/bin/node", "/opt/homebrew/bin/node"]:
         _probe(p)
 
-    # which -a (Unix) — catches anything else on PATH
+    # which -a (Unix) -- catches anything else on PATH
     if not IS_WIN:
         try:
             r = subprocess.run(["which", "-a", "node"], capture_output=True, text=True, timeout=5)
@@ -483,7 +483,7 @@ def _find_all_node_versions_win():
             for entry in os.listdir(fnm_root):
                 _probe(os.path.join(fnm_root, entry, "installation", "node.exe"))
 
-    # Also walk PATH entries — catches a freshly refreshed PATH
+    # Also walk PATH entries -- catches a freshly refreshed PATH
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
         _probe(os.path.join(path_dir.strip(), "node.exe"))
 
@@ -520,7 +520,7 @@ def check_npm():
                 return
             except Exception as e:
                 warn(f"Failed to invoke node at {node_exe}: {e}")
-        # Nothing found — show a clear error
+        # Nothing found -- show a clear error
         err("Node.js 20.9.0+ is required but was not found on this Windows system.")
         info("Searched: Program Files\\nodejs, LocalAppData\\Programs\\nodejs, nvm-windows, fnm, PATH.")
         info("Install the latest Node.js LTS from https://nodejs.org/ and re-run setup.")
@@ -555,7 +555,7 @@ def check_npm():
                     os.environ["PATH"] = best_dir + os.pathsep + os.environ.get("PATH", "")
                     ok(f"Switched to Node.js v{best_ver_str} for this setup session.")
                 else:
-                    err(f"Node.js 20.9.0+ required. Active version: v{version_str}, none found ≥ 20.9.0.")
+                    err(f"Node.js 20.9.0+ required. Active version: v{version_str}, none found >= 20.9.0.")
                     info("Install the latest Node.js from https://nodejs.org/ or via nvm/fnm, then re-run setup.")
                     sys.exit(1)
             else:
@@ -563,7 +563,7 @@ def check_npm():
         except Exception as e:
             warn(f"Could not verify Node.js version: {e}")
     else:
-        warn("node executable not found — npm may not work correctly.")
+        warn("node executable not found -- npm may not work correctly.")
 
     ok("npm found")
 
@@ -630,7 +630,7 @@ def save_settings(cfg):
         _update_env_file("DATABASE_URL", cfg["sql_connection_string"])
 
 # ---------------------------------------------------------------------------
-# Q1 — Coding Agent
+# Q1 -- Coding Agent
 # ---------------------------------------------------------------------------
 def ask_coding_agent(cfg):
     step("Coding Agent (PostgreSQL + pgvector)")
@@ -639,7 +639,7 @@ def ask_coding_agent(cfg):
     cfg["coding_agent_enabled"] = enabled
 
     if not enabled:
-        ok("Coding Agent disabled — skipping PostgreSQL setup.")
+        ok("Coding Agent disabled -- skipping PostgreSQL setup.")
         return
 
     # Check if PostgreSQL was already installed by user
@@ -703,7 +703,7 @@ def ask_coding_agent(cfg):
 
 
 # ---------------------------------------------------------------------------
-# Q2c — Browser Automation
+# Q2c -- Browser Automation
 # ---------------------------------------------------------------------------
 def ask_browser_automation(cfg):
     step("Browser Automation")
@@ -750,16 +750,16 @@ def ask_browser_automation(cfg):
 
 
 # ---------------------------------------------------------------------------
-# Q2d — Messaging App Integration
+# Q2d -- Messaging App Integration
 # ---------------------------------------------------------------------------
 def ask_messaging_app(cfg):
     step("Messaging App Integration")
     info("Allows your agents to be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
-    info("You can configure individual bots later in Settings → Messaging.")
+    info("You can configure individual bots later in Settings -> Messaging.")
     enabled = ask_yn("Enable Messaging App support?", default="n")
     cfg["messaging_enabled"] = enabled
     if not enabled:
-        ok("Messaging disabled — skipping.")
+        ok("Messaging disabled -- skipping.")
         return
     ok("Messaging enabled. Required libraries will be installed now.")
 
@@ -803,19 +803,19 @@ def ask_google_workspace(cfg):
 
     # Skip if credentials already exist
     if os.path.exists(CREDENTIALS_FILE):
-        ok(f"credentials.json already exists at {CREDENTIALS_FILE} — skipping.")
+        ok(f"credentials.json already exists at {CREDENTIALS_FILE} -- skipping.")
         return
 
     if not ask_yn("Configure Google Workspace now?", default="n"):
-        ok("Skipped — you can configure this later in Settings → Integrations.")
+        ok("Skipped -- you can configure this later in Settings -> Integrations.")
         return
 
     os.makedirs(DATA_DIR, exist_ok=True)
     has_gcloud = shutil.which("gcloud") is not None
 
     if has_gcloud:
-        info("gcloud CLI detected — using it to streamline setup.")
-        step("Step 1/3 — Authenticate with Google")
+        info("gcloud CLI detected -- using it to streamline setup.")
+        step("Step 1/3 -- Authenticate with Google")
         info("Running: gcloud auth login")
         try:
             subprocess.check_call(["gcloud", "auth", "login", "--update-adc"])
@@ -824,7 +824,7 @@ def ask_google_workspace(cfg):
             warn("gcloud auth login failed. Continuing to manual step.")
 
         # List projects
-        step("Step 2/3 — Select or create a Google Cloud Project")
+        step("Step 2/3 -- Select or create a Google Cloud Project")
         try:
             result = subprocess.run(
                 ["gcloud", "projects", "list", "--format=value(projectId,name)"],
@@ -850,14 +850,14 @@ def ask_google_workspace(cfg):
 
         if project_id:
             ok(f"Using project: {project_id}")
-            step("Step 2b — Enabling Gmail, Drive, Calendar and other APIs")
+            step("Step 2b -- Enabling Gmail, Drive, Calendar and other APIs")
             _gcloud_enable_apis(project_id)
         else:
-            warn("No project selected — skipping API enable.")
+            warn("No project selected -- skipping API enable.")
             project_id = None
 
         # Deep link for OAuth client creation
-        step("Step 3/3 — Create OAuth 2.0 Client ID (requires browser)")
+        step("Step 3/3 -- Create OAuth 2.0 Client ID (requires browser)")
         console_url = (
             f"https://console.cloud.google.com/apis/credentials/oauthclient?project={project_id}"
             if project_id else
@@ -873,8 +873,8 @@ def ask_google_workspace(cfg):
         info("  4. Make sure the OAuth consent screen has all required scopes configured")
         info("  5. Click Create, then download the JSON file")
     else:
-        # No gcloud — full manual flow
-        info("gcloud CLI not found — using manual setup.")
+        # No gcloud -- full manual flow
+        info("gcloud CLI not found -- using manual setup.")
         info("Use this link to create OAuth credentials:")
         print(f"\n   {_c(C.CYAN, 'https://console.cloud.google.com/apis/credentials')}\n")
         info("  1. Create a project (or select an existing one)")
@@ -882,7 +882,7 @@ def ask_google_workspace(cfg):
         info("  2. Configure the OAuth consent screen and add these scopes:")
         info("     userinfo.email, userinfo.profile, gmail.modify, gmail.send, drive, calendar,")
         info("     documents, spreadsheets, presentations, forms, tasks, contacts")
-        info("  3. Go to Credentials → Create Credentials → OAuth Client ID → Web application")
+        info("  3. Go to Credentials -> Create Credentials -> OAuth Client ID -> Web application")
         info(f"  4. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
         info("  5. Download the JSON file and paste its contents below.")
 
@@ -898,12 +898,12 @@ def ask_google_workspace(cfg):
             lines.append(line)
     except (EOFError, KeyboardInterrupt):
         print()
-        warn("No credentials pasted — skipping Google Workspace setup.")
+        warn("No credentials pasted -- skipping Google Workspace setup.")
         return
 
     raw_json = "\n".join(lines).strip()
     if not raw_json:
-        warn("Empty input — skipping.")
+        warn("Empty input -- skipping.")
         return
 
     try:
@@ -911,14 +911,14 @@ def ask_google_workspace(cfg):
         with open(CREDENTIALS_FILE, "w") as f:
             json.dump(parsed, f, indent=4)
         ok(f"credentials.json saved to {CREDENTIALS_FILE}")
-        info("After Synapse starts, go to Settings → Integrations → 'Connect Google Account' to complete OAuth.")
+        info("After Synapse starts, go to Settings -> Integrations -> 'Connect Google Account' to complete OAuth.")
     except json.JSONDecodeError as e:
         err(f"Invalid JSON: {e}")
-        warn("credentials.json was NOT saved. Configure via Settings → Integrations later.")
+        warn("credentials.json was NOT saved. Configure via Settings -> Integrations later.")
 
 
 # ---------------------------------------------------------------------------
-# Q3 — Agent Name
+# Q3 -- Agent Name
 # ---------------------------------------------------------------------------
 def ask_agent_name(cfg):
     step("Agent Name")
@@ -927,7 +927,7 @@ def ask_agent_name(cfg):
     ok(f"Agent name set to: {cfg['agent_name']}")
 
 # ---------------------------------------------------------------------------
-# Q4 — LLM Provider / Model
+# Q4 -- LLM Provider / Model
 # ---------------------------------------------------------------------------
 def _fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers=headers or {})
@@ -1021,7 +1021,7 @@ def _fetch_grok_models(api_key):
         return []
 
 def _fetch_bedrock_models(api_key, region):
-    """List Bedrock foundation models — tries boto3, falls back to direct HTTP."""
+    """List Bedrock foundation models -- tries boto3, falls back to direct HTTP."""
     # Try boto3 first
     try:
         import boto3  # type: ignore
@@ -1070,7 +1070,7 @@ def ask_llm(cfg):
         ok(f"Model set to: {model}  (can be updated later in Settings)")
         return
 
-    # Ollama not detected — ask if user has it on a custom URL
+    # Ollama not detected -- ask if user has it on a custom URL
     if ask_yn("Ollama not detected on default port. Do you have Ollama running?"):
         base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
         cfg["ollama_base_url"] = base_url
@@ -1175,14 +1175,14 @@ def ask_llm(cfg):
 DEFAULT_AGENT = {
     "id": "agent_synapse_ai",
     "name": "Synapse AI",
-    "description": "Your all-purpose AI assistant with access to every capability — browsing, code execution, file management, and more.",
+    "description": "Your all-purpose AI assistant with access to every capability -- browsing, code execution, file management, and more.",
     "avatar": "default",
     "type": "conversational",
     "tools": ["all"],
     "repos": [],
     "system_prompt": (
         "# Role & Identity\n"
-        "You are Synapse AI — an elite, all-purpose AI assistant with access to the full suite of tools on this platform. "
+        "You are Synapse AI -- an elite, all-purpose AI assistant with access to the full suite of tools on this platform. "
         "You exist to help the user accomplish any task with speed, accuracy, and clarity.\n\n"
         "# Core Capabilities\n"
         "You can browse the web and extract real information from any source.\n"
@@ -1193,18 +1193,18 @@ DEFAULT_AGENT = {
         "You understand images, PDFs, spreadsheets, and structured data.\n\n"
         "# Approach & Methodology\n"
         "**Think before acting:** Understand the full request before choosing tools.\n"
-        "**Use tools over memory:** Always fetch real data with tools — never fabricate information.\n"
+        "**Use tools over memory:** Always fetch real data with tools -- never fabricate information.\n"
         "**Be concise and direct:** Give the most useful answer with minimal fluff.\n"
         "**Confirm and verify:** When you take an action (write a file, run code, browse a site), confirm what was done.\n"
         "**Adapt to complexity:** Short answers for simple questions; structured, detailed responses for complex tasks.\n\n"
         "# Output Style\n"
-        "Use Markdown for structured outputs — tables, lists, and code blocks where appropriate.\n"
+        "Use Markdown for structured outputs -- tables, lists, and code blocks where appropriate.\n"
         "For multi-step tasks, briefly outline what you're doing before you do it.\n"
         "When something fails or is uncertain, explain clearly and suggest next steps.\n\n"
         "# Constraints\n"
-        "Never fabricate data, file contents, statistics, or API responses — use tools.\n"
+        "Never fabricate data, file contents, statistics, or API responses -- use tools.\n"
         "Never expose sensitive information (API keys, passwords) in responses.\n"
-        "Always respect the user's filesystem and data — ask before destructive operations."
+        "Always respect the user's filesystem and data -- ask before destructive operations."
     ),
 }
 
@@ -1224,7 +1224,7 @@ def create_default_agent():
 
     # Check if already exists
     if any(a.get("id") == DEFAULT_AGENT["id"] for a in agents):
-        ok("Default 'Synapse AI' agent already exists — skipping.")
+        ok("Default 'Synapse AI' agent already exists -- skipping.")
         return
 
     # Prepend so it appears first
@@ -1353,7 +1353,7 @@ def ask_ports(cfg):
     _update_env_file("SYNAPSE_BACKEND_PORT", str(backend_port))
     _update_env_file("NEXT_PUBLIC_BACKEND_PORT", str(backend_port))
     _update_env_file("SYNAPSE_FRONTEND_PORT", str(frontend_port))
-    ok(f"Ports saved to .env — backend={backend_port}, frontend={frontend_port}.")
+    ok(f"Ports saved to .env -- backend={backend_port}, frontend={frontend_port}.")
 
 
 # ---------------------------------------------------------------------------
@@ -1477,7 +1477,7 @@ def add_to_zshrc():
 
 def _add_to_windows_path(bin_dir):
     """Persist bin_dir in the user PATH via setx and the PowerShell profile."""
-    # 1. setx — persists across new cmd/powershell sessions
+    # 1. setx -- persists across new cmd/powershell sessions
     try:
         current = subprocess.run(
             ["reg", "query", "HKCU\\Environment", "/v", "PATH"],
@@ -1514,7 +1514,7 @@ def setup_path():
         info("Registering 'synapse' command in PATH...")
         _add_to_windows_path(bin_dir)
         info("In your CURRENT session you can already run: synapse start")
-        info(f"(If 'synapse' is not found, open a new terminal — setx takes effect then.)")
+        info(f"(If 'synapse' is not found, open a new terminal -- setx takes effect then.)")
         ok("Windows PATH setup complete.")
     else:
         # Unix: Try to add to .bashrc / .zshrc
@@ -1621,7 +1621,7 @@ def _handle_already_installed(install_dir):
         if result.returncode == 0:
             output = result.stdout.strip()
             if "Already up to date" in output:
-                ok("Already up to date — no changes.")
+                ok("Already up to date -- no changes.")
             else:
                 ok("Updated to the latest version.")
                 if output:
@@ -1632,7 +1632,7 @@ def _handle_already_installed(install_dir):
             if result.stderr.strip():
                 info(result.stderr.strip())
     except FileNotFoundError:
-        warn("git not found — skipping update check.")
+        warn("git not found -- skipping update check.")
     except Exception as e:
         warn(f"Update check failed: {e}")
 
@@ -1641,9 +1641,9 @@ def _handle_already_installed(install_dir):
     print(f"   {_c(C.CYAN, 'synapse start')}")
     print()
     print(f"Other commands:")
-    print(f"   synapse stop      — stop running services")
-    print(f"   synapse status    — check service status")
-    print(f"   synapse restart   — restart services")
+    print(f"   synapse stop      -- stop running services")
+    print(f"   synapse status    -- check service status")
+    print(f"   synapse restart   -- restart services")
     print()
     sys.exit(0)
 
@@ -1665,7 +1665,7 @@ def _register_startup_win():
         )
         winreg.SetValueEx(key, "SynapseAI", 0, winreg.REG_SZ, command)
         winreg.CloseKey(key)
-        ok("Synapse registered to start on login (Registry › Run).")
+        ok("Synapse registered to start on login (Registry > Run).")
     except Exception as e:
         warn(f"Could not register startup: {e}")
         info("You can add it manually: search 'Task Scheduler' in the Start menu.")
@@ -1683,9 +1683,9 @@ def _unregister_startup_win():
         )
         try:
             winreg.DeleteValue(key, "SynapseAI")
-            ok("Removed Synapse from startup (Registry › Run).")
+            ok("Removed Synapse from startup (Registry > Run).")
         except FileNotFoundError:
-            pass  # not registered — fine
+            pass  # not registered -- fine
         winreg.CloseKey(key)
     except Exception as e:
         warn(f"Could not remove startup entry: {e}")
@@ -1745,7 +1745,7 @@ def _register_startup_mac():
         with open(plist_path, "w") as f:
             f.write(plist)
         subprocess.run(["launchctl", "load", plist_path], check=False, capture_output=True)
-        ok(f"LaunchAgent installed — Synapse will start on login.")
+        ok(f"LaunchAgent installed -- Synapse will start on login.")
         info(f"  Plist: {plist_path}")
     except Exception as e:
         warn(f"Could not install LaunchAgent: {e}")
@@ -1808,7 +1808,7 @@ WantedBy=default.target
             f.write(service_content)
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
         subprocess.run(["systemctl", "--user", "enable", "synapse-ai.service"], check=False, capture_output=True)
-        ok("systemd user service installed — Synapse will start on login.")
+        ok("systemd user service installed -- Synapse will start on login.")
         info(f"  Service: {service_path}")
         info("  To start now (without rebooting): systemctl --user start synapse-ai")
     except Exception as e:
@@ -1869,7 +1869,7 @@ def ask_startup_on_boot(cfg):
             return
 
     info("Synapse can start automatically in the background when you log in.")
-    info("It runs silently — just open your browser to http://localhost:3000.")
+    info("It runs silently -- just open your browser to http://localhost:3000.")
     enable = ask_yn("Start Synapse automatically on login?", default="n")
     cfg["start_on_boot"] = enable
 
@@ -1889,7 +1889,7 @@ def ask_startup_on_boot(cfg):
 # ---------------------------------------------------------------------------
 def main():
     print(f"\n{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}   Synapse AI — Setup Wizard{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}   Synapse AI -- Setup Wizard{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
 
     # ------------------------------------------------------------------
@@ -1986,7 +1986,7 @@ def main():
         print("\nStopping servers...")
         if IS_WIN:
             # terminate() only kills the outermost .cmd wrapper on Windows;
-            # taskkill /F /T kills the entire process tree (npm → node → next)
+            # taskkill /F /T kills the entire process tree (npm -> node -> next)
             for proc in (frontend_proc, backend_proc):
                 try:
                     subprocess.run(
@@ -1999,7 +1999,7 @@ def main():
                     except Exception:
                         pass
         else:
-            # Kill the whole process group so npm → node children all exit
+            # Kill the whole process group so npm -> node children all exit
             for proc in (backend_proc, frontend_proc):
                 try:
                     os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
