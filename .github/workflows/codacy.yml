@@ -135,9 +135,33 @@ jobs:
           print("Successfully split " + str(len(runs)) + " runs into individual SARIF files.")
           '
 
-      # 4. Upload the ENTIRE DIRECTORY to GitHub Security Tab
-      - name: Upload SARIF results folder
-        uses: github/codeql-action/upload-sarif@main
-        with:
-          # Pointing to the directory instead of a single file
-          sarif_file: sarif_split
+      # 4. Upload each file SEPARATELY via GitHub API
+      - name: Upload SARIF files separately
+        env:
+          # This is automatically provided by GitHub. You do NOT need to add it to your secrets.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Starting individual uploads to bypass GitHub Action merging..."          
+          for file in sarif_split/*.sarif; do
+            echo "Uploading $file..."
+            
+            # Compress and encode the file as required by the GitHub API
+            gzip -c "$file" > payload.gz
+            b64_payload=$(base64 -w0 payload.gz)
+            
+            # Upload directly via the GitHub CLI API with --fail to catch silent errors
+            gh api \
+              --fail \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/code-scanning/sarifs \
+              -f commit_sha="${{ github.sha }}" \
+              -f ref="${{ github.ref }}" \
+              -f sarif="$b64_payload"
+              
+            # A tiny 2-second pause to respect API rate limits
+            sleep 2
+          done
+          
+          echo "All SARIF files successfully uploaded independently!"
