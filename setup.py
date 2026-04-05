@@ -1640,7 +1640,7 @@ def _handle_already_installed(install_dir):
     print(f"{C.BOLD}To start Synapse:{C.RESET}")
     print(f"   {_c(C.CYAN, 'synapse start')}")
     print()
-    print(f"{C.DIM}Other commands:{C.RESET}")
+    print(f"Other commands:")
     print(f"   synapse stop      — stop running services")
     print(f"   synapse status    — check service status")
     print(f"   synapse restart   — restart services")
