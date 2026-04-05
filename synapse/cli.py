@@ -284,22 +284,78 @@ def _is_running(pid: int) -> bool:
     return True
 
 
+def _kill_proc_tree(proc: subprocess.Popen, timeout: int = 5) -> None:
+    """Kill a process AND all its descendants.
+
+    On Windows, terminate() only kills the outermost batch wrapper (.cmd);
+    child node.exe processes become orphans.  taskkill /F /T kills the whole
+    process tree including every grandchild.
+
+    On Unix, send SIGTERM to the process group so npm → node children all die.
+    """
+    if IS_WIN:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+            )
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    else:
+        # Try to kill the entire process group (handles npm → node chains)
+        try:
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        # Wait then force-kill if still alive
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+
 def _terminate_pid(pid: int, name: str, timeout: int = 5) -> bool:
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except Exception as e:
-        print(f"  Could not signal {name} ({pid}): {e}")
-        return False
-    start = time.time()
-    while time.time() - start < timeout:
-        if not _is_running(pid):
+    """Terminate a process by PID, with fallback to SIGKILL."""
+    if IS_WIN:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+            )
             return True
-        time.sleep(0.2)
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception:
-        pass
-    return not _is_running(pid)
+        except Exception as e:
+            print(f"  Could not kill {name} ({pid}): {e}")
+            return False
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception as e:
+            print(f"  Could not signal {name} ({pid}): {e}")
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            if not _is_running(pid):
+                return True
+            time.sleep(0.2)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
+        return not _is_running(pid)
 
 
 def _start_command(
@@ -387,25 +443,9 @@ def _start_command(
 
     def _shutdown(sig, frame):
         print("\nStopping Synapse...")
-        for proc in (frontend_proc, backend_proc):
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-        # Wait for graceful shutdown, then force-kill anything still running
-        deadline = time.time() + 5
-        for proc in (frontend_proc, backend_proc):
-            remaining = deadline - time.time()
-            try:
-                proc.wait(timeout=max(0, remaining))
-            except subprocess.TimeoutExpired:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=2)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+        # Kill full process trees — on Windows terminate() leaves node children alive
+        _kill_proc_tree(frontend_proc)
+        _kill_proc_tree(backend_proc)
         try:
             if BACKEND_PID_FILE.exists():
                 BACKEND_PID_FILE.unlink()

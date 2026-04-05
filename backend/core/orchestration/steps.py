@@ -227,8 +227,10 @@ class EvaluatorStepExecutor:
 
         settings = load_settings()
         routing_decision = None
-        # Per-step model override for evaluators
-        eval_model = step.model if step.model else settings.get("model", "mistral")
+        # Per-step model override for evaluators.
+        # Treat None, empty string, or "default" as "use the global default model".
+        _step_model = step.model if (step.model and step.model.strip().lower() not in ("", "default")) else None
+        eval_model = _step_model if _step_model else settings.get("model", "mistral")
         from core.llm_providers import detect_mode_from_model
         eval_mode = detect_mode_from_model(eval_model)
         try:
@@ -710,7 +712,9 @@ class LLMStepExecutor:
         }
 
         settings = load_settings()
-        model = step.model if step.model else settings.get("model", "mistral")
+        # Treat None, empty string, or "default" as "use the global default model".
+        _step_model = step.model if (step.model and step.model.strip().lower() not in ("", "default")) else None
+        model = _step_model if _step_model else settings.get("model", "mistral")
         mode = detect_mode_from_model(model)
 
         try:

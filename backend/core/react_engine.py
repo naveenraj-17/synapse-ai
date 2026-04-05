@@ -213,8 +213,11 @@ async def run_agent_step(
         system_prompt_text = system_prompt_text + "\n\n" + system_prompt_extra
 
     current_settings = load_settings()
-    # Per-agent model override: use agent's model if set, else fall back to default
+    # Per-agent model override: use agent's model if set, else fall back to default.
+    # Treat None, empty string, or "default" as "use the global default model".
     agent_model = active_agent.get("model")
+    if agent_model and agent_model.strip().lower() in ("", "default"):
+        agent_model = None
     current_model = agent_model if agent_model else current_settings.get("model", "mistral")
     # Auto-detect mode from model name instead of relying on global mode
     from core.llm_providers import detect_mode_from_model

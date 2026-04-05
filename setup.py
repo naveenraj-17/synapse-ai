@@ -5,6 +5,7 @@ Uses only Python stdlib so it works before the venv exists.
 """
 import json
 import os
+import signal
 import stat
 import platform
 import shutil
@@ -1603,21 +1604,48 @@ def _write_install_marker():
     ok(f"Install marker written.")
 
 
-def _show_already_installed_screen(install_dir):
-    """Print the 'already installed' banner and return whether the user wants to reconfigure."""
+def _handle_already_installed(install_dir):
+    """Git-pull the existing install, show start instructions, and exit."""
     print(f"\n{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
     print(f"{C.BOLD}{C.GREEN}   Synapse AI is already installed!{C.RESET}")
     print(f"{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
-    print(f"\n   Installed at: {_c(C.CYAN, install_dir)}\n")
-    info("To start Synapse, open a terminal and run:")
-    info(f"  {_c(C.CYAN, 'synapse start')}")
-    info("")
-    info("Other useful commands:")
-    info("  synapse stop      — stop running services")
-    info("  synapse status    — check service status")
-    info("  synapse restart   — restart services")
+    print(f"\n   Location: {_c(C.CYAN, install_dir)}\n")
+
+    # Pull latest changes
+    step("Updating Synapse AI")
+    try:
+        result = subprocess.run(
+            ["git", "-C", install_dir, "pull", "--ff-only"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if "Already up to date" in output:
+                ok("Already up to date — no changes.")
+            else:
+                ok("Updated to the latest version.")
+                if output:
+                    for line in output.splitlines():
+                        info(f"  {line}")
+        else:
+            warn(f"git pull exited with code {result.returncode}.")
+            if result.stderr.strip():
+                info(result.stderr.strip())
+    except FileNotFoundError:
+        warn("git not found — skipping update check.")
+    except Exception as e:
+        warn(f"Update check failed: {e}")
+
     print()
-    return ask_yn("Would you like to reconfigure or reinstall Synapse?", default="n")
+    print(f"{C.BOLD}To start Synapse:{C.RESET}")
+    print(f"   {_c(C.CYAN, 'synapse start')}")
+    print()
+    print(f"{C.DIM}Other commands:{C.RESET}")
+    print(f"   synapse stop      — stop running services")
+    print(f"   synapse status    — check service status")
+    print(f"   synapse restart   — restart services")
+    print()
+    sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
@@ -1865,15 +1893,12 @@ def main():
     print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
 
     # ------------------------------------------------------------------
-    # Already-installed guard — show helpful screen and ask to continue
+    # Already-installed: pull latest + show start instructions, then exit
     # ------------------------------------------------------------------
     already_installed, install_dir = _is_already_installed()
     if already_installed:
-        reconfigure = _show_already_installed_screen(install_dir)
-        if not reconfigure:
-            sys.exit(0)
-        warn("Continuing with reconfiguration — all steps will run again.")
-        print()
+        _handle_already_installed(install_dir)
+        # _handle_already_installed always calls sys.exit(0)
 
     check_python()
     check_npm()
@@ -1959,14 +1984,30 @@ def main():
                 break
     except KeyboardInterrupt:
         print("\nStopping servers...")
-        backend_proc.terminate()
-        if not IS_WIN:
-            try:
-                os.killpg(os.getpgid(frontend_proc.pid), 15)
-            except Exception:
-                frontend_proc.terminate()
+        if IS_WIN:
+            # terminate() only kills the outermost .cmd wrapper on Windows;
+            # taskkill /F /T kills the entire process tree (npm → node → next)
+            for proc in (frontend_proc, backend_proc):
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                    )
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
         else:
-            frontend_proc.terminate()
+            # Kill the whole process group so npm → node children all exit
+            for proc in (backend_proc, frontend_proc):
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
         print("Goodbye!")
         sys.exit(0)
 

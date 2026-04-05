@@ -307,25 +307,34 @@ function Start-SynapseSetup {
         Write-Host "   Synapse AI is already installed!" -ForegroundColor Green
         Write-Host "======================================================" -ForegroundColor Green
         Write-Host ""
-        Write-Host "   Installed at: $InstallDir" -ForegroundColor Cyan
+        Write-Host "   Location: $InstallDir" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "   To start Synapse, open a terminal and run:" -ForegroundColor White
-        Write-Host "     synapse start" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host "   Other commands:" -ForegroundColor White
-        Write-Host "     synapse stop      -- stop running services" -ForegroundColor Gray
-        Write-Host "     synapse status    -- check service status" -ForegroundColor Gray
-        Write-Host "     synapse restart   -- restart services" -ForegroundColor Gray
-        Write-Host ""
-        $reconfigure = Read-Host "Would you like to reconfigure or reinstall Synapse? (y/N)"
-        if ($reconfigure -notmatch "^[Yy]") {
-            Write-Host ""
-            Write-Host "Exiting. Synapse is ready to use." -ForegroundColor Green
-            exit 0
+
+        # Pull latest changes
+        Write-Host "Checking for updates..." -ForegroundColor Cyan
+        $pullResult = git -C $InstallDir pull --ff-only 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            if ($pullResult -match "Already up to date") {
+                Write-Host "[OK] Already up to date." -ForegroundColor Green
+            } else {
+                Write-Host "[OK] Updated to the latest version." -ForegroundColor Green
+                Write-Host $pullResult
+            }
+        } else {
+            Write-Host "[WARN] Could not pull latest changes:" -ForegroundColor Yellow
+            Write-Host $pullResult
         }
+
         Write-Host ""
-        Write-Host "Proceeding with reconfiguration..." -ForegroundColor Yellow
+        Write-Host "To start Synapse, open a terminal and run:" -ForegroundColor White
+        Write-Host "  synapse start" -ForegroundColor Cyan
         Write-Host ""
+        Write-Host "Other commands:" -ForegroundColor Gray
+        Write-Host "  synapse stop      -- stop running services" -ForegroundColor Gray
+        Write-Host "  synapse status    -- check service status" -ForegroundColor Gray
+        Write-Host "  synapse restart   -- restart services" -ForegroundColor Gray
+        Write-Host ""
+        exit 0
     }
 
     Invoke-PrerequisitesCheck
