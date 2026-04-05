@@ -14,6 +14,8 @@ import webbrowser
 import argparse
 from pathlib import Path
 
+IS_WIN = sys.platform == "win32"
+
 PACKAGE_DIR = Path(__file__).resolve().parent
 # When installed as a package, backend is one level up from synapse/
 BACKEND_DIR = PACKAGE_DIR.parent / "backend"
@@ -28,7 +30,7 @@ ROOT_DIR = PACKAGE_DIR.parent
 _ENV_FILE = ROOT_DIR / ".env"
 
 def _load_dotenv(path: Path):
-    """Minimal .env loader — only sets vars that are NOT already in the environment."""
+    """Minimal .env loader -- only sets vars that are NOT already in the environment."""
     if not path.exists():
         return
     try:
@@ -44,7 +46,7 @@ def _load_dotenv(path: Path):
                 if _key and _key not in os.environ:
                     os.environ[_key] = _val
     except Exception:
-        pass  # non-fatal — env vars can still be set manually
+        pass  # non-fatal -- env vars can still be set manually
 
 _load_dotenv(_ENV_FILE)
 
@@ -58,10 +60,10 @@ if not os.path.isabs(_raw_data_dir):
 else:
     DATA_DIR = Path(_raw_data_dir).resolve()
 
-DEFAULT_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
+DEFAULT_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 DEFAULT_FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))
 
-# Runtime ports (may be overridden by CLI args — module-level aliases kept for
+# Runtime ports (may be overridden by CLI args -- module-level aliases kept for
 # backwards compatibility; actual values are resolved in _start_command)
 BACKEND_PORT = DEFAULT_BACKEND_PORT
 FRONTEND_PORT = DEFAULT_FRONTEND_PORT
@@ -79,12 +81,92 @@ BACKEND_PID_FILE = DATA_DIR / "backend.pid"
 FRONTEND_PID_FILE = DATA_DIR / "frontend.pid"
 
 
+def _find_node_exe_win():
+    """Windows: find node.exe by probing known install locations (bypasses stale PATH cache).
+    Returns (node_exe_path, bin_dir) or (None, None)."""
+    import os as _os
+    pf   = _os.environ.get("ProgramFiles",       r"C:\Program Files")
+    pf86 = _os.environ.get("ProgramFiles(x86)",  r"C:\Program Files (x86)")
+    lad  = _os.environ.get("LocalAppData",        "")
+    appd = _os.environ.get("APPDATA",             "")
+
+    candidates = []
+    # Standard install dirs
+    for d in [
+        _os.path.join(pf,   "nodejs"),
+        _os.path.join(pf86, "nodejs"),
+        _os.path.join(lad,  "Programs", "nodejs"),
+        _os.path.join(lad,  "nodejs"),
+    ]:
+        exe = _os.path.join(d, "node.exe")
+        if _os.path.isfile(exe):
+            candidates.append((exe, d))
+    # nvm-windows
+    nvm_root = _os.path.join(appd, "nvm")
+    if _os.path.isdir(nvm_root):
+        for entry in sorted(_os.listdir(nvm_root), reverse=True):
+            exe = _os.path.join(nvm_root, entry, "node.exe")
+            if _os.path.isfile(exe):
+                candidates.append((exe, _os.path.join(nvm_root, entry)))
+    # PATH entries
+    for entry in _os.environ.get("PATH", "").split(_os.pathsep):
+        exe = _os.path.join(entry.strip(), "node.exe")
+        if _os.path.isfile(exe):
+            candidates.append((exe, entry.strip()))
+
+    MIN = (20, 9, 0)
+    for node_exe, bin_dir in candidates:
+        try:
+            r = subprocess.run([node_exe, "--version"], capture_output=True, text=True, timeout=5)
+            ver_str = r.stdout.strip().lstrip("v")
+            ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+            if ver_tuple >= MIN:
+                return node_exe, bin_dir
+        except Exception:
+            pass
+    return None, None
+
+
+def _ensure_node_in_path_win():
+    """Windows: make sure the Node.js bin dir is in PATH for this process.
+    Returns True if a suitable node was found and PATH was updated."""
+    node_exe, bin_dir = _find_node_exe_win()
+    if node_exe:
+        if bin_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+        return True
+    return False
+
+
+def _npm_command():
+    """Return the correct npm executable for the current OS.
+    On Windows, 'npm' is a .cmd file and must be invoked explicitly or via shell."""
+    if IS_WIN:
+        # npm.cmd is the real entry-point on Windows; avoids needing shell=True
+        npm_cmd = shutil.which("npm.cmd") or shutil.which("npm")
+        if npm_cmd:
+            return npm_cmd
+        # Fallback: look next to node.exe
+        node_exe, bin_dir = _find_node_exe_win()
+        if bin_dir:
+            npm_candidate = os.path.join(bin_dir, "npm.cmd")
+            if os.path.isfile(npm_candidate):
+                return npm_candidate
+        return "npm"
+    return "npm"
+
+
 def check_prerequisites():
     errors = []
-    if shutil.which("node") is None:
-        errors.append("node not found — install Node.js from https://nodejs.org/")
-    if shutil.which("npm") is None:
-        errors.append("npm not found — install Node.js from https://nodejs.org/")
+    if IS_WIN:
+        # On Windows, PATH may be stale after a fresh install -- probe directly
+        if not _ensure_node_in_path_win():
+            errors.append("Node.js 20.9.0+ not found -- install from https://nodejs.org/ and re-run.")
+    else:
+        if shutil.which("node") is None:
+            errors.append("node not found -- install Node.js from https://nodejs.org/")
+        if shutil.which("npm") is None:
+            errors.append("npm not found -- install Node.js from https://nodejs.org/")
     if shutil.which("ollama") is None:
         print("Warning: ollama not found. Local models won't work; cloud API models (Anthropic, OpenAI, Gemini) still work.")
     if errors:
@@ -145,8 +227,9 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
             kwargs["preexec_fn"] = os.setsid
         else:
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    npm = _npm_command()
     return subprocess.Popen(
-        ["npm", "start", "--", "-p", str(_frontend_port), "-H", "0.0.0.0"],
+        [npm, "start"],
         cwd=str(FRONTEND_DIR),
         env=env,
         **kwargs,
@@ -201,22 +284,78 @@ def _is_running(pid: int) -> bool:
     return True
 
 
+def _kill_proc_tree(proc: subprocess.Popen, timeout: int = 5) -> None:
+    """Kill a process AND all its descendants.
+
+    On Windows, terminate() only kills the outermost batch wrapper (.cmd);
+    child node.exe processes become orphans.  taskkill /F /T kills the whole
+    process tree including every grandchild.
+
+    On Unix, send SIGTERM to the process group so npm -> node children all die.
+    """
+    if IS_WIN:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+            )
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    else:
+        # Try to kill the entire process group (handles npm -> node chains)
+        try:
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        # Wait then force-kill if still alive
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+
 def _terminate_pid(pid: int, name: str, timeout: int = 5) -> bool:
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except Exception as e:
-        print(f"  Could not signal {name} ({pid}): {e}")
-        return False
-    start = time.time()
-    while time.time() - start < timeout:
-        if not _is_running(pid):
+    """Terminate a process by PID, with fallback to SIGKILL."""
+    if IS_WIN:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+            )
             return True
-        time.sleep(0.2)
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except Exception:
-        pass
-    return not _is_running(pid)
+        except Exception as e:
+            print(f"  Could not kill {name} ({pid}): {e}")
+            return False
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception as e:
+            print(f"  Could not signal {name} ({pid}): {e}")
+            return False
+        start = time.time()
+        while time.time() - start < timeout:
+            if not _is_running(pid):
+                return True
+            time.sleep(0.2)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
+        return not _is_running(pid)
 
 
 def _start_command(
@@ -304,25 +443,9 @@ def _start_command(
 
     def _shutdown(sig, frame):
         print("\nStopping Synapse...")
-        for proc in (frontend_proc, backend_proc):
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-        # Wait for graceful shutdown, then force-kill anything still running
-        deadline = time.time() + 5
-        for proc in (frontend_proc, backend_proc):
-            remaining = deadline - time.time()
-            try:
-                proc.wait(timeout=max(0, remaining))
-            except subprocess.TimeoutExpired:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=2)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+        # Kill full process trees -- on Windows terminate() leaves node children alive
+        _kill_proc_tree(frontend_proc)
+        _kill_proc_tree(backend_proc)
         try:
             if BACKEND_PID_FILE.exists():
                 BACKEND_PID_FILE.unlink()

@@ -21,6 +21,6 @@ sys.path.append(current_dir)
 from core.server import app
 
 if __name__ == "__main__":
-    port = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
+    port = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
     print(f"Starting Backend Agent Server from {current_dir} on port {port}...")
     uvicorn.run("core.server:app", host="0.0.0.0", port=port)

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles, Gift } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
@@ -167,7 +167,7 @@ const TIPS = [
     icon: <Wrench className="h-5 w-5 text-sky-400" />,
     tag: 'Custom Tools',
     title: 'Extend with custom tools',
-    desc: 'Add Python functions as tools your agents can call — web search, database queries, APIs, file operations — anything your workflow needs.',
+    desc: 'Add Python functions, n8n workflows, or custom APIs as tools your agents can call — web search, database queries, file operations — anything your workflow needs.',
     accent: 'from-sky-500/10 to-transparent border-sky-800/40',
     tagColor: 'text-sky-400 bg-sky-950/60 border-sky-800/50',
   },
@@ -199,14 +199,14 @@ const TIPS = [
     icon: <Sparkles className="h-5 w-5 text-purple-400" />,
     tag: 'Pro Tips',
     title: 'Get the most from Synapse AI',
-    desc: 'Use @ to mention context, attach images for vision tasks, switch agents mid-conversation, or orchestrate complex multi-step workflows — all from one chat interface.',
+    desc: 'Attach images for vision tasks, switch agents mid-conversation, or orchestrate complex multi-step workflows — all from one chat interface.',
     accent: 'from-purple-500/10 to-transparent border-purple-800/40',
     tagColor: 'text-purple-400 bg-purple-950/60 border-purple-800/50',
   },
 ];
 
 // ─── Welcome Screen ──────────────────────────────────────────────────────────
-function WelcomeScreen({ agentName, onPrompt, onNavigate }: { agentName: string; onPrompt: (text: string) => void; onNavigate: (path: string) => void }) {
+function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, onDismissBanner }: { agentName: string; onPrompt: (text: string) => void; onNavigate: (path: string) => void; showExamplesBanner: boolean; onDismissBanner: () => void; }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -221,25 +221,56 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate }: { agentName: string;
   }, [isPaused]);
 
   const PILLS = [
-    { label: '🤖 Build an agent',     path: '/settings/agents' },
-    { label: '🔧 Add a tool',         path: '/settings/custom_tools' },
+    { label: '🤖 Build an agent', path: '/settings/agents' },
+    { label: '🔧 Add a tool', path: '/settings/custom_tools' },
     { label: '🔗 Orchestrate agents', path: '/settings/orchestrations' },
-    { label: '🌐 Connect MCP',        path: '/settings/mcp_servers' },
-    { label: '⏰ Schedule a task',    path: '/settings/schedules' },
+    { label: '🌐 Connect MCP', path: '/settings/mcp_servers' },
+    { label: '⏰ Schedule a task', path: '/settings/schedules' },
   ];
 
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[calc(100vh-56px)] px-4 pb-36 pt-10 select-none">
+      {/* ── Welcome Examples Banner (12-day, session-dismissible) ── */}
+      {showExamplesBanner && (
+        <div className="w-full max-w-xl mb-8 flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-violet-950/90 via-purple-950/90 to-violet-950/90 border border-violet-800/40 rounded-sm backdrop-blur-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <Gift className="h-4 w-4 text-violet-400 shrink-0" />
+            <p className="text-[12px] text-violet-200 font-mono truncate">
+              <span className="font-bold">Welcome to Synapse AI!</span>
+              <span className="text-violet-400 mx-2">·</span>
+              Import example agents, orchestrations &amp; MCP servers to hit the ground running.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              id="examples-banner-link"
+              onClick={() => onNavigate('/settings/import_export?tab=examples')}
+              className="flex items-center gap-1 px-3 py-1 text-[11px] font-bold uppercase tracking-wider bg-violet-600 hover:bg-violet-500 text-white transition-colors rounded-sm cursor-pointer"
+            >
+              <Sparkles className="h-3 w-3" /> Browse Examples
+            </button>
+            <button
+              id="examples-banner-close"
+              onClick={onDismissBanner}
+              className="p-1 text-violet-400 hover:text-white transition-colors cursor-pointer"
+              aria-label="Dismiss banner"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Greeting */}
       <div className="mb-2 flex items-center gap-2">
         <div className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_8px_#4ade80] animate-pulse" />
         <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-zinc-500">{agentName}&nbsp;· Ready</span>
       </div>
       <h2 className="text-3xl md:text-4xl font-bold text-zinc-100 tracking-tight mb-1 text-center">
-        What can I help you build?
+        What can I help you Achieve?
       </h2>
       <p className="text-zinc-500 text-sm mb-10 text-center font-mono">
-        Synapse AI — Agents that think, tools that act
+        Synapse AI — Agents that work together to get things done
       </p>
 
       {/* Tips Carousel */}
@@ -332,6 +363,9 @@ export default function Home() {
   // Attached images (max 5)
   const [attachedImages, setAttachedImages] = useState<{ preview: string; base64: string }[]>([]);
 
+  // Welcome banner — shown for 12 days from installation date, dismissible per session
+  const [showExamplesBanner, setShowExamplesBanner] = useState(false);
+
   // Accumulate LLM thoughts per active step during streaming
   const pendingThoughtsRef = useRef<string[]>([]);
 
@@ -405,10 +439,22 @@ export default function Home() {
 
   // Initialize Application State — always start fresh, only restore last agent
   useEffect(() => {
-    // 1. Get Agent Name
+    // 1. Get Agent Name + check installation date for banner
     fetch('/api/settings')
       .then(r => r.json())
-      .then(d => setAgentName(d.agent_name || 'System Agent'))
+      .then(d => {
+        setAgentName(d.agent_name || 'System Agent');
+        // Show example banner if installed_at exists and within 12 days
+        if (d.installed_at) {
+          const installedMs = new Date(d.installed_at).getTime();
+          const twelvedays = 12 * 24 * 60 * 60 * 1000;
+          if (Date.now() - installedMs < twelvedays) {
+            setShowExamplesBanner(true);
+          }
+        } else {
+          setShowExamplesBanner(true);
+        }
+      })
       .catch(() => setAgentName('Offline'));
 
     // 2. Restore last used agent (without restoring chat history)
@@ -1194,9 +1240,16 @@ export default function Home() {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar relative">
+
           {messages.length === 0 && !isLoading ? (
             /* ── Welcome Screen ── */
-            <WelcomeScreen agentName={agentName} onPrompt={(text) => { setInput(text); setTimeout(() => textareaRef.current?.focus(), 50); }} onNavigate={(path) => router.push(path)} />
+            <WelcomeScreen
+              agentName={agentName}
+              onPrompt={(text) => { setInput(text); setTimeout(() => textareaRef.current?.focus(), 50); }}
+              onNavigate={(path) => router.push(path)}
+              showExamplesBanner={showExamplesBanner}
+              onDismissBanner={() => setShowExamplesBanner(false)}
+            />
           ) : (
             <div className="p-6 pb-36">
               <div className="w-full md:max-w-5xl mx-auto space-y-6">

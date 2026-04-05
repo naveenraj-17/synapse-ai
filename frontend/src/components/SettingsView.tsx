@@ -33,7 +33,7 @@ import { SchedulesTab } from './settings/SchedulesTab';
 import { ImportExportTab } from './settings/ImportExportTab';
 
 
-export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }) => {
+export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { agents, mcpServers, customTools, models: rModels, initialized } = useSelector((state: RootState) => state.settings);
 
@@ -837,7 +837,7 @@ export const SettingsView = ({ initialTab = 'general' }: { initialTab?: string }
                             <h1 className="text-3xl font-bold mb-2 text-zinc-50">Import / Export</h1>
                             <p className="text-zinc-500 text-sm">Export your orchestrations, agents, MCP servers, and tools as a portable bundle, or import one from another Synapse instance.</p>
                         </div>
-                        <ImportExportTab />
+                        <ImportExportTab defaultView={initialSubTab === 'examples' ? 'examples' : undefined} />
                     </div>
                 </div>
             )}

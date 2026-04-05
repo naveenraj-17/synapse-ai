@@ -15,11 +15,11 @@ services:
       - ./backend/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "8000:8000"
+      - "8765:8765"
     extra_hosts:
       - "host-gateway:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      test: ["CMD", "curl", "-f", "http://localhost:8765/docs"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,12 +30,12 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        BACKEND_URL: http://synapse-backend:8000
+        BACKEND_URL: http://synapse-backend:8765
     container_name: synapse-frontend
     env_file:
       - .env
     environment:
-      - BACKEND_URL=http://synapse-backend:8000
+      - BACKEND_URL=http://synapse-backend:8765
     ports:
       - "3000:3000"
     depends_on:

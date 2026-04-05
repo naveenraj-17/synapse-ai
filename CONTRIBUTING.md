@@ -8,7 +8,7 @@
 git clone https://github.com/naveenraj-17/synapse
 cd synapse
 bash setup.sh      # installs all dependencies
-bash start.sh      # starts backend (port 8000) + frontend (port 3000)
+bash start.sh      # starts backend (port 8765) + frontend (port 3000)
 ```
 
 Or manually:
@@ -47,7 +47,7 @@ frontend/
   src/components/      # React components
 ```
 
-**Frontend ↔ Backend:** The Next.js dev server proxies `/api/*` and `/auth/*` to `http://127.0.0.1:8000` via `next.config.ts` rewrites. Server-side API routes use the `BACKEND_URL` environment variable (default `http://127.0.0.1:8000`).
+**Frontend ↔ Backend:** The Next.js dev server proxies `/api/*` and `/auth/*` to `http://127.0.0.1:8765` via `next.config.ts` rewrites. Server-side API routes use the `BACKEND_URL` environment variable (default `http://127.0.0.1:8765`).
 
 **Data directory:** All user data is stored in `SYNAPSE_DATA_DIR` (default `backend/data/` in dev, `~/.synapse/data/` in packaged installs). Never hardcode paths relative to `__file__` — always read from `core.config.DATA_DIR`.
 

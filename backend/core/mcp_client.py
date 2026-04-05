@@ -51,7 +51,7 @@ MCP_TOKENS_DIR   = os.path.join(DATA_DIR, "mcp_tokens")
 
 # Redirect URI registered with OAuth servers.
 # Reads SYNAPSE_BACKEND_PORT from env so it matches the running port.
-_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
+_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 OAUTH_CALLBACK_URL = f"http://localhost:{_BACKEND_PORT}/api/mcp/oauth/callback"
 
 

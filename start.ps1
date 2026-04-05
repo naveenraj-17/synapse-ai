@@ -96,9 +96,9 @@ try {
         return $false
     }
 
-    # Check and start Backend (Port 8000)
+    # Check and start Backend (Port 8765)
     Write-Host "Checking Backend..."
-    if (-not (Test-Port 8000)) {
+    if (-not (Test-Port 8765)) {
         Write-Host "Starting Backend..."
         $BackendJob = Start-Job -ScriptBlock {
             param($Dir, $PyCmd)
@@ -111,7 +111,7 @@ try {
     }
 
     # Always wait for backend
-    Wait-ForUrl "http://localhost:8000/api/status" "Backend"
+    Wait-ForUrl "http://localhost:8765/api/status" "Backend"
 
     # Check and start Frontend (Port 3000)
     Write-Host "Checking Frontend..."

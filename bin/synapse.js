@@ -18,7 +18,7 @@ const VENV_DIR = path.join(SYNAPSE_HOME, 'venv');
 const DATA_DIR = process.env.SYNAPSE_DATA_DIR || path.join(SYNAPSE_HOME, 'data');
 const HASH_FILE = path.join(SYNAPSE_HOME, 'requirements.hash');
 
-const BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8000');
+const BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8765');
 const FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
 
 // ── Prerequisite checks ───────────────────────────────────────────────────────

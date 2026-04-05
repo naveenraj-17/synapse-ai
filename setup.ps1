@@ -271,15 +271,15 @@ function Show-PostgresInstructions {
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
     Write-Host "1. Download the installer from:"
     Write-Host "   https://www.postgresql.org/download/windows/"
-    Write-Host "2. Run the installer and follow the prompts."
-    Write-Host "3. CRITICAL: Add the PostgreSQL bin directory to your PATH:"
-    Write-Host "   - Open 'Edit the system environment variables'"
+    Write-Host "2. Run the installer and follow the on-screen prompts."
+    Write-Host "3. IMPORTANT: Add the PostgreSQL bin directory to your System PATH:"
+    Write-Host "   - Search for 'Edit the system environment variables' in the Start menu"
     Write-Host "   - Click 'Environment Variables'"
     Write-Host "   - Under 'System variables', find 'Path' and click 'Edit'"
-    Write-Host "   - Click 'New' and add the path (e.g., C:\Program Files\PostgreSQL\15\bin)"
-    Write-Host "4. Verify the installation by opening a NEW terminal and running:"
-    Write-Host "   psql --version"
-    Write-Host "   Make sure it returns a version before trying setup again."
+    Write-Host "   - Click 'New' and add the bin path (e.g. C:\Program Files\PostgreSQL\17\bin)"
+    Write-Host "4. Restart your terminal so the updated PATH takes effect."
+    Write-Host "5. Verify the installation by running: psql --version"
+    Write-Host "   Make sure it prints a version number before continuing."
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
 }
@@ -290,38 +290,165 @@ function Show-PostgresInstructions {
 function Start-SynapseSetup {
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host "   Synapse AI - Repository Setup" -ForegroundColor Cyan
+    Write-Host "   Synapse AI - Setup" -ForegroundColor Cyan
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
+
+    # Fixed install location — always the same regardless of where the user runs this script
+    $InstallDir  = "$env:LOCALAPPDATA\Programs\SynapseAI"
+    $MarkerFile  = "$InstallDir\.installed"
+
+    # -----------------------------------------------------------------------
+    # Already-installed check
+    # -----------------------------------------------------------------------
+    if (Test-Path $MarkerFile) {
+        Write-Host ""
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host "   Synapse AI is already installed!" -ForegroundColor Green
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "   Location: $InstallDir" -ForegroundColor Cyan
+        Write-Host ""
+
+        # ---------------------------------------------------------------
+        # 1. Stop any running services
+        # ---------------------------------------------------------------
+        Write-Host "==> Stopping running services..." -ForegroundColor Cyan
+        $SynapseBat = Join-Path $InstallDir "bin\synapse.bat"
+        if (Test-Path $SynapseBat) {
+            try {
+                & $SynapseBat stop 2>&1 | Out-Null
+                Write-Host "[OK] Services stopped." -ForegroundColor Green
+            } catch {
+                Write-Host "[WARN] Could not run synapse stop cleanly." -ForegroundColor Yellow
+            }
+        }
+        # Fallback: kill via PID files
+        $RunDir = Join-Path $InstallDir "run"
+        foreach ($pidFile in @("backend.pid", "frontend.pid")) {
+            $pidPath = Join-Path $RunDir $pidFile
+            if (Test-Path $pidPath) {
+                try {
+                    $pid = [int](Get-Content $pidPath -ErrorAction SilentlyContinue)
+                    taskkill /F /T /PID $pid 2>&1 | Out-Null
+                    Remove-Item $pidPath -Force -ErrorAction SilentlyContinue
+                    Write-Host "[OK] Stopped PID $pid ($pidFile)." -ForegroundColor Green
+                } catch {
+                    Write-Host "[WARN] Could not stop $pidFile process." -ForegroundColor Yellow
+                }
+            }
+        }
+        Start-Sleep -Seconds 2
+
+        # ---------------------------------------------------------------
+        # 2. Pull latest changes
+        # ---------------------------------------------------------------
+        Write-Host ""
+        Write-Host "==> Pulling latest changes..." -ForegroundColor Cyan
+        $pullResult = git -C $InstallDir pull --ff-only 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            if ($pullResult -match "Already up to date") {
+                Write-Host "[OK] Already up to date -- no code changes." -ForegroundColor Green
+            } else {
+                Write-Host "[OK] Updated to the latest version." -ForegroundColor Green
+                Write-Host $pullResult
+            }
+        } else {
+            Write-Host "[WARN] Could not pull latest changes:" -ForegroundColor Yellow
+            Write-Host $pullResult
+        }
+
+        # ---------------------------------------------------------------
+        # 3. Rebuild via setup.py (backend + frontend)
+        # ---------------------------------------------------------------
+        Write-Host ""
+        Write-Host "==> Rebuilding Synapse AI..." -ForegroundColor Cyan
+        $SetupScript = Join-Path $InstallDir "setup.py"
+
+        # We need Python and Node to be available for the rebuild.
+        # Run a lightweight prerequisite check (no install, just detect).
+        Invoke-PrerequisitesCheck
+
+        # Invoke setup.py with the --upgrade flag so it skips the wizard
+        # and goes straight to rebuild.
+        if ($global:PYTHON_CMD -match " ") {
+            $parts = $global:PYTHON_CMD -split " "
+            & $parts[0] $parts[1..($parts.Length - 1)] $SetupScript --upgrade
+        } else {
+            & $global:PYTHON_CMD $SetupScript --upgrade
+        }
+
+        # ---------------------------------------------------------------
+        # 4. Show instructions
+        # ---------------------------------------------------------------
+        Write-Host ""
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host "   Synapse AI has been updated and rebuilt!" -ForegroundColor Green
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "To start Synapse:" -ForegroundColor White
+        Write-Host "  synapse start" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Other commands:" -ForegroundColor Gray
+        Write-Host "  synapse stop      -- stop running services" -ForegroundColor Gray
+        Write-Host "  synapse status    -- check service status" -ForegroundColor Gray
+        Write-Host "  synapse restart   -- restart services" -ForegroundColor Gray
+        Write-Host ""
+        exit 0
+    }
 
     Invoke-PrerequisitesCheck
 
     $RepoUrl = "https://github.com/naveenraj-17/synapse-ai.git"
-    $DestDir = "synapse-ai"
 
-    if (Test-Path "$DestDir\.git") {
+    # Clone or update at the fixed install location
+    if (Test-Path (Join-Path $InstallDir ".git")) {
         Write-Host ""
-        Write-Host "Repository already exists at .\$DestDir -- pulling latest..."
-        git -C $DestDir pull --ff-only
+        Write-Host "Repository found at $InstallDir -- pulling latest changes..."
+        git -C $InstallDir pull --ff-only
     } else {
         Write-Host ""
-        Write-Host "Cloning Synapse AI..."
-        git clone $RepoUrl $DestDir
+        Write-Host "Installing Synapse AI to: $InstallDir"
+        # Create parent directory if needed
+        $ParentDir = Split-Path $InstallDir -Parent
+        if (-not (Test-Path $ParentDir)) {
+            New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null
+        }
+        git clone $RepoUrl $InstallDir
     }
 
-    if (Test-Path $DestDir) {
-        Set-Location $DestDir
+    if (Test-Path $InstallDir) {
         Write-Host ""
-        
-        # We need to handle cases where the command has arguments like "py -3.11"
+        $SetupScript = Join-Path $InstallDir "setup.py"
+
+        # Handle cases where Python command has arguments (e.g. "py -3.11")
         if ($global:PYTHON_CMD -match " ") {
             $parts = $global:PYTHON_CMD -split " "
-            & $parts[0] $parts[1..($parts.Length-1)] setup.py
+            & $parts[0] $parts[1..($parts.Length-1)] $SetupScript
         } else {
-            & $global:PYTHON_CMD setup.py
+            & $global:PYTHON_CMD $SetupScript
         }
+
+        # Add the synapse bin dir to the PowerShell profile for future sessions
+        $BinDir      = Join-Path $InstallDir "bin"
+        $ProfileFile = $PROFILE.CurrentUserAllHosts
+        if (-not (Test-Path $ProfileFile)) {
+            New-Item -ItemType File -Path $ProfileFile -Force | Out-Null
+        }
+        $ProfileContent = Get-Content $ProfileFile -Raw -ErrorAction SilentlyContinue
+        if ($ProfileContent -notlike "*SynapseAI*") {
+            Add-Content -Path $ProfileFile -Value "`n# Synapse AI`n`$env:Path = `"$BinDir;`$env:Path`""
+            Write-Host "[OK] Added Synapse to PowerShell profile ($ProfileFile)" -ForegroundColor Green
+        }
+
+        Write-Host ""
+        Write-Host "========================================================" -ForegroundColor Green
+        Write-Host "   Synapse AI setup complete!" -ForegroundColor Green
+        Write-Host "   To start Synapse:  synapse start" -ForegroundColor Cyan
+        Write-Host "   Installed at:      $InstallDir" -ForegroundColor Cyan
+        Write-Host "========================================================" -ForegroundColor Green
     } else {
-        throw "Could not find repository directory: $DestDir"
+        throw "Could not find installation directory: $InstallDir"
     }
 }
 

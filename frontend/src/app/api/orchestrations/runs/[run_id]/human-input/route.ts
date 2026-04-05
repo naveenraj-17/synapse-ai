@@ -3,9 +3,9 @@ import * as http from 'http';
 import { Readable } from 'stream';
 import { URL } from 'url';
 
-const _backendUrl = new URL(process.env.BACKEND_URL || 'http://127.0.0.1:8000');
+const _backendUrl = new URL(process.env.BACKEND_URL || 'http://127.0.0.1:8765');
 const BACKEND_HOST = _backendUrl.hostname;
-const BACKEND_PORT = parseInt(_backendUrl.port || '8000', 10);
+const BACKEND_PORT = parseInt(_backendUrl.port || '8765', 10);
 
 export const maxDuration = 600;
 export const dynamic = 'force-dynamic';

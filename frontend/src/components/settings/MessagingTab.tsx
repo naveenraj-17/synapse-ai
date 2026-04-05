@@ -105,7 +105,7 @@ const SETUP_GUIDES: Record<Platform, { title: string; steps: string[] }> = {
         steps: [
             'Go to portal.azure.com → Create a resource → Azure Bot',
             'Set the Messaging endpoint to: https://<your-ngrok-url>/api/messaging/teams/webhook/<channel-id>',
-            'For local dev, run: ngrok http 8000  and use the Forwarding URL',
+            'For local dev, run: ngrok http 8765  and use the Forwarding URL',
             'Note: only the Synapse backend needs the public URL — your frontend is unaffected',
             'In the bot Configuration, copy the Microsoft App ID',
             'In Certificates & Secrets, create a new client secret and copy it',

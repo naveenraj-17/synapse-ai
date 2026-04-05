@@ -51,6 +51,10 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 
 - **ReAct reasoning engine** — agents think, act, observe, and iterate up to 30 turns per task
 - **8 built-in tool servers** ready to use out of the box
+- **Advanced Python Tool** — dynamically write and execute Python code in a secure sandbox
+- **Schedule Agents** — trigger agents and orchestrations automatically using a cron schedule
+- **Messaging Apps** — effortlessly connect agents to messaging platforms like Slack and Discord
+- **Import & Export** — portably share orchestrations, agents, and MCP server configs
 - **Plug in any MCP server** — local stdio or remote HTTP, added in seconds via the UI
 - **Build custom tools with n8n** — turn any automation workflow into an agent tool with zero code
 - **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
@@ -109,23 +113,7 @@ Connect to any MCP server over the network — no code needed. Synapse supports 
 5. **Bearer Token / PAT** — leave empty to use OAuth (a browser window will open for authorization), or paste a personal access token for PAT-based servers (GitHub, Figma)
 6. Click **Connect Server**
 
-Synapse prefixes external tools with `ext_mcp_` to prevent naming collisions. Any MCP-compatible API becomes an agent tool instantly.
-
-**Built-in remote presets:**
-
-| Preset | URL | Auth |
-|---|---|---|
-| Vercel | `https://mcp.vercel.com` | OAuth |
-| GitHub Copilot | `https://api.githubcopilot.com/mcp/` | PAT (`GITHUB_PERSONAL_ACCESS_TOKEN`) |
-| Jira | `https://mcp.atlassian.com/v1/mcp` | OAuth |
-| Zapier | `https://mcp.zapier.com/api/mcp/mcp` | OAuth |
-| Figma | `https://mcp.figma.com/mcp` | PAT (`FIGMA_PERSONAL_ACCESS_TOKEN`) |
-| Fetch | `https://remote.mcpservers.org/fetch/mcp` | None |
-
-**Examples you can add manually:**
-- Zerodha (stock trading): `https://mcp.kite.trade/mcp`
-- GitHub, Linear, Notion, Slack, Stripe — any service with an MCP endpoint
-- Your own self-hosted MCP server
+Synapse prefixes external tools with `<server-unique-name>__` followed by the tool name to prevent naming collisions. Any MCP-compatible API becomes an agent tool instantly.
 
 Find more on the [MCP servers registry](https://github.com/modelcontextprotocol/servers).
 
@@ -140,15 +128,15 @@ Arguments: mcp-server-git
 
 Use the **Git** preset to auto-fill this. Add environment variables (API keys, secrets) directly in the form — no config file editing required.
 
-### Custom Tools via n8n
+### Custom Tools (n8n & Python)
 
-Turn any automation workflow into an agent tool — without writing code.
+Turn any automation workflow or Python logic into an agent tool.
 
-1. Build a workflow in n8n (or any webhook-compatible tool)
+1. Build a workflow in n8n (or any webhook-compatible tool), or expose an API via a Python program
 2. Add it to Synapse in **Settings → Custom Tools**
 3. Your agent now has that tool — it sees the name, description, and schema, and calls it like any other tool
 
-This is the fastest way to give agents access to internal APIs, proprietary systems, or multi-step processes that you've already automated. n8n's 400+ node library becomes your agent's extended toolkit.
+This is the fastest way to give agents access to internal APIs, proprietary systems, or multi-step processes that you've already automated. n8n's 400+ node library or your own custom Python logic becomes your agent's extended toolkit.
 
 ---
 
@@ -184,14 +172,14 @@ Create specialized agents in **Settings → Agents**. Each agent is an independe
 }
 ```
 
-### Example: Stock Agent
+### Example: Developer Agent
 
 ```json
 {
-  "name": "NSE Stock Agent",
-  "description": "Intraday analysis and portfolio management",
-  "tools": ["ext_mcp_zerodha_*", "parse_pdf", "execute_python", "vault_write", "get_datetime"],
-  "system_prompt": "You are a quantitative trader. Access live market data, analyze positions, run calculations in Python, and provide actionable trading insights."
+  "name": "Strict Developer",
+  "description": "Writes production-ready code, creates APIs, and runs self-correcting tests",
+  "tools": ["execute_python", "mcp_github", "mcp_slack", "vault_write", "vault_read"],
+  "system_prompt": "You are a senior backend engineer. Write robust, functional code, execute it using the Python tool to verify logic, and save the final output to the vault."
 }
 ```
 
@@ -309,6 +297,36 @@ The included "Stock Intraday Trading" orchestration shows how to combine market 
 
 ---
 
+## Schedules
+
+Automate agent and orchestration runs on a recurring schedule.
+
+- **Interval** — run every N minutes/hours/days (e.g. monitor a feed, poll an API)
+- **Cron / Fixed Time** — run at specific times (e.g. every day at 9 AM for a morning standup report)
+- **Prompt** — The prompt is what the agent will receive each time the schedule fires. Think of it as a standing instruction.
+- **Messaging notifications** — If the selected agent has a connected messaging channel (Slack, Telegram, etc.), the result is sent there automatically after each run.
+
+---
+
+## Messaging
+
+Connect your agents to Telegram, Discord, Slack, Teams, or WhatsApp.
+
+Enable **Multi-Agent Mode** in a channel so users can switch agents mid-chat using `/agent <name>` and list them with `/agents`. The channel's bound agent is the default.
+
+---
+
+## Import / Export
+
+Export your orchestrations, agents, MCP servers, and tools as a portable bundle, or import one from another Synapse instance.
+
+**Example Packs:** Synapse includes curated collections of agents, orchestrations, and MCP servers. Select a pack to preview what will be imported before committing:
+- **Starter Pack** — Get up and running fast, includes a Personal Assistant with full tool access and a Web Research Agent.
+- **Developer Pack** — Built for engineering teams, includes a Code Review Agent, Software Engineer Agent, QA Engineer, and a Dev base orchestration.
+- **Productivity Pack** — Business and content power-users, includes a Data Analyst, Content Writer, Jira Analyst, Slack Notifier.
+
+---
+
 ## Configuration
 
 ### Supported LLM Providers
@@ -335,9 +353,9 @@ cp .env.example .env
 |---|---|---|
 | `SYNAPSE_DATA_DIR` | `~/.synapse/data` | Where agents store files, memory, and state |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local Ollama endpoint |
-| `SYNAPSE_BACKEND_PORT` | `8000` | Backend API port |
+| `SYNAPSE_BACKEND_PORT` | `8765` | Backend API port |
 | `SYNAPSE_FRONTEND_PORT` | `3000` | Frontend UI port |
-| `BACKEND_URL` | `http://127.0.0.1:8000` | Backend URL as seen by Next.js server (set in Docker) |
+| `BACKEND_URL` | `http://127.0.0.1:8765` | Backend URL as seen by Next.js server (set in Docker) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Allowed CORS origins |
 
 ---
@@ -416,6 +434,18 @@ backend/
 
 **Default MCP Servers:** Sequential Thinking and Memory servers start automatically with Synapse — no configuration required. They give every agent structured reasoning chains and persistent cross-session memory out of the box.
 
+---
+
+## Upcoming Features (Roadmap)
+
+We are constantly improving Synapse AI. Here are a few features currently in the pipeline:
+
+- **RAG Agent Type:** A specialized agent type with built-in native support for Retrieval-Augmented Generation workflows.
+- **AI Builder Agent:** A native agent that can dynamically design workflows, orchestrations, and build other agents on the fly based on your prompts.
+- **Spawn Sub-Agent Tool:** Allow agents to natively spawn and delegate tasks to temporary sub-agents mid-execution.
+- **Compact Conversations:** A conversation option optimized to handle large contexts smoothly, compressing message history automatically.
+- **Vault Management:** Enhanced user control over the existing Vault system, allowing for explicit file handling and the ability to inject documents or skills directly into system prompts.
+- **Global Variable:** Support for defining global variables that can be dynamically injected into agent prompts, orchestrations, custom tools, and MCP server environments.
 ---
 
 ## Contributing

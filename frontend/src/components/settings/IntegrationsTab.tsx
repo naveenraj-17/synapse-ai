@@ -265,7 +265,7 @@ export const IntegrationsTab = ({
                                         <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Google Cloud Console</a> &amp; create a Project.</li>
                                         <li>Enable <em>Gmail, Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, People APIs</em> — <a href="https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,drive.googleapis.com,calendar-json.googleapis.com,docs.googleapis.com,sheets.googleapis.com,slides.googleapis.com,forms.googleapis.com,tasks.googleapis.com,people.googleapis.com" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">one-click enable APIs →</a></li>
                                         <li>Create OAuth Client ID → choose <strong className="text-zinc-300">Web application</strong>.</li>
-                                        <li>Under <strong>Authorized redirect URIs</strong>, add <strong className="text-zinc-300">http://localhost:{process.env.NEXT_PUBLIC_BACKEND_PORT || '8000'}/auth/callback</strong></li>
+                                        <li>Under <strong>Authorized redirect URIs</strong>, add <strong className="text-zinc-300">http://localhost:{process.env.NEXT_PUBLIC_BACKEND_PORT || '8765'}/auth/callback</strong></li>
                                         <li>Download JSON and paste it below.</li>
                                     </ol>
                                 </div>

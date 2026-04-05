@@ -391,7 +391,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 _frontend_port = os.getenv("SYNAPSE_FRONTEND_PORT", "3000")
-_backend_port_cors = os.getenv("SYNAPSE_BACKEND_PORT", "8000")
+_backend_port_cors = os.getenv("SYNAPSE_BACKEND_PORT", "8765")
 _cors_defaults = {
     f"http://localhost:{_frontend_port}",
     "http://localhost:3000",
@@ -465,5 +465,5 @@ app.include_router(import_export_router)
 
 if __name__ == "__main__":
     import uvicorn
-    _port = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
+    _port = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
     uvicorn.run(app, host="0.0.0.0", port=_port)

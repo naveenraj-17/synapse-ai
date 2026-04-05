@@ -19,7 +19,7 @@ python setup.py
 Environment variables (optional):
 
 - `SYNAPSE_DATA_DIR` — path to data dir (default: `~/.synapse/data`).
-- `SYNAPSE_BACKEND_PORT` — backend port (default: `8000`).
+- `SYNAPSE_BACKEND_PORT` — backend port (default: `8765`).
 - `SYNAPSE_FRONTEND_PORT` — frontend port (default: `3000`).
 
 Basic commands:
@@ -62,7 +62,7 @@ synapse setup
 |------|---------|-------------|
 | `--detach`, `-d` | off | Run in background and write pidfiles |
 | `--no-browser` | off | Do not open a browser on start |
-| `--backend-port PORT` | `8000` | Port for the backend API server |
+| `--backend-port PORT` | `8765` | Port for the backend API server |
 | `--frontend-port PORT` | `3000` | Port for the frontend web UI |
 | `--profile` | off | Enable performance profiling (`SYNAPSE_PROFILING=true`) |
 

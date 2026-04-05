@@ -1,10 +1,11 @@
 """
-Synapse AI — Interactive Setup Wizard
+Synapse AI -- Interactive Setup Wizard
 Guides the user through configuration, installs dependencies, and starts both servers.
 Uses only Python stdlib so it works before the venv exists.
 """
 import json
 import os
+import signal
 import stat
 import platform
 import shutil
@@ -26,7 +27,7 @@ ENV_FILE = os.path.join(ROOT_DIR, ".env")
 # agree on the same data directory (e.g. SYNAPSE_DATA_DIR=backend/data).
 # ---------------------------------------------------------------------------
 def _load_dotenv_early(path):
-    """Minimal .env loader — only sets vars not already in the environment."""
+    """Minimal .env loader -- only sets vars not already in the environment."""
     if not os.path.exists(path):
         return
     try:
@@ -56,8 +57,8 @@ EXAMPLES_DIR = os.path.join(BACKEND_DIR, "examples")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
 
-# Port defaults — read from env first so an existing .env is respected
-DEFAULT_BACKEND_PORT = int(os.environ.get("SYNAPSE_BACKEND_PORT", "8000"))
+# Port defaults -- read from env first so an existing .env is respected
+DEFAULT_BACKEND_PORT = int(os.environ.get("SYNAPSE_BACKEND_PORT", "8765"))
 DEFAULT_FRONTEND_PORT = int(os.environ.get("SYNAPSE_FRONTEND_PORT", "3000"))
 
 IS_WIN = sys.platform == "win32"
@@ -79,10 +80,22 @@ class C:
 
 def _c(color, text): return f"{color}{text}{C.RESET}"
 def step(msg):    print(f"\n{C.BLUE}{C.BOLD}==> {msg}{C.RESET}")
-def ok(msg):      print(f"{C.GREEN}✓  {msg}{C.RESET}")
-def warn(msg):    print(f"{C.YELLOW}⚠  {msg}{C.RESET}")
-def err(msg):     print(f"{C.RED}✗  {msg}{C.RESET}")
+def ok(msg):      print(f"{C.GREEN}[OK]  {msg}{C.RESET}")
+def warn(msg):    print(f"{C.YELLOW}[!!]  {msg}{C.RESET}")
+def err(msg):     print(f"{C.RED}[X]  {msg}{C.RESET}")
 def info(msg):    print(f"   {msg}")
+
+def _redact_url(url: str) -> str:
+    """Return a copy of a connection URL with the password redacted."""
+    try:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(url)
+        if parsed.password:
+            netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+            url = parsed._replace(netloc=netloc).geturl()
+    except Exception:
+        pass
+    return url
 
 # ---------------------------------------------------------------------------
 # Input helpers
@@ -137,7 +150,7 @@ def install_npm():
     
     if IS_WIN:
         info("Please download and install Node.js (v20.9.0 or higher) from https://nodejs.org/")
-        info("Then re-run this setup script.")
+        info("Once installed, restart your terminal and re-run this setup script.")
         err("Node.js installation required.")
         sys.exit(1)
     elif os_type == "darwin":
@@ -200,17 +213,19 @@ def install_postgresql():
     os_type = get_os_type()
     
     if IS_WIN:
-        info("PostgreSQL installation is required for the Coding Agent on Windows.")
+        info("PostgreSQL is required for the Coding Agent on Windows.")
         info("1. Download the installer from: https://www.postgresql.org/download/windows/")
-        info("2. Run the installer and follow the instructions.")
-        info("3. CRITICAL: Add the PostgreSQL bin directory to your System PATH:")
-        info("   - Example: C:\\Program Files\\PostgreSQL\\15\\bin")
-        info("   - Search for 'Environment Variables' in Start menu")
-        info("   - Edit 'Path' in System Variables and add the bin directory")
-        info("4. Verify by opening a NEW command prompt and running: psql --version")
+        info("2. Run the installer and follow the on-screen prompts.")
+        info("3. IMPORTANT: Add the PostgreSQL bin directory to your System PATH:")
+        info("   - Search for 'Edit the system environment variables' in the Start menu")
+        info("   - Click 'Environment Variables', then find 'Path' under System variables")
+        info("   - Click 'Edit' -> 'New', and add the bin path (e.g. C:\\Program Files\\PostgreSQL\\17\\bin)")
+        info("4. Restart your terminal so the updated PATH takes effect.")
+        info("5. Verify the installation by running: psql --version")
+        info("   Make sure it prints a version number before continuing.")
         info("")
-        warn("Please complete these steps, then re-run this setup script.")
-        err("PostgreSQL installation/PATH configuration required.")
+        warn("Please complete all steps above, then re-run this setup script.")
+        err("PostgreSQL installation or PATH configuration is required.")
         sys.exit(1)
     elif os_type == "darwin":
         info("Installing PostgreSQL via Homebrew...")
@@ -416,7 +431,7 @@ def _find_all_node_versions():
     for p in ["/usr/local/bin/node", "/usr/bin/node", "/opt/homebrew/bin/node"]:
         _probe(p)
 
-    # which -a (Unix) — catches anything else on PATH
+    # which -a (Unix) -- catches anything else on PATH
     if not IS_WIN:
         try:
             r = subprocess.run(["which", "-a", "node"], capture_output=True, text=True, timeout=5)
@@ -480,7 +495,7 @@ def _find_all_node_versions_win():
             for entry in os.listdir(fnm_root):
                 _probe(os.path.join(fnm_root, entry, "installation", "node.exe"))
 
-    # Also walk PATH entries — catches a freshly refreshed PATH
+    # Also walk PATH entries -- catches a freshly refreshed PATH
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
         _probe(os.path.join(path_dir.strip(), "node.exe"))
 
@@ -508,15 +523,16 @@ def check_npm():
                 r = subprocess.run([node_exe, "--version"], capture_output=True, text=True, timeout=5)
                 ver_str = r.stdout.strip().lstrip("v")
                 ok(f"Node.js v{ver_str} found at {node_exe}")
-                # Prepend the bin dir so npm / npx resolve correctly for the rest of setup
-                if bin_dir.lower() not in os.environ.get("PATH", "").lower():
-                    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
-                    info(f"Prepended {bin_dir} to PATH for this session.")
+                # UNCONDITIONALLY prepend the bin dir to PATH for this Python session so that
+                # any subsequent `npm`/`npx` calls use this specific version, overriding any
+                # older versions that might be present earlier in the PATH.
+                os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+                info(f"Prepended {bin_dir} to PATH for this session.")
                 ok("npm ready")
                 return
             except Exception as e:
                 warn(f"Failed to invoke node at {node_exe}: {e}")
-        # Nothing found — show a clear error
+        # Nothing found -- show a clear error
         err("Node.js 20.9.0+ is required but was not found on this Windows system.")
         info("Searched: Program Files\\nodejs, LocalAppData\\Programs\\nodejs, nvm-windows, fnm, PATH.")
         info("Install the latest Node.js LTS from https://nodejs.org/ and re-run setup.")
@@ -551,7 +567,7 @@ def check_npm():
                     os.environ["PATH"] = best_dir + os.pathsep + os.environ.get("PATH", "")
                     ok(f"Switched to Node.js v{best_ver_str} for this setup session.")
                 else:
-                    err(f"Node.js 20.9.0+ required. Active version: v{version_str}, none found ≥ 20.9.0.")
+                    err(f"Node.js 20.9.0+ required. Active version: v{version_str}, none found >= 20.9.0.")
                     info("Install the latest Node.js from https://nodejs.org/ or via nvm/fnm, then re-run setup.")
                     sys.exit(1)
             else:
@@ -559,7 +575,7 @@ def check_npm():
         except Exception as e:
             warn(f"Could not verify Node.js version: {e}")
     else:
-        warn("node executable not found — npm may not work correctly.")
+        warn("node executable not found -- npm may not work correctly.")
 
     ok("npm found")
 
@@ -610,6 +626,10 @@ def load_settings():
 
 def save_settings(cfg):
     os.makedirs(DATA_DIR, exist_ok=True)
+    # Stamp installation date on first save (fresh install detection for in-app banner)
+    if "installed_at" not in cfg:
+        import datetime
+        cfg["installed_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(SETTINGS_FILE, "w") as f:
         json.dump(cfg, f, indent=4)
     # Persist the data directory path into .env so cli.py and synapse start
@@ -622,7 +642,7 @@ def save_settings(cfg):
         _update_env_file("DATABASE_URL", cfg["sql_connection_string"])
 
 # ---------------------------------------------------------------------------
-# Q1 — Coding Agent
+# Q1 -- Coding Agent
 # ---------------------------------------------------------------------------
 def ask_coding_agent(cfg):
     step("Coding Agent (PostgreSQL + pgvector)")
@@ -631,7 +651,7 @@ def ask_coding_agent(cfg):
     cfg["coding_agent_enabled"] = enabled
 
     if not enabled:
-        ok("Coding Agent disabled — skipping PostgreSQL setup.")
+        ok("Coding Agent disabled -- skipping PostgreSQL setup.")
         return
 
     # Check if PostgreSQL was already installed by user
@@ -662,7 +682,7 @@ def ask_coding_agent(cfg):
     
     if db_url:
         cfg["sql_connection_string"] = db_url
-        ok(f"Database URL: {db_url}")
+        ok(f"Database URL: {_redact_url(db_url)}")
         
         # Test connection
         info("Testing PostgreSQL connection...")
@@ -680,7 +700,7 @@ def ask_coding_agent(cfg):
                     return
         except ImportError:
             info("(psycopg2 will be installed with backend dependencies)")
-            ok(f"Database URL saved: {db_url}")
+            ok(f"Database URL saved: {_redact_url(db_url)}")
             return
     else:
         warn("Could not auto-create database. Please set it up manually.")
@@ -688,19 +708,19 @@ def ask_coding_agent(cfg):
                   default="postgresql://postgres:@localhost:5432/synapse")
         if url.startswith("postgresql"):
             cfg["sql_connection_string"] = url
-            ok(f"Saved: {url}")
+            ok(f"Saved: {_redact_url(url)}")
         else:
             err("Invalid URL format.")
             sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# Q2c — Browser Automation
+# Q2c -- Browser Automation
 # ---------------------------------------------------------------------------
 def ask_browser_automation(cfg):
     step("Browser Automation")
-    info("Allows Agents to use the browser and browse the web.")
-    if ask_yn("Do your Agents need to use the browser and browse?", default="y"):
+    info("Allows your agents to use the browser and browse the web.")
+    if ask_yn("Do your agents need to use the browser?", default="y"):
         cfg["browser_automation_enabled"] = True
         
         # Determine default playwright path
@@ -720,7 +740,14 @@ def ask_browser_automation(cfg):
         else:
             info("Playwright browsers not found. Installing... (this may take a minute)")
             try:
-                subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"], shell=IS_WIN)
+                if IS_WIN:
+                    npx_exe, bin_dir = _find_node_exe_win()
+                    npx_cmd = os.path.join(os.path.dirname(npx_exe) if npx_exe else "", "npx.cmd")
+                    if not os.path.isfile(npx_cmd):
+                        npx_cmd = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+                    subprocess.check_call([npx_cmd, "-y", "playwright", "install", "chromium"])
+                else:
+                    subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"])
                 ok("Playwright installed successfully.")
                 cfg["playwright_browsers_path"] = default_pw_path
             except subprocess.CalledProcessError as e:
@@ -735,18 +762,18 @@ def ask_browser_automation(cfg):
 
 
 # ---------------------------------------------------------------------------
-# Q2d — Messaging App Integration
+# Q2d -- Messaging App Integration
 # ---------------------------------------------------------------------------
 def ask_messaging_app(cfg):
     step("Messaging App Integration")
-    info("Lets your agents be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
-    info("You will configure individual bots later in Settings → Messaging.")
+    info("Allows your agents to be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
+    info("You can configure individual bots later in Settings -> Messaging.")
     enabled = ask_yn("Enable Messaging App support?", default="n")
     cfg["messaging_enabled"] = enabled
     if not enabled:
-        ok("Messaging disabled — skipping.")
+        ok("Messaging disabled -- skipping.")
         return
-    ok("Messaging enabled. Messaging libraries will be installed now.")
+    ok("Messaging enabled. Required libraries will be installed now.")
 
 
 
@@ -788,19 +815,19 @@ def ask_google_workspace(cfg):
 
     # Skip if credentials already exist
     if os.path.exists(CREDENTIALS_FILE):
-        ok(f"credentials.json already exists at {CREDENTIALS_FILE} — skipping.")
+        ok(f"credentials.json already exists at {CREDENTIALS_FILE} -- skipping.")
         return
 
     if not ask_yn("Configure Google Workspace now?", default="n"):
-        ok("Skipped — you can configure this later in Settings → Integrations.")
+        ok("Skipped -- you can configure this later in Settings -> Integrations.")
         return
 
     os.makedirs(DATA_DIR, exist_ok=True)
     has_gcloud = shutil.which("gcloud") is not None
 
     if has_gcloud:
-        info("gcloud CLI detected — using it to streamline setup.")
-        step("Step 1/3 — Authenticate with Google")
+        info("gcloud CLI detected -- using it to streamline setup.")
+        step("Step 1/3 -- Authenticate with Google")
         info("Running: gcloud auth login")
         try:
             subprocess.check_call(["gcloud", "auth", "login", "--update-adc"])
@@ -809,7 +836,7 @@ def ask_google_workspace(cfg):
             warn("gcloud auth login failed. Continuing to manual step.")
 
         # List projects
-        step("Step 2/3 — Select or create a Google Cloud Project")
+        step("Step 2/3 -- Select or create a Google Cloud Project")
         try:
             result = subprocess.run(
                 ["gcloud", "projects", "list", "--format=value(projectId,name)"],
@@ -835,41 +862,41 @@ def ask_google_workspace(cfg):
 
         if project_id:
             ok(f"Using project: {project_id}")
-            step("Step 2b — Enabling Gmail, Drive, Calendar and other APIs")
+            step("Step 2b -- Enabling Gmail, Drive, Calendar and other APIs")
             _gcloud_enable_apis(project_id)
         else:
-            warn("No project selected — skipping API enable.")
+            warn("No project selected -- skipping API enable.")
             project_id = None
 
         # Deep link for OAuth client creation
-        step("Step 3/3 — Create OAuth 2.0 Client ID (requires browser)")
+        step("Step 3/3 -- Create OAuth 2.0 Client ID (requires browser)")
         console_url = (
             f"https://console.cloud.google.com/apis/credentials/oauthclient?project={project_id}"
             if project_id else
             "https://console.cloud.google.com/apis/credentials"
         )
-        info("gcloud CLI cannot create OAuth Desktop App clients automatically.")
+        info("The gcloud CLI cannot create OAuth Desktop App clients automatically.")
         info(f"Open this link to create one (pre-filled to your project):")
         print(f"\n   {_c(C.CYAN, console_url)}\n")
         info("Instructions:")
         info("  1. Choose 'OAuth client ID'")
-        info("  2. Application type → 'Web application'")
+        info("  2. Set application type to 'Web application'")
         info(f"  3. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
-        info("  4. Ensure OAuth consent screen has all required scopes configured")
-        info("  5. Click Create → Download JSON")
+        info("  4. Make sure the OAuth consent screen has all required scopes configured")
+        info("  5. Click Create, then download the JSON file")
     else:
-        # No gcloud — full manual flow
-        info("gcloud CLI not found — using manual setup.")
-        info("Quick link to create OAuth credentials:")
+        # No gcloud -- full manual flow
+        info("gcloud CLI not found -- using manual setup.")
+        info("Use this link to create OAuth credentials:")
         print(f"\n   {_c(C.CYAN, 'https://console.cloud.google.com/apis/credentials')}\n")
-        info("  1. Create Project (or pick existing)")
+        info("  1. Create a project (or select an existing one)")
         print(f"   Enable APIs: {_c(C.CYAN, 'https://console.cloud.google.com/flows/enableapi?apiid=gmail.googleapis.com,drive.googleapis.com,calendar-json.googleapis.com,docs.googleapis.com,sheets.googleapis.com,slides.googleapis.com,forms.googleapis.com,tasks.googleapis.com,people.googleapis.com')}")
-        info("  2. Configure OAuth consent screen and add these scopes:")
+        info("  2. Configure the OAuth consent screen and add these scopes:")
         info("     userinfo.email, userinfo.profile, gmail.modify, gmail.send, drive, calendar,")
         info("     documents, spreadsheets, presentations, forms, tasks, contacts")
-        info("  3. Create Credentials → OAuth Client ID → Web application")
+        info("  3. Go to Credentials -> Create Credentials -> OAuth Client ID -> Web application")
         info(f"  4. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
-        info("  5. Download JSON and paste below.")
+        info("  5. Download the JSON file and paste its contents below.")
 
     # Paste area
     print()
@@ -883,12 +910,12 @@ def ask_google_workspace(cfg):
             lines.append(line)
     except (EOFError, KeyboardInterrupt):
         print()
-        warn("No credentials pasted — skipping Google Workspace setup.")
+        warn("No credentials pasted -- skipping Google Workspace setup.")
         return
 
     raw_json = "\n".join(lines).strip()
     if not raw_json:
-        warn("Empty input — skipping.")
+        warn("Empty input -- skipping.")
         return
 
     try:
@@ -896,14 +923,14 @@ def ask_google_workspace(cfg):
         with open(CREDENTIALS_FILE, "w") as f:
             json.dump(parsed, f, indent=4)
         ok(f"credentials.json saved to {CREDENTIALS_FILE}")
-        info("After Synapse starts, go to Settings → Integrations → 'Connect Google Account' to complete OAuth.")
+        info("After Synapse starts, go to Settings -> Integrations -> 'Connect Google Account' to complete OAuth.")
     except json.JSONDecodeError as e:
         err(f"Invalid JSON: {e}")
-        warn("credentials.json was NOT saved. Configure via Settings → Integrations later.")
+        warn("credentials.json was NOT saved. Configure via Settings -> Integrations later.")
 
 
 # ---------------------------------------------------------------------------
-# Q3 — Agent Name
+# Q3 -- Agent Name
 # ---------------------------------------------------------------------------
 def ask_agent_name(cfg):
     step("Agent Name")
@@ -912,7 +939,7 @@ def ask_agent_name(cfg):
     ok(f"Agent name set to: {cfg['agent_name']}")
 
 # ---------------------------------------------------------------------------
-# Q4 — LLM Provider / Model
+# Q4 -- LLM Provider / Model
 # ---------------------------------------------------------------------------
 def _fetch_json(url, headers=None):
     req = urllib.request.Request(url, headers=headers or {})
@@ -1006,7 +1033,7 @@ def _fetch_grok_models(api_key):
         return []
 
 def _fetch_bedrock_models(api_key, region):
-    """List Bedrock foundation models — tries boto3, falls back to direct HTTP."""
+    """List Bedrock foundation models -- tries boto3, falls back to direct HTTP."""
     # Try boto3 first
     try:
         import boto3  # type: ignore
@@ -1055,7 +1082,7 @@ def ask_llm(cfg):
         ok(f"Model set to: {model}  (can be updated later in Settings)")
         return
 
-    # Ollama not detected — ask if user has it on a custom URL
+    # Ollama not detected -- ask if user has it on a custom URL
     if ask_yn("Ollama not detected on default port. Do you have Ollama running?"):
         base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
         cfg["ollama_base_url"] = base_url
@@ -1155,32 +1182,68 @@ def ask_llm(cfg):
     ok(f"Provider configured. Model: {cfg.get('model', '(not set)')}")
 
 # ---------------------------------------------------------------------------
-# Q5 — Import examples
+# Default Agent Creation
 # ---------------------------------------------------------------------------
-def ask_examples():
-    step("Example Data")
-    info("Import example agents, MCP servers, and orchestrations to get started quickly.")
-    import_examples = ask_yn("Import example data?", default="y")
+DEFAULT_AGENT = {
+    "id": "agent_synapse_ai",
+    "name": "Synapse AI",
+    "description": "Your all-purpose AI assistant with access to every capability -- browsing, code execution, file management, and more.",
+    "avatar": "default",
+    "type": "conversational",
+    "tools": ["all"],
+    "repos": [],
+    "system_prompt": (
+        "# Role & Identity\n"
+        "You are Synapse AI -- an elite, all-purpose AI assistant with access to the full suite of tools on this platform. "
+        "You exist to help the user accomplish any task with speed, accuracy, and clarity.\n\n"
+        "# Core Capabilities\n"
+        "You can browse the web and extract real information from any source.\n"
+        "You can read, write, and manage files and directories on the local filesystem.\n"
+        "You can execute Python code for calculations, data processing, and automation.\n"
+        "You can interact with APIs, databases, and external services via configured tools.\n"
+        "You can store and retrieve information between sessions using vault tools.\n"
+        "You understand images, PDFs, spreadsheets, and structured data.\n\n"
+        "# Approach & Methodology\n"
+        "**Think before acting:** Understand the full request before choosing tools.\n"
+        "**Use tools over memory:** Always fetch real data with tools -- never fabricate information.\n"
+        "**Be concise and direct:** Give the most useful answer with minimal fluff.\n"
+        "**Confirm and verify:** When you take an action (write a file, run code, browse a site), confirm what was done.\n"
+        "**Adapt to complexity:** Short answers for simple questions; structured, detailed responses for complex tasks.\n\n"
+        "# Output Style\n"
+        "Use Markdown for structured outputs -- tables, lists, and code blocks where appropriate.\n"
+        "For multi-step tasks, briefly outline what you're doing before you do it.\n"
+        "When something fails or is uncertain, explain clearly and suggest next steps.\n\n"
+        "# Constraints\n"
+        "Never fabricate data, file contents, statistics, or API responses -- use tools.\n"
+        "Never expose sensitive information (API keys, passwords) in responses.\n"
+        "Always respect the user's filesystem and data -- ask before destructive operations."
+    ),
+}
 
-    if not import_examples:
-        ok("Starting fresh — no example data imported.")
-        return
-
-    import glob
-    example_files = glob.glob(os.path.join(EXAMPLES_DIR, "*.example.json"))
-    if not example_files:
-        warn("No *.example.json files found — nothing to import.")
-        return
-
+def create_default_agent():
+    """Ensure the default 'Synapse AI' agent exists in user_agents.json."""
+    step("Creating Default Agent")
+    agents_file = os.path.join(DATA_DIR, "user_agents.json")
     os.makedirs(DATA_DIR, exist_ok=True)
-    for src in example_files:
-        base_name = os.path.basename(src).replace(".example.json", ".json")
-        dest = os.path.join(DATA_DIR, base_name)
-        if os.path.exists(dest):
-            info(f"Skipping (already exists): {base_name}")
-        else:
-            shutil.copy2(src, dest)
-            ok(f"Imported: {base_name}")
+
+    agents = []
+    if os.path.exists(agents_file):
+        try:
+            with open(agents_file) as f:
+                agents = json.load(f)
+        except Exception:
+            agents = []
+
+    # Check if already exists
+    if any(a.get("id") == DEFAULT_AGENT["id"] for a in agents):
+        ok("Default 'Synapse AI' agent already exists -- skipping.")
+        return
+
+    # Prepend so it appears first
+    agents.insert(0, DEFAULT_AGENT)
+    with open(agents_file, "w") as f:
+        json.dump(agents, f, indent=4)
+    ok("Created default 'Synapse AI' agent with access to all tools.")
 
 # ---------------------------------------------------------------------------
 # Install helpers
@@ -1241,19 +1304,23 @@ def install_backend(coding_enabled, messaging_enabled=False):
 
 def install_frontend():
     step("Installing Frontend Dependencies")
-    if not shutil.which("npm"):
-        err("npm not found.")
-        sys.exit(1)
+    if IS_WIN:
+        npm = _find_npm_cmd_win()
+    else:
+        npm = shutil.which("npm")
+        if not npm:
+            err("npm not found.")
+            sys.exit(1)
     node_modules = os.path.join(FRONTEND_DIR, "node_modules")
     if os.path.exists(node_modules):
         info("Removing existing node_modules...")
         shutil.rmtree(node_modules)
     info("Running npm install (this may take a while)...")
-    _run_with_retry(["npm", "install"], cwd=FRONTEND_DIR, shell=IS_WIN)
+    _run_with_retry([npm, "install"], cwd=FRONTEND_DIR)
     ok("Frontend dependencies installed.")
-    
+
     info("Building frontend...")
-    _run_with_retry(["npm", "run", "build"], cwd=FRONTEND_DIR, shell=IS_WIN)
+    _run_with_retry([npm, "run", "build"], cwd=FRONTEND_DIR)
     ok("Frontend built.")
 
 # ---------------------------------------------------------------------------
@@ -1298,7 +1365,7 @@ def ask_ports(cfg):
     _update_env_file("SYNAPSE_BACKEND_PORT", str(backend_port))
     _update_env_file("NEXT_PUBLIC_BACKEND_PORT", str(backend_port))
     _update_env_file("SYNAPSE_FRONTEND_PORT", str(frontend_port))
-    ok(f"Ports saved to .env — backend={backend_port}, frontend={frontend_port}.")
+    ok(f"Ports saved to .env -- backend={backend_port}, frontend={frontend_port}.")
 
 
 # ---------------------------------------------------------------------------
@@ -1313,28 +1380,52 @@ def start_backend(backend_port: int = DEFAULT_BACKEND_PORT):
     env["SYNAPSE_DATA_DIR"] = os.path.abspath(DATA_DIR)
     return subprocess.Popen([PYTHON_EXE, "main.py"], cwd=BACKEND_DIR, env=env)
 
+def _find_npm_cmd_win():
+    """Return the full path to npm.cmd on Windows."""
+    # Look next to the node.exe we already discovered
+    node_exe, bin_dir = _find_node_exe_win()
+    if bin_dir:
+        npm_cmd = os.path.join(bin_dir, "npm.cmd")
+        if os.path.isfile(npm_cmd):
+            return npm_cmd
+    # Fallback: let shutil.which find it (may work if PATH is current)
+    return shutil.which("npm.cmd") or shutil.which("npm") or "npm"
+
+
 def start_frontend(frontend_port: int = DEFAULT_FRONTEND_PORT, backend_port: int = DEFAULT_BACKEND_PORT):
     step("Starting Frontend Server")
     env = os.environ.copy()
     env["SYNAPSE_FRONTEND_PORT"] = str(frontend_port)
     env["BACKEND_URL"] = f"http://127.0.0.1:{backend_port}"
+    if IS_WIN:
+        npm = _find_npm_cmd_win()
+        return subprocess.Popen(
+            [npm, "start"],
+            cwd=FRONTEND_DIR,
+            env=env,
+        )
     return subprocess.Popen(
-        ["npm", "run", "start", "--", "-p", str(frontend_port)],
+        ["npm", "start"],
         cwd=FRONTEND_DIR,
-        shell=IS_WIN,
         env=env,
     )
 
-def wait_for_server(url: str, name: str, timeout: int = 60) -> bool:
-    """Wait for a server to be ready by checking HTTP status"""
+def wait_for_server(url: str, name: str, timeout: int = 120) -> bool:
+    """Wait for a server to be ready by polling HTTP, with a live elapsed counter."""
     start = time.time()
-    while time.time() - start < timeout:
+    while True:
+        elapsed = int(time.time() - start)
+        if elapsed >= timeout:
+            print()
+            warn(f"Timed out waiting for {name} after {timeout}s.")
+            return False
         try:
             urllib.request.urlopen(url, timeout=3)
+            print(f"\r", end="")  # clear the progress line
             return True
         except Exception:
+            print(f"\r   Waiting for {name}... {elapsed}s", end="", flush=True)
             time.sleep(2)
-    return False
 
 # ---------------------------------------------------------------------------
 # PATH Setup Helpers
@@ -1396,21 +1487,53 @@ def add_to_zshrc():
     ok(f"Added Synapse to PATH (zshrc)")
     return True
 
+def _add_to_windows_path(bin_dir):
+    """Persist bin_dir in the user PATH via setx and the PowerShell profile."""
+    # 1. setx -- persists across new cmd/powershell sessions
+    try:
+        current = subprocess.run(
+            ["reg", "query", "HKCU\\Environment", "/v", "PATH"],
+            capture_output=True, text=True
+        ).stdout
+        # Extract existing user PATH
+        user_path = ""
+        for line in current.splitlines():
+            if "PATH" in line and "REG_" in line:
+                parts = line.split(None, 2)
+                if len(parts) >= 3:
+                    user_path = parts[2].strip()
+                    break
+        if bin_dir.lower() not in user_path.lower():
+            new_path = (user_path + ";" + bin_dir) if user_path else bin_dir
+            subprocess.run(["setx", "PATH", new_path], capture_output=True)
+            ok(f"Added {bin_dir} to user PATH (setx). Changes take effect in new terminals.")
+        else:
+            ok("Synapse bin directory is already in user PATH.")
+    except Exception as e:
+        warn(f"setx PATH update failed: {e}")
+
+    # 2. Also prepend to the current process PATH so synapse.bat is findable now
+    if bin_dir.lower() not in os.environ.get("PATH", "").lower():
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
+
 def setup_path():
     """Setup PATH for the current platform"""
     step("Setting up Synapse command")
     bin_dir = os.path.join(ROOT_DIR, "bin")
-    
+
     if IS_WIN:
-        # Windows: Just inform user about python -m synapse start
-        info("On Windows, use: python -m synapse start")
-        ok("Windows setup complete.")
+        info("Registering 'synapse' command in PATH...")
+        _add_to_windows_path(bin_dir)
+        info("In your CURRENT session you can already run: synapse start")
+        info(f"(If 'synapse' is not found, open a new terminal -- setx takes effect then.)")
+        ok("Windows PATH setup complete.")
     else:
         # Unix: Try to add to .bashrc / .zshrc
         info("Checking for shell configuration files...")
         add_to_bashrc()
         add_to_zshrc()
-        
+
         # Update PATH in the current process so synapse is immediately usable
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
         ok("PATH setup complete.")
@@ -1418,10 +1541,19 @@ def setup_path():
 def show_restart_instructions():
     """Show instructions for restarting Synapse"""
     step("To Start Synapse Again Later")
-    
+
     if IS_WIN:
-        info("From anywhere in Windows:")
+        info("Open a new terminal (cmd or PowerShell) and run:")
+        info("  synapse start")
+        info("")
+        info("If 'synapse' is not recognised yet (PATH not refreshed), use:")
         info(f"  python -m synapse start")
+        info(f"  (run this from inside the synapse-ai folder)")
+        info("")
+        info("Other useful commands:")
+        info("  synapse stop      # Stop running services")
+        info("  synapse status    # Check service status")
+        info("  synapse restart   # Restart services")
     else:
         info("Simply run:")
         info(f"  synapse start")
@@ -1435,13 +1567,500 @@ def show_restart_instructions():
         info(f"  synapse status    # Check service status")
         info(f"  synapse restart   # Restart services")
 
+
+# ---------------------------------------------------------------------------
+# Install Location & Already-Installed Detection
+# ---------------------------------------------------------------------------
+def _get_default_install_dir():
+    """Return the OS-standard directory where Synapse AI should be installed."""
+    if IS_WIN:
+        local_app = os.environ.get(
+            "LOCALAPPDATA",
+            os.path.join(os.path.expanduser("~"), "AppData", "Local"),
+        )
+        return os.path.join(local_app, "Programs", "SynapseAI")
+    elif sys.platform == "darwin":
+        return os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", "SynapseAI"
+        )
+    else:  # Linux
+        return os.path.join(os.path.expanduser("~"), ".local", "share", "synapse-ai")
+
+
+def _is_already_installed():
+    """Return (True, install_dir) if a previous install is found, else (False, None)."""
+    # Check the directory this setup.py lives in (most common case)
+    if os.path.exists(os.path.join(ROOT_DIR, ".installed")):
+        return True, ROOT_DIR
+    # Check the OS-standard location (installed by a previous run from elsewhere)
+    default_dir = _get_default_install_dir()
+    if os.path.exists(os.path.join(default_dir, ".installed")):
+        return True, default_dir
+    return False, None
+
+
+def _write_install_marker():
+    """Write a .installed marker so future runs detect an existing install."""
+    import datetime
+    marker = os.path.join(ROOT_DIR, ".installed")
+    with open(marker, "w") as f:
+        json.dump(
+            {
+                "installed_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "install_dir": ROOT_DIR,
+                "platform": sys.platform,
+            },
+            f,
+            indent=2,
+        )
+    ok(f"Install marker written.")
+
+
+def _stop_running_services(install_dir):
+    """Stop any running Synapse services before rebuilding."""
+    step("Stopping Running Services")
+    synapse_bin = os.path.join(install_dir, "bin", "synapse" + (".bat" if IS_WIN else ""))
+    stopped = False
+
+    # Try calling `synapse stop` via the installed bin script
+    if os.path.exists(synapse_bin):
+        try:
+            result = subprocess.run(
+                [synapse_bin, "stop"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0:
+                ok("Services stopped.")
+                stopped = True
+            else:
+                warn("synapse stop returned non-zero; trying PID files...")
+        except Exception as e:
+            warn(f"Could not invoke synapse stop: {e}")
+
+    # Fallback: kill PIDs recorded in run/ directory
+    if not stopped:
+        run_dir = os.path.join(install_dir, "run")
+        for pid_file in ("backend.pid", "frontend.pid"):
+            pid_path = os.path.join(run_dir, pid_file)
+            if os.path.exists(pid_path):
+                try:
+                    with open(pid_path) as pf:
+                        pid = int(pf.read().strip())
+                    if IS_WIN:
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(pid)],
+                            capture_output=True,
+                        )
+                    else:
+                        import signal as _sig
+                        try:
+                            os.killpg(os.getpgid(pid), _sig.SIGTERM)
+                        except ProcessLookupError:
+                            pass
+                    ok(f"Stopped PID {pid} (from {pid_file}).")
+                    os.remove(pid_path)
+                except Exception as e:
+                    warn(f"Could not stop process from {pid_file}: {e}")
+
+    # Brief pause to let ports free up
+    import time as _time
+    _time.sleep(2)
+
+
+def _rebuild_backend(install_dir):
+    """Re-install backend Python dependencies."""
+    step("Rebuilding Backend")
+    backend_dir = os.path.join(install_dir, "backend")
+    venv_dir    = os.path.join(backend_dir, "venv")
+    python_exe  = os.path.join(venv_dir, "Scripts" if IS_WIN else "bin",
+                               "python" + (".exe" if IS_WIN else ""))
+
+    if not os.path.exists(python_exe):
+        warn("Virtual environment not found -- creating one now...")
+        subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
+        ok("Virtual environment created.")
+
+    pip_cmd = [python_exe, "-m", "pip", "install"]
+    req_txt  = os.path.join(backend_dir, "requirements.txt")
+
+    info("Upgrading pip...")
+    subprocess.run([python_exe, "-m", "pip", "install", "--upgrade", "pip"],
+                   capture_output=True)
+
+    info("Installing / upgrading backend requirements...")
+    subprocess.check_call(pip_cmd + ["-r", req_txt])
+
+    info("Reinstalling Synapse package (editable mode)...")
+    subprocess.check_call([python_exe, "-m", "pip", "install", "-e", install_dir])
+    ok("Backend dependencies updated.")
+
+
+def _rebuild_frontend(install_dir):
+    """Re-install and rebuild the frontend."""
+    step("Rebuilding Frontend")
+    frontend_dir = os.path.join(install_dir, "frontend")
+
+    if IS_WIN:
+        npm = _find_npm_cmd_win()
+    else:
+        import shutil as _sh
+        npm = _sh.which("npm")
+        if not npm:
+            warn("npm not found -- skipping frontend rebuild.")
+            return
+
+    info("Running npm install...")
+    subprocess.check_call([npm, "install"], cwd=frontend_dir)
+
+    info("Building frontend...")
+    subprocess.check_call([npm, "run", "build"], cwd=frontend_dir)
+    ok("Frontend rebuilt successfully.")
+
+
+def _handle_already_installed(install_dir):
+    """Stop services, pull latest, rebuild, show start instructions."""
+    print(f"\n{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
+    print(f"{C.BOLD}{C.GREEN}   Synapse AI is already installed!{C.RESET}")
+    print(f"{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
+    print(f"\n   Location: {_c(C.CYAN, install_dir)}\n")
+
+    # ------------------------------------------------------------------
+    # 1. Stop any running services before we touch the code
+    # ------------------------------------------------------------------
+    _stop_running_services(install_dir)
+
+    # ------------------------------------------------------------------
+    # 2. Pull latest changes
+    # ------------------------------------------------------------------
+    step("Pulling Latest Changes")
+    updated = False
+    try:
+        result = subprocess.run(
+            ["git", "-C", install_dir, "pull", "--ff-only"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if "Already up to date" in output:
+                ok("Already up to date -- no code changes.")
+            else:
+                ok("Updated to the latest version.")
+                updated = True
+                for line in output.splitlines():
+                    info(f"  {line}")
+        else:
+            warn(f"git pull exited with code {result.returncode}.")
+            if result.stderr.strip():
+                info(result.stderr.strip())
+    except FileNotFoundError:
+        warn("git not found -- skipping update check.")
+    except Exception as e:
+        warn(f"Update check failed: {e}")
+
+    # ------------------------------------------------------------------
+    # 3. Rebuild backend and frontend
+    # ------------------------------------------------------------------
+    try:
+        _rebuild_backend(install_dir)
+    except Exception as e:
+        warn(f"Backend rebuild failed: {e}")
+
+    try:
+        _rebuild_frontend(install_dir)
+    except Exception as e:
+        warn(f"Frontend rebuild failed: {e}")
+
+    # ------------------------------------------------------------------
+    # 4. Show instructions
+    # ------------------------------------------------------------------
+    print()
+    print(f"{C.BOLD}{C.GREEN}Synapse AI has been updated and rebuilt!{C.RESET}")
+    print()
+    print(f"{C.BOLD}To start Synapse:{C.RESET}")
+    print(f"   {_c(C.CYAN, 'synapse start')}")
+    print()
+    print(f"Other commands:")
+    print(f"   synapse stop      -- stop running services")
+    print(f"   synapse status    -- check service status")
+    print(f"   synapse restart   -- restart services")
+    print()
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# Startup on Boot
+# ---------------------------------------------------------------------------
+def _register_startup_win():
+    """Register synapse start --detach in HKCU Run (no admin required)."""
+    try:
+        import winreg  # type: ignore  # stdlib on Windows
+        synapse_bat = os.path.join(ROOT_DIR, "bin", "synapse.bat")
+        command = f'"{synapse_bat}" start --detach'
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        winreg.SetValueEx(key, "SynapseAI", 0, winreg.REG_SZ, command)
+        winreg.CloseKey(key)
+        ok("Synapse registered to start on login (Registry > Run).")
+    except Exception as e:
+        warn(f"Could not register startup: {e}")
+        info("You can add it manually: search 'Task Scheduler' in the Start menu.")
+
+
+def _unregister_startup_win():
+    """Remove the HKCU Run registry entry."""
+    try:
+        import winreg  # type: ignore
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        try:
+            winreg.DeleteValue(key, "SynapseAI")
+            ok("Removed Synapse from startup (Registry > Run).")
+        except FileNotFoundError:
+            pass  # not registered -- fine
+        winreg.CloseKey(key)
+    except Exception as e:
+        warn(f"Could not remove startup entry: {e}")
+
+
+def _is_startup_registered_win():
+    try:
+        import winreg  # type: ignore
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_READ,
+        )
+        try:
+            winreg.QueryValueEx(key, "SynapseAI")
+            winreg.CloseKey(key)
+            return True
+        except FileNotFoundError:
+            winreg.CloseKey(key)
+            return False
+    except Exception:
+        return False
+
+
+def _register_startup_mac():
+    """Install a LaunchAgent plist so Synapse starts on login."""
+    launch_agents = os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents")
+    os.makedirs(launch_agents, exist_ok=True)
+    plist_path = os.path.join(launch_agents, "com.synapse-ai.server.plist")
+    synapse_bin = os.path.join(ROOT_DIR, "bin", "synapse")
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.synapse-ai.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>"{synapse_bin}" start --detach</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/synapse-ai.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/synapse-ai-error.log</string>
+</dict>
+</plist>
+"""
+    try:
+        with open(plist_path, "w") as f:
+            f.write(plist)
+        subprocess.run(["launchctl", "load", plist_path], check=False, capture_output=True)
+        ok(f"LaunchAgent installed -- Synapse will start on login.")
+        info(f"  Plist: {plist_path}")
+    except Exception as e:
+        warn(f"Could not install LaunchAgent: {e}")
+
+
+def _unregister_startup_mac():
+    plist_path = os.path.join(
+        os.path.expanduser("~"), "Library", "LaunchAgents", "com.synapse-ai.server.plist"
+    )
+    if os.path.exists(plist_path):
+        try:
+            subprocess.run(["launchctl", "unload", plist_path], check=False, capture_output=True)
+            os.remove(plist_path)
+            ok("Removed Synapse LaunchAgent.")
+        except Exception as e:
+            warn(f"Could not remove LaunchAgent: {e}")
+
+
+def _is_startup_registered_mac():
+    plist_path = os.path.join(
+        os.path.expanduser("~"), "Library", "LaunchAgents", "com.synapse-ai.server.plist"
+    )
+    return os.path.exists(plist_path)
+
+
+def _register_startup_linux():
+    """Install a systemd user service so Synapse starts on login."""
+    service_dir = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user"
+    )
+    os.makedirs(service_dir, exist_ok=True)
+    service_path = os.path.join(service_dir, "synapse-ai.service")
+    synapse_bin = os.path.join(ROOT_DIR, "bin", "synapse")
+    bin_dir = os.path.join(ROOT_DIR, "bin")
+
+    # Try to find node bin dir for the service PATH
+    node_dir = ""
+    node_exe = shutil.which("node")
+    if node_exe:
+        node_dir = os.path.dirname(node_exe) + ":"
+
+    service_content = f"""[Unit]
+Description=Synapse AI Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStart={synapse_bin} start --detach
+ExecStop={synapse_bin} stop
+WorkingDirectory={ROOT_DIR}
+Environment="PATH={bin_dir}:{node_dir}/usr/local/bin:/usr/bin:/bin"
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+    try:
+        with open(service_path, "w") as f:
+            f.write(service_content)
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+        subprocess.run(["systemctl", "--user", "enable", "synapse-ai.service"], check=False, capture_output=True)
+        ok("systemd user service installed -- Synapse will start on login.")
+        info(f"  Service: {service_path}")
+        info("  To start now (without rebooting): systemctl --user start synapse-ai")
+    except Exception as e:
+        warn(f"Could not install systemd service: {e}")
+
+
+def _unregister_startup_linux():
+    service_path = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user", "synapse-ai.service"
+    )
+    if os.path.exists(service_path):
+        try:
+            subprocess.run(["systemctl", "--user", "disable", "synapse-ai.service"],
+                           check=False, capture_output=True)
+            os.remove(service_path)
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+            ok("Removed Synapse systemd user service.")
+        except Exception as e:
+            warn(f"Could not remove systemd service: {e}")
+
+
+def _is_startup_registered_linux():
+    service_path = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user", "synapse-ai.service"
+    )
+    return os.path.exists(service_path)
+
+
+def ask_startup_on_boot(cfg):
+    """Ask the user whether Synapse should start automatically on login/boot."""
+    step("Start on Login")
+
+    # Check current registration state
+    if IS_WIN:
+        currently_registered = _is_startup_registered_win()
+    elif sys.platform == "darwin":
+        currently_registered = _is_startup_registered_mac()
+    else:
+        currently_registered = _is_startup_registered_linux()
+
+    if currently_registered:
+        info("Synapse is currently set to start automatically on login.")
+        keep = ask_yn("Keep this setting?", default="y")
+        if keep:
+            ok("Auto-start on login kept.")
+            cfg["start_on_boot"] = True
+            return
+        else:
+            # Unregister
+            if IS_WIN:
+                _unregister_startup_win()
+            elif sys.platform == "darwin":
+                _unregister_startup_mac()
+            else:
+                _unregister_startup_linux()
+            cfg["start_on_boot"] = False
+            ok("Auto-start on login disabled.")
+            return
+
+    info("Synapse can start automatically in the background when you log in.")
+    info("It runs silently -- just open your browser to http://localhost:3000.")
+    enable = ask_yn("Start Synapse automatically on login?", default="n")
+    cfg["start_on_boot"] = enable
+
+    if not enable:
+        ok("Auto-start disabled.")
+        return
+
+    if IS_WIN:
+        _register_startup_win()
+    elif sys.platform == "darwin":
+        _register_startup_mac()
+    else:
+        _register_startup_linux()
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    # ------------------------------------------------------------------
+    # --upgrade flag: skip the wizard, just rebuild and exit
+    # ------------------------------------------------------------------
+    upgrade_mode = "--upgrade" in sys.argv
+
+    if upgrade_mode:
+        print(f"\n{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}")
+        print(f"{C.BOLD}{C.CYAN}   Synapse AI -- Rebuild{C.RESET}")
+        print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
+        check_python()
+        check_npm()
+        try:
+            _rebuild_backend(ROOT_DIR)
+        except Exception as e:
+            warn(f"Backend rebuild failed: {e}")
+        try:
+            _rebuild_frontend(ROOT_DIR)
+        except Exception as e:
+            warn(f"Frontend rebuild failed: {e}")
+        print()
+        ok("Rebuild complete.")
+        sys.exit(0)
+
     print(f"\n{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}   Synapse AI — Setup Wizard{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}   Synapse AI -- Setup Wizard{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
+
+    # ------------------------------------------------------------------
+    # Already-installed: stop services, rebuild, show instructions
+    # ------------------------------------------------------------------
+    already_installed, install_dir = _is_already_installed()
+    if already_installed:
+        _handle_already_installed(install_dir)
+        # _handle_already_installed always calls sys.exit(0)
 
     check_python()
     check_npm()
@@ -1456,11 +2075,12 @@ def main():
     ask_google_workspace(cfg)
     ask_agent_name(cfg)
     ask_llm(cfg)
-    ask_examples()
 
     step("Writing Settings")
     save_settings(cfg)
     ok(f"Settings saved to {SETTINGS_FILE}")
+
+    create_default_agent()
 
     try:
         install_backend(
@@ -1474,9 +2094,16 @@ def main():
 
     setup_path()
 
+    # Write the install marker so future runs detect this installation
+    _write_install_marker()
+
+    # Ask about auto-start on login
+    ask_startup_on_boot(cfg)
+    save_settings(cfg)  # persist start_on_boot preference
+
     print()
     start_now = ask_yn("Start Synapse now?", default="y")
-    
+
     if not start_now:
         print()
         show_restart_instructions()
@@ -1487,13 +2114,21 @@ def main():
     _frontend_port = cfg.get("frontend_port", DEFAULT_FRONTEND_PORT)
 
     backend_proc = start_backend(backend_port=_backend_port)
+
+    if not wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend", timeout=90):
+        err("Backend did not start in time. Check the output above for errors.")
+        backend_proc.terminate()
+        sys.exit(1)
+    ok("Backend is ready.")
+
     frontend_proc = start_frontend(frontend_port=_frontend_port, backend_port=_backend_port)
 
-    if wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend"):
-        ok("Backend is ready.")
-
-    if wait_for_server(f"http://127.0.0.1:{_frontend_port}", "Frontend"):
-        ok("Frontend is ready.")
+    if not wait_for_server(f"http://127.0.0.1:{_frontend_port}", "Frontend", timeout=120):
+        err("Frontend did not start in time. Check the output above for errors.")
+        backend_proc.terminate()
+        frontend_proc.terminate()
+        sys.exit(1)
+    ok("Frontend is ready.")
 
     print(f"\n{C.BOLD}{C.GREEN}Application is running!{C.RESET}")
     print(f"   Frontend: {_c(C.CYAN, f'http://localhost:{_frontend_port}')}")
@@ -1511,17 +2146,35 @@ def main():
                 break
     except KeyboardInterrupt:
         print("\nStopping servers...")
-        backend_proc.terminate()
-        if not IS_WIN:
-            try:
-                os.killpg(os.getpgid(frontend_proc.pid), 15)
-            except Exception:
-                frontend_proc.terminate()
+        if IS_WIN:
+            # terminate() only kills the outermost .cmd wrapper on Windows;
+            # taskkill /F /T kills the entire process tree (npm -> node -> next)
+            for proc in (frontend_proc, backend_proc):
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                    )
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
         else:
-            frontend_proc.terminate()
+            # Kill the whole process group so npm -> node children all exit
+            for proc in (backend_proc, frontend_proc):
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
         print("Goodbye!")
         sys.exit(0)
 
 
+
 if __name__ == "__main__":
     main()
+

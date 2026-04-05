@@ -84,9 +84,9 @@ wait_for_url() {
     return 1
 }
 
-# Check and start Backend (Port 8000)
+# Check and start Backend (Port 8765)
 echo "Checking Backend..."
-if ! check_port 8000; then
+if ! check_port 8765; then
     echo "Starting Backend..."
     source "$DIR/backend/venv/bin/activate"
     $PYTHON_CMD "$DIR/backend/main.py" &
@@ -97,7 +97,7 @@ else
 fi
 
 # Always wait for backend to ensure it's responsive
-wait_for_url "http://localhost:8000/api/status" "Backend"
+wait_for_url "http://localhost:8765/api/status" "Backend"
 
 # Check and start Frontend (Port 3000)
 echo "Checking Frontend..."

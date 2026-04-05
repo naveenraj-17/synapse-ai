@@ -32,12 +32,12 @@ if (fs.existsSync(_rootEnv)) {
 // Priority:
 //   1. BACKEND_URL already in env  (explicit — use as-is)
 //   2. SYNAPSE_BACKEND_PORT in env (auto-build http://127.0.0.1:<port>)
-//   3. Hard default                (http://127.0.0.1:8000)
+//   3. Hard default                (http://127.0.0.1:8765)
 //
 // This means a user only needs to set SYNAPSE_BACKEND_PORT once and
 // everything — rewrites, API routes, port display — picks it up correctly.
 // ---------------------------------------------------------------------------
-const _backendPort = process.env.SYNAPSE_BACKEND_PORT || "8000";
+const _backendPort = process.env.SYNAPSE_BACKEND_PORT || "8765";
 const _derivedUrl  = `http://127.0.0.1:${_backendPort}`;
 
 // If BACKEND_URL not set at all, use the derived value.

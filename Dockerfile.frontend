@@ -1,5 +1,5 @@
 FROM node:20-alpine AS builder
-ARG BACKEND_URL=http://synapse-backend:8000
+ARG BACKEND_URL=http://synapse-backend:8765
 ENV BACKEND_URL=$BACKEND_URL
 WORKDIR /app
 COPY frontend/package*.json ./

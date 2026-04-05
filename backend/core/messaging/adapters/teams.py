@@ -1,7 +1,7 @@
 """
 Microsoft Teams adapter using Bot Framework SDK.
 Requires Azure Bot registration (App ID + App Password) and a public HTTPS URL
-for the webhook endpoint. For local dev, use ngrok: `ngrok http 8000`
+for the webhook endpoint. For local dev, use ngrok: `ngrok http 8765`
 
 The webhook is registered at: /api/messaging/teams/webhook/{channel_id}
 """

@@ -9,7 +9,7 @@ from services.google import get_auth_url, finish_auth
 router = APIRouter()
 
 # Read ports from env so they always match the running servers.
-_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8000"))
+_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 _FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))
 
 # This must match exactly what's registered in your Google Cloud Console
