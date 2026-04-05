@@ -79,10 +79,9 @@ jobs:
             tsconfig.tsbuildinfo,
             frontend/tsconfig.tsbuildinfo
 
-      # 3. Memory-safe SARIF patch to bypass GitHub's strict category rules
+      # 3. Memory-safe SARIF patch to merge runs and bypass GitHub's strict limits
       - name: Patch SARIF Categories for GitHub
         run: |
-          # Using sudo because the Codacy Docker action creates the file as 'root'
           sudo python3 -c '
           import json, sys, os
 
@@ -98,23 +97,42 @@ jobs:
                   print("Warning: SARIF file was corrupt. Creating a valid placeholder.")
                   data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
 
-          # Inject unique IDs so GitHub accepts multiple tools in one file
+          # GitHub limits SARIF files to 20 runs. We will group all runs by tool name.
           if "runs" in data:
-              for i, run in enumerate(data["runs"]):
-                  # Safely get the tool name without f-string quote collisions
-                  tool_name = run.get("tool", {}).get("driver", {}).get("name", "tool")
+              grouped_runs = {}
+              for run in data["runs"]:
+                  # Get the tool name (e.g., "Bandit", "Semgrep")
+                  tool_name = run.get("tool", {}).get("driver", {}).get("name", "Codacy-Tool")
                   clean_name = tool_name.lower().replace(" ", "-")
                   
-                  if "automationDetails" not in run:
-                      run["automationDetails"] = {}
+                  if tool_name not in grouped_runs:
+                      # First time seeing this tool, initialize its grouped run
+                      grouped_runs[tool_name] = {
+                          "tool": run.get("tool", {"driver": {"name": tool_name, "rules": []}}),
+                          "results": [],
+                          "automationDetails": {"id": f"codacy-{clean_name}"}
+                      }
+                  else:
+                      # We already have a run for this tool. Merge the rules to avoid duplicates.
+                      existing_rules = grouped_runs[tool_name].get("tool", {}).get("driver", {}).get("rules", [])
+                      existing_rule_ids = {r.get("id") for r in existing_rules if "id" in r}
+                      
+                      new_rules = run.get("tool", {}).get("driver", {}).get("rules", [])
+                      for rule in new_rules:
+                          if rule.get("id") not in existing_rule_ids:
+                              grouped_runs[tool_name]["tool"]["driver"]["rules"].append(rule)
+                              existing_rule_ids.add(rule.get("id"))
                   
-                  # Apply the formatted ID
-                  run["automationDetails"]["id"] = f"codacy-{clean_name}-{i}"
+                  # Merge the actual vulnerabilities/results into the group
+                  grouped_runs[tool_name]["results"].extend(run.get("results", []))
+                  
+              # Replace the 33 fragment runs with our cleanly grouped runs (max 4)
+              data["runs"] = list(grouped_runs.values())
 
           # Write safely to disk
           with open("results.sarif", "w") as f:
               json.dump(data, f, indent=2)
-          print("Successfully formatted SARIF for GitHub Advanced Security.")
+          print(f"Successfully compressed into {len(data.get('runs', []))} runs for GitHub Advanced Security.")
           '
 
       # 4. Upload directly to the GitHub Security Tab
