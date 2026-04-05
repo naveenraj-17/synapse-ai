@@ -229,7 +229,7 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     npm = _npm_command()
     return subprocess.Popen(
-        [npm, "start", "--", "-p", str(_frontend_port), "-H", "0.0.0.0"],
+        [npm, "start"],
         cwd=str(FRONTEND_DIR),
         env=env,
         **kwargs,

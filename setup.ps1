@@ -290,32 +290,69 @@ function Show-PostgresInstructions {
 function Start-SynapseSetup {
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host "   Synapse AI - Repository Setup" -ForegroundColor Cyan
+    Write-Host "   Synapse AI - Setup" -ForegroundColor Cyan
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
+
+    # Fixed install location — always the same regardless of where the user runs this script
+    $InstallDir  = "$env:LOCALAPPDATA\Programs\SynapseAI"
+    $MarkerFile  = "$InstallDir\.installed"
+
+    # -----------------------------------------------------------------------
+    # Already-installed check
+    # -----------------------------------------------------------------------
+    if (Test-Path $MarkerFile) {
+        Write-Host ""
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host "   Synapse AI is already installed!" -ForegroundColor Green
+        Write-Host "======================================================" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "   Installed at: $InstallDir" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "   To start Synapse, open a terminal and run:" -ForegroundColor White
+        Write-Host "     synapse start" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "   Other commands:" -ForegroundColor White
+        Write-Host "     synapse stop      -- stop running services" -ForegroundColor Gray
+        Write-Host "     synapse status    -- check service status" -ForegroundColor Gray
+        Write-Host "     synapse restart   -- restart services" -ForegroundColor Gray
+        Write-Host ""
+        $reconfigure = Read-Host "Would you like to reconfigure or reinstall Synapse? (y/N)"
+        if ($reconfigure -notmatch "^[Yy]") {
+            Write-Host ""
+            Write-Host "Exiting. Synapse is ready to use." -ForegroundColor Green
+            exit 0
+        }
+        Write-Host ""
+        Write-Host "Proceeding with reconfiguration..." -ForegroundColor Yellow
+        Write-Host ""
+    }
 
     Invoke-PrerequisitesCheck
 
     $RepoUrl = "https://github.com/naveenraj-17/synapse-ai.git"
-    $DestDir = "synapse-ai"
-    # Use absolute path so we never need to cd into the repo
-    $AbsDestDir = Join-Path (Get-Location).Path $DestDir
 
-    if (Test-Path (Join-Path $AbsDestDir ".git")) {
+    # Clone or update at the fixed install location
+    if (Test-Path (Join-Path $InstallDir ".git")) {
         Write-Host ""
-        Write-Host "Repository already exists at $AbsDestDir -- pulling latest..."
-        git -C $AbsDestDir pull --ff-only
+        Write-Host "Repository found at $InstallDir -- pulling latest changes..."
+        git -C $InstallDir pull --ff-only
     } else {
         Write-Host ""
-        Write-Host "Cloning Synapse AI into $AbsDestDir ..."
-        git clone $RepoUrl $AbsDestDir
+        Write-Host "Installing Synapse AI to: $InstallDir"
+        # Create parent directory if needed
+        $ParentDir = Split-Path $InstallDir -Parent
+        if (-not (Test-Path $ParentDir)) {
+            New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null
+        }
+        git clone $RepoUrl $InstallDir
     }
 
-    if (Test-Path $AbsDestDir) {
+    if (Test-Path $InstallDir) {
         Write-Host ""
-        $SetupScript = Join-Path $AbsDestDir "setup.py"
+        $SetupScript = Join-Path $InstallDir "setup.py"
 
-        # We need to handle cases where the command has arguments like "py -3.11"
+        # Handle cases where Python command has arguments (e.g. "py -3.11")
         if ($global:PYTHON_CMD -match " ") {
             $parts = $global:PYTHON_CMD -split " "
             & $parts[0] $parts[1..($parts.Length-1)] $SetupScript
@@ -323,15 +360,14 @@ function Start-SynapseSetup {
             & $global:PYTHON_CMD $SetupScript
         }
 
-        # After setup completes, add the synapse bin dir to PowerShell profile
-        # so that 'synapse' command is available in future PS sessions too.
-        $BinDir = Join-Path $AbsDestDir "bin"
+        # Add the synapse bin dir to the PowerShell profile for future sessions
+        $BinDir      = Join-Path $InstallDir "bin"
         $ProfileFile = $PROFILE.CurrentUserAllHosts
         if (-not (Test-Path $ProfileFile)) {
             New-Item -ItemType File -Path $ProfileFile -Force | Out-Null
         }
         $ProfileContent = Get-Content $ProfileFile -Raw -ErrorAction SilentlyContinue
-        if ($ProfileContent -notlike "*synapse-ai*") {
+        if ($ProfileContent -notlike "*SynapseAI*") {
             Add-Content -Path $ProfileFile -Value "`n# Synapse AI`n`$env:Path = `"$BinDir;`$env:Path`""
             Write-Host "[OK] Added Synapse to PowerShell profile ($ProfileFile)" -ForegroundColor Green
         }
@@ -339,11 +375,11 @@ function Start-SynapseSetup {
         Write-Host ""
         Write-Host "========================================================" -ForegroundColor Green
         Write-Host "   Synapse AI setup complete!" -ForegroundColor Green
-        Write-Host "   To start Synapse again later, open a new terminal" -ForegroundColor Green
-        Write-Host "   and run:  synapse start" -ForegroundColor Cyan
+        Write-Host "   To start Synapse:  synapse start" -ForegroundColor Cyan
+        Write-Host "   Installed at:      $InstallDir" -ForegroundColor Cyan
         Write-Host "========================================================" -ForegroundColor Green
     } else {
-        throw "Could not find repository directory: $AbsDestDir"
+        throw "Could not find installation directory: $InstallDir"
     }
 }
 

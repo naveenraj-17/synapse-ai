@@ -1387,26 +1387,32 @@ def start_frontend(frontend_port: int = DEFAULT_FRONTEND_PORT, backend_port: int
     if IS_WIN:
         npm = _find_npm_cmd_win()
         return subprocess.Popen(
-            [npm, "run", "start", "--", "-p", str(frontend_port)],
+            [npm, "start"],
             cwd=FRONTEND_DIR,
             env=env,
         )
     return subprocess.Popen(
-        ["npm", "run", "start", "--", "-p", str(frontend_port)],
+        ["npm", "start"],
         cwd=FRONTEND_DIR,
         env=env,
     )
 
-def wait_for_server(url: str, name: str, timeout: int = 60) -> bool:
-    """Wait for a server to be ready by checking HTTP status"""
+def wait_for_server(url: str, name: str, timeout: int = 120) -> bool:
+    """Wait for a server to be ready by polling HTTP, with a live elapsed counter."""
     start = time.time()
-    while time.time() - start < timeout:
+    while True:
+        elapsed = int(time.time() - start)
+        if elapsed >= timeout:
+            print()
+            warn(f"Timed out waiting for {name} after {timeout}s.")
+            return False
         try:
             urllib.request.urlopen(url, timeout=3)
+            print(f"\r", end="")  # clear the progress line
             return True
         except Exception:
+            print(f"\r   Waiting for {name}... {elapsed}s", end="", flush=True)
             time.sleep(2)
-    return False
 
 # ---------------------------------------------------------------------------
 # PATH Setup Helpers
@@ -1548,6 +1554,308 @@ def show_restart_instructions():
         info(f"  synapse status    # Check service status")
         info(f"  synapse restart   # Restart services")
 
+
+# ---------------------------------------------------------------------------
+# Install Location & Already-Installed Detection
+# ---------------------------------------------------------------------------
+def _get_default_install_dir():
+    """Return the OS-standard directory where Synapse AI should be installed."""
+    if IS_WIN:
+        local_app = os.environ.get(
+            "LOCALAPPDATA",
+            os.path.join(os.path.expanduser("~"), "AppData", "Local"),
+        )
+        return os.path.join(local_app, "Programs", "SynapseAI")
+    elif sys.platform == "darwin":
+        return os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", "SynapseAI"
+        )
+    else:  # Linux
+        return os.path.join(os.path.expanduser("~"), ".local", "share", "synapse-ai")
+
+
+def _is_already_installed():
+    """Return (True, install_dir) if a previous install is found, else (False, None)."""
+    # Check the directory this setup.py lives in (most common case)
+    if os.path.exists(os.path.join(ROOT_DIR, ".installed")):
+        return True, ROOT_DIR
+    # Check the OS-standard location (installed by a previous run from elsewhere)
+    default_dir = _get_default_install_dir()
+    if os.path.exists(os.path.join(default_dir, ".installed")):
+        return True, default_dir
+    return False, None
+
+
+def _write_install_marker():
+    """Write a .installed marker so future runs detect an existing install."""
+    import datetime
+    marker = os.path.join(ROOT_DIR, ".installed")
+    with open(marker, "w") as f:
+        json.dump(
+            {
+                "installed_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "install_dir": ROOT_DIR,
+                "platform": sys.platform,
+            },
+            f,
+            indent=2,
+        )
+    ok(f"Install marker written.")
+
+
+def _show_already_installed_screen(install_dir):
+    """Print the 'already installed' banner and return whether the user wants to reconfigure."""
+    print(f"\n{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
+    print(f"{C.BOLD}{C.GREEN}   Synapse AI is already installed!{C.RESET}")
+    print(f"{C.BOLD}{C.GREEN}{'=' * 54}{C.RESET}")
+    print(f"\n   Installed at: {_c(C.CYAN, install_dir)}\n")
+    info("To start Synapse, open a terminal and run:")
+    info(f"  {_c(C.CYAN, 'synapse start')}")
+    info("")
+    info("Other useful commands:")
+    info("  synapse stop      — stop running services")
+    info("  synapse status    — check service status")
+    info("  synapse restart   — restart services")
+    print()
+    return ask_yn("Would you like to reconfigure or reinstall Synapse?", default="n")
+
+
+# ---------------------------------------------------------------------------
+# Startup on Boot
+# ---------------------------------------------------------------------------
+def _register_startup_win():
+    """Register synapse start --detach in HKCU Run (no admin required)."""
+    try:
+        import winreg  # type: ignore  # stdlib on Windows
+        synapse_bat = os.path.join(ROOT_DIR, "bin", "synapse.bat")
+        command = f'"{synapse_bat}" start --detach'
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        winreg.SetValueEx(key, "SynapseAI", 0, winreg.REG_SZ, command)
+        winreg.CloseKey(key)
+        ok("Synapse registered to start on login (Registry › Run).")
+    except Exception as e:
+        warn(f"Could not register startup: {e}")
+        info("You can add it manually: search 'Task Scheduler' in the Start menu.")
+
+
+def _unregister_startup_win():
+    """Remove the HKCU Run registry entry."""
+    try:
+        import winreg  # type: ignore
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        try:
+            winreg.DeleteValue(key, "SynapseAI")
+            ok("Removed Synapse from startup (Registry › Run).")
+        except FileNotFoundError:
+            pass  # not registered — fine
+        winreg.CloseKey(key)
+    except Exception as e:
+        warn(f"Could not remove startup entry: {e}")
+
+
+def _is_startup_registered_win():
+    try:
+        import winreg  # type: ignore
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_READ,
+        )
+        try:
+            winreg.QueryValueEx(key, "SynapseAI")
+            winreg.CloseKey(key)
+            return True
+        except FileNotFoundError:
+            winreg.CloseKey(key)
+            return False
+    except Exception:
+        return False
+
+
+def _register_startup_mac():
+    """Install a LaunchAgent plist so Synapse starts on login."""
+    launch_agents = os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents")
+    os.makedirs(launch_agents, exist_ok=True)
+    plist_path = os.path.join(launch_agents, "com.synapse-ai.server.plist")
+    synapse_bin = os.path.join(ROOT_DIR, "bin", "synapse")
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.synapse-ai.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>"{synapse_bin}" start --detach</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/synapse-ai.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/synapse-ai-error.log</string>
+</dict>
+</plist>
+"""
+    try:
+        with open(plist_path, "w") as f:
+            f.write(plist)
+        subprocess.run(["launchctl", "load", plist_path], check=False, capture_output=True)
+        ok(f"LaunchAgent installed — Synapse will start on login.")
+        info(f"  Plist: {plist_path}")
+    except Exception as e:
+        warn(f"Could not install LaunchAgent: {e}")
+
+
+def _unregister_startup_mac():
+    plist_path = os.path.join(
+        os.path.expanduser("~"), "Library", "LaunchAgents", "com.synapse-ai.server.plist"
+    )
+    if os.path.exists(plist_path):
+        try:
+            subprocess.run(["launchctl", "unload", plist_path], check=False, capture_output=True)
+            os.remove(plist_path)
+            ok("Removed Synapse LaunchAgent.")
+        except Exception as e:
+            warn(f"Could not remove LaunchAgent: {e}")
+
+
+def _is_startup_registered_mac():
+    plist_path = os.path.join(
+        os.path.expanduser("~"), "Library", "LaunchAgents", "com.synapse-ai.server.plist"
+    )
+    return os.path.exists(plist_path)
+
+
+def _register_startup_linux():
+    """Install a systemd user service so Synapse starts on login."""
+    service_dir = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user"
+    )
+    os.makedirs(service_dir, exist_ok=True)
+    service_path = os.path.join(service_dir, "synapse-ai.service")
+    synapse_bin = os.path.join(ROOT_DIR, "bin", "synapse")
+    bin_dir = os.path.join(ROOT_DIR, "bin")
+
+    # Try to find node bin dir for the service PATH
+    node_dir = ""
+    node_exe = shutil.which("node")
+    if node_exe:
+        node_dir = os.path.dirname(node_exe) + ":"
+
+    service_content = f"""[Unit]
+Description=Synapse AI Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStart={synapse_bin} start --detach
+ExecStop={synapse_bin} stop
+WorkingDirectory={ROOT_DIR}
+Environment="PATH={bin_dir}:{node_dir}/usr/local/bin:/usr/bin:/bin"
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+    try:
+        with open(service_path, "w") as f:
+            f.write(service_content)
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+        subprocess.run(["systemctl", "--user", "enable", "synapse-ai.service"], check=False, capture_output=True)
+        ok("systemd user service installed — Synapse will start on login.")
+        info(f"  Service: {service_path}")
+        info("  To start now (without rebooting): systemctl --user start synapse-ai")
+    except Exception as e:
+        warn(f"Could not install systemd service: {e}")
+
+
+def _unregister_startup_linux():
+    service_path = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user", "synapse-ai.service"
+    )
+    if os.path.exists(service_path):
+        try:
+            subprocess.run(["systemctl", "--user", "disable", "synapse-ai.service"],
+                           check=False, capture_output=True)
+            os.remove(service_path)
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True)
+            ok("Removed Synapse systemd user service.")
+        except Exception as e:
+            warn(f"Could not remove systemd service: {e}")
+
+
+def _is_startup_registered_linux():
+    service_path = os.path.join(
+        os.path.expanduser("~"), ".config", "systemd", "user", "synapse-ai.service"
+    )
+    return os.path.exists(service_path)
+
+
+def ask_startup_on_boot(cfg):
+    """Ask the user whether Synapse should start automatically on login/boot."""
+    step("Start on Login")
+
+    # Check current registration state
+    if IS_WIN:
+        currently_registered = _is_startup_registered_win()
+    elif sys.platform == "darwin":
+        currently_registered = _is_startup_registered_mac()
+    else:
+        currently_registered = _is_startup_registered_linux()
+
+    if currently_registered:
+        info("Synapse is currently set to start automatically on login.")
+        keep = ask_yn("Keep this setting?", default="y")
+        if keep:
+            ok("Auto-start on login kept.")
+            cfg["start_on_boot"] = True
+            return
+        else:
+            # Unregister
+            if IS_WIN:
+                _unregister_startup_win()
+            elif sys.platform == "darwin":
+                _unregister_startup_mac()
+            else:
+                _unregister_startup_linux()
+            cfg["start_on_boot"] = False
+            ok("Auto-start on login disabled.")
+            return
+
+    info("Synapse can start automatically in the background when you log in.")
+    info("It runs silently — just open your browser to http://localhost:3000.")
+    enable = ask_yn("Start Synapse automatically on login?", default="n")
+    cfg["start_on_boot"] = enable
+
+    if not enable:
+        ok("Auto-start disabled.")
+        return
+
+    if IS_WIN:
+        _register_startup_win()
+    elif sys.platform == "darwin":
+        _register_startup_mac()
+    else:
+        _register_startup_linux()
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -1555,6 +1863,17 @@ def main():
     print(f"\n{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}   Synapse AI — Setup Wizard{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}{'=' * 50}{C.RESET}\n")
+
+    # ------------------------------------------------------------------
+    # Already-installed guard — show helpful screen and ask to continue
+    # ------------------------------------------------------------------
+    already_installed, install_dir = _is_already_installed()
+    if already_installed:
+        reconfigure = _show_already_installed_screen(install_dir)
+        if not reconfigure:
+            sys.exit(0)
+        warn("Continuing with reconfiguration — all steps will run again.")
+        print()
 
     check_python()
     check_npm()
@@ -1588,9 +1907,16 @@ def main():
 
     setup_path()
 
+    # Write the install marker so future runs detect this installation
+    _write_install_marker()
+
+    # Ask about auto-start on login
+    ask_startup_on_boot(cfg)
+    save_settings(cfg)  # persist start_on_boot preference
+
     print()
     start_now = ask_yn("Start Synapse now?", default="y")
-    
+
     if not start_now:
         print()
         show_restart_instructions()
@@ -1601,13 +1927,21 @@ def main():
     _frontend_port = cfg.get("frontend_port", DEFAULT_FRONTEND_PORT)
 
     backend_proc = start_backend(backend_port=_backend_port)
+
+    if not wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend", timeout=90):
+        err("Backend did not start in time. Check the output above for errors.")
+        backend_proc.terminate()
+        sys.exit(1)
+    ok("Backend is ready.")
+
     frontend_proc = start_frontend(frontend_port=_frontend_port, backend_port=_backend_port)
 
-    if wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend"):
-        ok("Backend is ready.")
-
-    if wait_for_server(f"http://127.0.0.1:{_frontend_port}", "Frontend"):
-        ok("Frontend is ready.")
+    if not wait_for_server(f"http://127.0.0.1:{_frontend_port}", "Frontend", timeout=120):
+        err("Frontend did not start in time. Check the output above for errors.")
+        backend_proc.terminate()
+        frontend_proc.terminate()
+        sys.exit(1)
+    ok("Frontend is ready.")
 
     print(f"\n{C.BOLD}{C.GREEN}Application is running!{C.RESET}")
     print(f"   Frontend: {_c(C.CYAN, f'http://localhost:{_frontend_port}')}")

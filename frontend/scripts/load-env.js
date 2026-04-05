@@ -46,10 +46,14 @@ const port = process.env.SYNAPSE_FRONTEND_PORT || "3000";
 const cmd  = process.argv[2] || "dev";   // "dev" | "start"
 const extra = process.argv.slice(3);     // any extra flags forwarded as-is
 
+// On Windows, `next` is installed as next.cmd; Node cannot exec .cmd files
+// directly without the shell. Using shell:true works on all platforms.
+const isWindows = process.platform === "win32";
+
 const result = spawnSync(
-  "next",
+  isWindows ? "next.cmd" : "next",
   [cmd, "-p", port, "-H", "0.0.0.0", ...extra],
-  { stdio: "inherit", shell: false }
+  { stdio: "inherit", shell: isWindows }
 );
 
 process.exit(result.status ?? 0);
