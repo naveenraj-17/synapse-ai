@@ -668,6 +668,31 @@ def check_uvx():
 # ---------------------------------------------------------------------------
 # Settings helpers
 # ---------------------------------------------------------------------------
+DEFAULT_MODEL_PRICING = {
+    "gpt-4o": { "provider": "openai", "input_per_1m": 2.5, "output_per_1m": 10 },
+    "gpt-4o-mini": { "provider": "openai", "input_per_1m": 0.15, "output_per_1m": 0.6 },
+    "gpt-4.1": { "provider": "openai", "input_per_1m": 2, "output_per_1m": 8 },
+    "gpt-4.1-mini": { "provider": "openai", "input_per_1m": 0.4, "output_per_1m": 1.6 },
+    "gpt-4.1-nano": { "provider": "openai", "input_per_1m": 0.1, "output_per_1m": 0.4 },
+    "claude-sonnet-4-20250514": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
+    "claude-opus-4-20250514": { "provider": "anthropic", "input_per_1m": 15, "output_per_1m": 75 },
+    "claude-3-5-haiku-20241022": { "provider": "anthropic", "input_per_1m": 0.8, "output_per_1m": 4 },
+    "gemini-2.5-pro": { "provider": "gemini", "input_per_1m": 1.25, "output_per_1m": 10 },
+    "gemini-2.5-flash": { "provider": "gemini", "input_per_1m": 0.3, "output_per_1m": 2.5 },
+    "grok-3": { "provider": "grok", "input_per_1m": 3, "output_per_1m": 15 },
+    "grok-3-mini": { "provider": "grok", "input_per_1m": 0.3, "output_per_1m": 0.5 },
+    "deepseek-chat": { "provider": "deepseek", "input_per_1m": 0.27, "output_per_1m": 1.1 },
+    "deepseek-reasoner": { "provider": "deepseek", "input_per_1m": 0.55, "output_per_1m": 2.19 },
+    "gemini-3.1-pro-preview": { "provider": "gemini", "input_per_1m": 2, "output_per_1m": 12 },
+    "gemini-3-flash-preview": { "provider": "gemini", "input_per_1m": 0.5, "output_per_1m": 3 },
+    "gemini-3.1-flash-lite-preview": { "provider": "gemini", "input_per_1m": 0.125, "output_per_1m": 0.75 },
+    "gemini-2.5-flash-lite": { "provider": "gemini", "input_per_1m": 0.1, "output_per_1m": 0.4 },
+    "claude-sonnet-4-5-20250929": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
+    "claude-sonnet-4-6": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
+    "claude-opus-4-5-20251101": { "provider": "anthropic", "input_per_1m": 5, "output_per_1m": 25 },
+    "claude-opus-4-6": { "provider": "anthropic", "input_per_1m": 5, "output_per_1m": 25 }
+}
+
 DEFAULT_SETTINGS = {
     "agent_name": "Synapse",
     "model": "",
@@ -718,6 +743,23 @@ def save_settings(cfg):
         cfg["installed_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(SETTINGS_FILE, "w") as f:
         json.dump(cfg, f, indent=4)
+        
+    # Always save model pricing on setup in data folder
+    src_pricing = os.path.join(BACKEND_DIR, "data", "model_pricing.json")
+    dst_pricing = os.path.join(DATA_DIR, "model_pricing.json")
+    if os.path.exists(src_pricing):
+        try:
+            if os.path.abspath(src_pricing) != os.path.abspath(dst_pricing):
+                shutil.copy2(src_pricing, dst_pricing)
+        except Exception:
+            pass
+    elif not os.path.exists(dst_pricing):
+        try:
+            with open(dst_pricing, "w") as f:
+                json.dump(DEFAULT_MODEL_PRICING, f, indent=4)
+        except Exception:
+            pass
+
     # Persist the data directory path into .env so cli.py and synapse start
     # always find settings in the same location, even with relative paths.
     _rel = os.path.relpath(DATA_DIR, ROOT_DIR)

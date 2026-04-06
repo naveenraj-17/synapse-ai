@@ -79,11 +79,15 @@ jobs:
             tsconfig.tsbuildinfo,
             frontend/tsconfig.tsbuildinfo
 
-      # 3. Memory-safe SARIF patch to merge ALL results into exactly ONE run
-      - name: Patch SARIF Categories for GitHub
+      # 3. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
+      - name: Split SARIF into individual files
         run: |
           sudo python3 -c '
           import json, sys, os
+
+          # Create a directory to hold the split files
+          output_dir = "sarif_split"
+          os.makedirs(output_dir, exist_ok=True)
 
           # Fallback if Codacy CLI failed to generate a valid file
           if not os.path.exists("results.sarif") or os.path.getsize("results.sarif") == 0:
@@ -97,49 +101,66 @@ jobs:
                   print("Warning: SARIF file was corrupt. Creating a valid placeholder.")
                   data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
 
-          # GitHub limit is 20. We will compress EVERYTHING into exactly 1 master run.
-          if "runs" in data and len(data["runs"]) > 0:
-              master_run = {
-                  "tool": {
-                      "driver": {
-                          "name": "Codacy Security Scan",
-                          "rules": []
-                      }
-                  },
-                  "results": [],
-                  "automationDetails": {"id": "codacy-combined-scan-master"}
+          runs = data.get("runs", [])
+          if not runs:
+              # Create a single empty file if there are no runs
+              with open(os.path.join(output_dir, "empty.sarif"), "w") as f:
+                  json.dump(data, f)
+              print("No runs found. Created empty placeholder.")
+              sys.exit(0)
+
+          # Split each run into its own file with a unique category ID
+          for i, run in enumerate(runs):
+              tool_name = run.get("tool", {}).get("driver", {}).get("name", "tool")
+              clean_name = tool_name.lower().replace(" ", "-")
+              
+              if "automationDetails" not in run:
+                  run["automationDetails"] = {}
+              
+              # Provide a strictly unique category for GitHub Advanced Security
+              run["automationDetails"]["id"] = "codacy-" + clean_name + "-" + str(i)
+              
+              # Build the single-run SARIF structure
+              new_sarif = {
+                  "$schema": data.get("$schema", "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"),
+                  "version": data.get("version", "2.1.0"),
+                  "runs": [run]
               }
               
-              seen_rule_ids = set()
-              
-              for run in data["runs"]:
-                  # Extract and merge rules safely
-                  driver = run.get("tool", {}).get("driver", {})
-                  rules = driver.get("rules", [])
-                  for rule in rules:
-                      rule_id = rule.get("id")
-                      if rule_id and rule_id not in seen_rule_ids:
-                          master_run["tool"]["driver"]["rules"].append(rule)
-                          seen_rule_ids.add(rule_id)
-                          
-                  # Extract and merge results
-                  results = run.get("results", [])
-                  master_run["results"].extend(results)
-                  
-              # Replace the 22 fragment runs with our 1 unified master run
-              data["runs"] = [master_run]
+              # Save it in the split directory
+              file_path = os.path.join(output_dir, "run_" + str(i) + ".sarif")
+              with open(file_path, "w") as out_f:
+                  json.dump(new_sarif, out_f, indent=2)
 
-          # Write safely to disk
-          with open("results.sarif", "w") as f:
-              json.dump(data, f, indent=2)
-          
-          # Safely print the final run count without breaking Bash quotes
-          num_runs = len(data.get("runs", []))
-          print("Successfully compressed into " + str(num_runs) + " master run for GitHub Advanced Security.")
+          print("Successfully split " + str(len(runs)) + " runs into individual SARIF files.")
           '
 
-      # 4. Upload directly to the GitHub Security Tab
-      - name: Upload SARIF results file
-        uses: github/codeql-action/upload-sarif@main
-        with:
-          sarif_file: results.sarif
+      # 4. Upload each file SEPARATELY via GitHub API
+      - name: Upload SARIF files separately
+        env:
+          # This is automatically provided by GitHub. You do NOT need to add it to your secrets.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Starting individual uploads to bypass GitHub Action merging..."          
+          for file in sarif_split/*.sarif; do
+            echo "Uploading $file..."
+            
+            # Compress and encode the file as required by the GitHub API
+            gzip -c "$file" > payload.gz
+            b64_payload=$(base64 -w0 payload.gz)
+            
+            # Upload directly via the GitHub CLI API (Removed the invalid flag)
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/code-scanning/sarifs \
+              -f commit_sha="${{ github.sha }}" \
+              -f ref="${{ github.ref }}" \
+              -f sarif="$b64_payload"
+              
+            # A tiny 2-second pause to respect API rate limits
+            sleep 2
+          done
+          
+          echo "All SARIF files successfully uploaded independently!"
