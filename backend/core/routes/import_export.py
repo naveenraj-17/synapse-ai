@@ -222,7 +222,7 @@ async def import_bundle(req: ImportRequest):
                 "name": mname,
                 "label": mcp.get("label", mname),
                 "status": "skipped_existing",
-                "message": "Already exists — skipped",
+                "message": "Already exists — will attempt connection",
             })
             continue
 
@@ -234,14 +234,14 @@ async def import_bundle(req: ImportRequest):
         if user_secrets and isinstance(mcp_entry.get("env"), dict):
             merged_env = {k: user_secrets.get(k, "") for k in mcp_entry["env"].keys()}
             mcp_entry["env"] = merged_env
-        mcp_entry["status"] = "disconnected"  # will need reconnect after import
+        mcp_entry["status"] = "disconnected"
         existing_mcp.append(mcp_entry)
         mcp_changed = True
         results["mcp_servers"].append({
             "name": mname,
             "label": mcp.get("label", mname),
             "status": "imported",
-            "message": "Saved — use 'Retry' in MCP Servers to connect",
+            "message": "Saved — connecting…",
         })
 
     if mcp_changed:
@@ -249,35 +249,46 @@ async def import_bundle(req: ImportRequest):
         with open(MCP_SERVERS_FILE, "w") as f:
             json.dump(existing_mcp, f, indent=4)
 
-        # Sync in-memory manager and attempt connections for each imported server
-        import core.server as _server
-        if _server.mcp_manager:
-            _server.mcp_manager.servers_config = existing_mcp
+    # Always sync manager with authoritative disk state and attempt connections
+    # for all selected servers (covers both newly imported and previously saved
+    # but not-yet-in-memory cases that happen after a server restart).
+    import core.server as _server
+    if _server.mcp_manager and req.selected_mcp_server_names:
+        _server.mcp_manager.servers_config = _load_mcp_servers()
 
-            for mcp_result in results["mcp_servers"]:
-                if mcp_result["status"] != "imported":
-                    continue
-                name = mcp_result["name"]
-                config = next((m for m in existing_mcp if m["name"] == name), None)
-                if not config:
-                    continue
+        for mcp_result in results["mcp_servers"]:
+            if mcp_result["status"] not in ("imported", "skipped_existing"):
+                continue
+            name = mcp_result["name"]
 
-                server_type = config.get("server_type", "stdio")
-                session = None
+            # Skip servers that are already connected in this session
+            if name in _server.mcp_manager.sessions:
+                mcp_result["status"] = "connected"
+                mcp_result["message"] = "Already connected"
+                continue
 
-                if server_type == "stdio":
-                    session = await _server.mcp_manager.connect_stdio_server(config)
-                elif config.get("token"):
-                    session = await _server.mcp_manager.connect_remote_server(config)
-                # remote without token requires OAuth — skip, user must connect manually
+            config = next((m for m in _server.mcp_manager.servers_config if m["name"] == name), None)
+            if not config:
+                continue
 
-                if session:
-                    _server.mcp_manager._set_status(name, "connected")
-                    await _server.mcp_manager._auto_register(name)
-                    mcp_result["status"] = "connected"
-                    mcp_result["message"] = "Connected successfully"
-                else:
-                    mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
+            server_type = config.get("server_type", "stdio")
+            session = None
+
+            if server_type == "stdio":
+                session = await _server.mcp_manager.connect_stdio_server(config)
+            elif config.get("token"):
+                session = await _server.mcp_manager.connect_remote_server(config)
+            # remote without token = OAuth flow — user must authorize via browser
+
+            if session:
+                _server.mcp_manager._set_status(name, "connected")
+                await _server.mcp_manager._auto_register(name)
+                mcp_result["status"] = "connected"
+                mcp_result["message"] = "Connected successfully"
+            else:
+                _server.mcp_manager._set_status(name, "disconnected")
+                mcp_result["status"] = "disconnected"
+                mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
 
     # ── Custom Tools ────────────────────────────────────────────────────────────
     existing_tools = _load_custom_tools()
