@@ -723,6 +723,7 @@ DEFAULT_SETTINGS = {
     "browser_automation_enabled": True,
     "playwright_browsers_path": "",
     "messaging_enabled": False,
+    "embed_code": False,
 }
 
 def load_settings():
@@ -764,40 +765,47 @@ def save_settings(cfg):
     # always find settings in the same location, even with relative paths.
     _rel = os.path.relpath(DATA_DIR, ROOT_DIR)
     _update_env_file("SYNAPSE_DATA_DIR", _rel)
-    # Persist the database URL into .env so backend services that read
-    # DATABASE_URL from the environment (code_indexer, code_search) pick it up.
-    if cfg.get("sql_connection_string"):
-        _update_env_file("DATABASE_URL", cfg["sql_connection_string"])
 
 # ---------------------------------------------------------------------------
 # Q1 -- Coding Agent
 # ---------------------------------------------------------------------------
 def ask_coding_agent(cfg):
-    step("Coding Agent (PostgreSQL + pgvector)")
-    info("Enables semantic code search across your repositories.")
+    step("Coding Agent")
+    info("Enables code-aware agents that can read, search, and understand your codebase.")
     enabled = ask_yn("Enable the Coding Agent?")
     cfg["coding_agent_enabled"] = enabled
-
     if not enabled:
-        ok("Coding Agent disabled -- skipping PostgreSQL setup.")
+        ok("Coding Agent disabled.")
+
+
+def ask_embed_code(cfg):
+    step("Code Repository Indexing (PostgreSQL + pgvector)")
+    info("Enables semantic search across your code repositories using vector embeddings.")
+
+    psql_found = shutil.which("psql") is not None
+    if not psql_found:
+        warn("PostgreSQL (psql) not found on your system.")
+        info("Code repository indexing will be disabled.")
+        info("You can enable it later in Settings → General after installing PostgreSQL.")
+        cfg["embed_code"] = False
         return
 
-    # Check if PostgreSQL was already installed by user
-    psql_was_preinstalled = shutil.which("psql") is not None
+    ok("PostgreSQL found.")
+    enabled = ask_yn("Do you want to enable code repository indexing?", default="n")
+    cfg["embed_code"] = enabled
 
-    # Check if PostgreSQL is installed, install if needed
-    if not psql_was_preinstalled:
-        warn("PostgreSQL not found. Installing PostgreSQL...")
-        install_postgresql()
-        # Use default credentials for auto-installed PostgreSQL
+    if not enabled:
+        ok("Code indexing disabled -- skipping PostgreSQL setup.")
+        return
+
+    # Check if PostgreSQL was pre-installed or needs setup
+    if ask_yn("Is this a fresh PostgreSQL install (use default credentials)?", default="n"):
         db_user = "postgres"
-        db_password = ""  # Default postgres user usually has no password (peer auth)
+        db_password = ""
         db_name = "synapse"
         ok("Using default PostgreSQL credentials (postgres user, peer authentication).")
     else:
-        ok("PostgreSQL is already installed.")
-        # Ask for credentials only if user had it pre-installed
-        info("Configuring PostgreSQL database for Coding Agent...")
+        info("Configuring PostgreSQL database for code indexing...")
         db_user = ask("PostgreSQL username", default="postgres")
         db_password = ask("PostgreSQL password", default="")
         db_name = ask("Database name", default="synapse")
@@ -807,11 +815,11 @@ def ask_coding_agent(cfg):
 
     # Create database and get URL
     db_url = create_postgresql_db(db_user, db_password, db_name)
-    
+
     if db_url:
         cfg["sql_connection_string"] = db_url
         ok(f"Database URL: {_redact_url(db_url)}")
-        
+
         # Test connection
         info("Testing PostgreSQL connection...")
         try:
@@ -824,7 +832,7 @@ def ask_coding_agent(cfg):
             except Exception as e:
                 warn(f"Connection test failed: {e}")
                 if ask_yn("Save URL anyway?", default="y"):
-                    ok(f"Saved URL (verify before starting server)")
+                    ok("Saved URL (verify before starting server)")
                     return
         except ImportError:
             info("(psycopg2 will be installed with backend dependencies)")
@@ -2198,6 +2206,7 @@ def main():
     cfg = load_settings()
 
     ask_coding_agent(cfg)
+    ask_embed_code(cfg)
 
     ask_browser_automation(cfg)
     ask_messaging_app(cfg)

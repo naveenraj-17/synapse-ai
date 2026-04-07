@@ -33,9 +33,10 @@ export interface Repo {
 
 interface ReposTabProps {
     embeddingModel?: string;
+    embedCode?: boolean;
 }
 
-export function ReposTab({ embeddingModel }: ReposTabProps) {
+export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
     const [repos, setRepos] = useState<Repo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [draftRepo, setDraftRepo] = useState<Partial<Repo> | null>(null);
@@ -213,7 +214,7 @@ export function ReposTab({ embeddingModel }: ReposTabProps) {
         return (
             <div className="space-y-8">
                 {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
-                {!embeddingModel && (
+                {embedCode && !embeddingModel && (
                     <div className="flex items-start gap-3 p-3 bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
                         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                         <span>

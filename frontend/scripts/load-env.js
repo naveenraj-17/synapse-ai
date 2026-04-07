@@ -56,5 +56,5 @@ const result = spawnSync(
   { stdio: "inherit", shell: isWindows }
 );
 
-process.exit(result.status ?? 0);
+process.exit(result.status != null ? result.status : 0);
 

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -22,7 +22,6 @@ import { IntegrationsTab } from './settings/IntegrationsTab';
 import { McpServersTab } from './settings/McpServersTab';
 import { ConfirmationModal } from './settings/ConfirmationModal';
 import { ToastNotification } from './settings/ToastNotification';
-import { N8nFullscreenOverlay } from './settings/N8nFullscreenOverlay';
 import { ReposTab } from './settings/ReposTab';
 import { DBsTab } from './settings/DBsTab';
 import { OrchestrationTab } from './settings/OrchestrationTab';
@@ -91,7 +90,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
     // Custom Tools State
     const [draftTool, setDraftTool] = useState<any>(null);
-    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'n8n' | 'python'>('config');
+    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'python'>('config');
     const [headerRows, setHeaderRows] = useState<{ id: string, key: string, value: string }[]>([]);
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
     const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
@@ -119,6 +118,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [loadingCapabilities, setLoadingCapabilities] = useState(true);
     const [messagingEnabled, setMessagingEnabled] = useState(false);
     const [codingEnabled, setCodingEnabled] = useState(false);
+    const [embedCode, setEmbedCode] = useState(false);
 
     // Persistent OAuth postMessage listener — lives here so it survives settings tab switches
     const handleMcpOAuthMessage = useCallback((event: MessageEvent) => {
@@ -211,6 +211,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             vault_enabled: vaultEnabled,
             vault_threshold: vaultThreshold,
             allow_db_write: allowDbWrite,
+            embed_code: embedCode,
         };
 
         try {
@@ -261,18 +262,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         }
     };
 
-    // Fullscreen State
-    const [isIframeFullscreen, setIsIframeFullscreen] = useState(false);
     const [n8nWorkflowId, setN8nWorkflowId] = useState<string | null>(null);
-    const [isN8nLoading, setIsN8nLoading] = useState(true);
-    const n8nIframeRef = useRef<HTMLIFrameElement>(null);
-
-    // Reset n8n loading state when switching modes
-    useEffect(() => {
-        if (toolBuilderMode === 'n8n') {
-            setIsN8nLoading(true);
-        }
-    }, [toolBuilderMode]);
 
     // Confirmation Modal State
     const [confirmAction, setConfirmAction] = useState<{
@@ -406,6 +396,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
                 setVaultThreshold(data.vault_threshold || 100000);
                 setAllowDbWrite(data.allow_db_write || false);
+                setEmbedCode(data.embed_code || false);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
                 if (data.bedrock_api_key) {
@@ -861,6 +852,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             setVaultThreshold={setVaultThreshold}
                             allowDbWrite={allowDbWrite}
                             setAllowDbWrite={setAllowDbWrite}
+                            embedCode={embedCode}
+                            setEmbedCode={setEmbedCode}
                             onSave={handleSaveSection}
                         />
                     )}
@@ -914,11 +907,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             n8nWorkflowsLoading={n8nWorkflowsLoading}
                             n8nWorkflowId={n8nWorkflowId}
                             setN8nWorkflowId={setN8nWorkflowId}
-                            isIframeFullscreen={isIframeFullscreen}
-                            setIsIframeFullscreen={setIsIframeFullscreen}
-                            isN8nLoading={isN8nLoading}
-                            setIsN8nLoading={setIsN8nLoading}
-                            n8nIframeRef={n8nIframeRef}
                             getN8nBaseUrl={getN8nBaseUrl}
                             onSaveTool={handleSaveTool}
                             onDeleteTool={handleDeleteTool}
@@ -1002,7 +990,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
                     {/* REPOS TAB */}
                     {activeTab === 'repos' && (
-                        <ReposTab embeddingModel={embeddingModel} />
+                        <ReposTab embeddingModel={embeddingModel} embedCode={embedCode} />
                     )}
 
                     {/* DB CONFIGS TAB */}
@@ -1024,14 +1012,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 onClose={() => setConfirmAction(null)}
             />
 
-            {/* Fullscreen n8n Iframe Overlay - Rendered outside modal to avoid clipping */}
-            <N8nFullscreenOverlay
-                isIframeFullscreen={isIframeFullscreen}
-                toolBuilderMode={toolBuilderMode}
-                draftTool={draftTool}
-                setIsIframeFullscreen={setIsIframeFullscreen}
-                getN8nBaseUrl={getN8nBaseUrl}
-            />
         </div>
     );
 };

@@ -228,6 +228,8 @@ async def import_bundle(req: ImportRequest):
 
         # Merge user-supplied secrets into env
         mcp_entry = dict(mcp)
+        if "server_type" not in mcp_entry:
+            mcp_entry["server_type"] = "stdio"
         user_secrets = req.mcp_secrets.get(mname, {})
         if user_secrets and isinstance(mcp_entry.get("env"), dict):
             merged_env = {k: user_secrets.get(k, "") for k in mcp_entry["env"].keys()}
@@ -246,6 +248,36 @@ async def import_bundle(req: ImportRequest):
         os.makedirs(os.path.dirname(MCP_SERVERS_FILE), exist_ok=True)
         with open(MCP_SERVERS_FILE, "w") as f:
             json.dump(existing_mcp, f, indent=4)
+
+        # Sync in-memory manager and attempt connections for each imported server
+        import core.server as _server
+        if _server.mcp_manager:
+            _server.mcp_manager.servers_config = existing_mcp
+
+            for mcp_result in results["mcp_servers"]:
+                if mcp_result["status"] != "imported":
+                    continue
+                name = mcp_result["name"]
+                config = next((m for m in existing_mcp if m["name"] == name), None)
+                if not config:
+                    continue
+
+                server_type = config.get("server_type", "stdio")
+                session = None
+
+                if server_type == "stdio":
+                    session = await _server.mcp_manager.connect_stdio_server(config)
+                elif config.get("token"):
+                    session = await _server.mcp_manager.connect_remote_server(config)
+                # remote without token requires OAuth — skip, user must connect manually
+
+                if session:
+                    _server.mcp_manager._set_status(name, "connected")
+                    await _server.mcp_manager._auto_register(name)
+                    mcp_result["status"] = "connected"
+                    mcp_result["message"] = "Connected successfully"
+                else:
+                    mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
 
     # ── Custom Tools ────────────────────────────────────────────────────────────
     existing_tools = _load_custom_tools()

@@ -1616,18 +1616,15 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_pat_here"
       },
-      "label": "GitHub"
+      "label": "GitHub",
+      "server_type": "stdio"
     },
     {
       "name": "jira",
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://mcp.atlassian.com/v1/mcp"
-      ],
-      "env": {},
-      "label": "Jira & Confluence"
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "token": "",
+      "label": "Jira & Confluence",
+      "server_type": "remote"
     }
   ]
 }

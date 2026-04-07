@@ -13,18 +13,21 @@ try:
 except ImportError:
     PSYCOPG_AVAILABLE = False
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
-
-# Module-level lazy connection pool singleton
+# Module-level lazy connection pool singleton (keyed by URL so it resets if settings change)
 _pool = None
+_pool_url: str | None = None
 
 
 def _get_pool():
-    global _pool
+    global _pool, _pool_url
     if not PSYCOPG_AVAILABLE:
         raise RuntimeError("psycopg_pool is not installed. Enable the coding agent feature.")
-    if _pool is None:
-        _pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=5)
+    db_url = load_settings().get("sql_connection_string", "")
+    if not db_url:
+        raise RuntimeError("No database URL configured. Set sql_connection_string in Settings → General.")
+    if _pool is None or _pool_url != db_url:
+        _pool = ConnectionPool(db_url, min_size=1, max_size=5)
+        _pool_url = db_url
     return _pool
 
 

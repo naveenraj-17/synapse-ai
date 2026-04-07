@@ -37,6 +37,7 @@ def load_settings():
         "vault_enabled": True,
         "vault_threshold": 100000,
         "coding_agent_enabled": False,
+        "embed_code": False,
     }
     
     if not os.path.exists(SETTINGS_FILE):

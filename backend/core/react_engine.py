@@ -146,6 +146,8 @@ def _inject_repo_context(agent_data, system_template):
     """Inject repo context into system prompt for code agents. Returns updated template."""
     if agent_data.get("type") != "code":
         return system_template
+    if not load_settings().get("embed_code", False):
+        return system_template
     repos_list = agent_data.get("repos", [])
     if not repos_list:
         return system_template

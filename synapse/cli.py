@@ -163,10 +163,24 @@ def check_prerequisites():
         if not _ensure_node_in_path_win():
             errors.append("Node.js 20.9.0+ not found -- install from https://nodejs.org/ and re-run.")
     else:
-        if shutil.which("node") is None:
-            errors.append("node not found -- install Node.js from https://nodejs.org/")
+        node = shutil.which("node")
+        if node is None:
+            errors.append("node not found -- install Node.js 20.9.0+ from https://nodejs.org/")
+        else:
+            try:
+                r = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=5)
+                ver_str = r.stdout.strip().lstrip("v")
+                ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+                min_str = ".".join(str(x) for x in MIN_NODE)
+                if ver_tuple < MIN_NODE:
+                    errors.append(
+                        f"Node.js {ver_str} is too old (need {min_str}+) -- "
+                        "upgrade from https://nodejs.org/"
+                    )
+            except Exception:
+                pass  # version check failed, proceed and let Node report its own errors
         if shutil.which("npm") is None:
-            errors.append("npm not found -- install Node.js from https://nodejs.org/")
+            errors.append(f"npm not found -- install Node.js {'.'.join(str(x) for x in MIN_NODE)}+ from https://nodejs.org/")
     if shutil.which("ollama") is None:
         print("Warning: ollama not found. Local models won't work; cloud API models (Anthropic, OpenAI, Gemini) still work.")
     if errors:
@@ -653,6 +667,15 @@ def _uninstall_command(keep_data: bool = False):
             print(f"  Removed data directory: {DATA_DIR}")
         except Exception as e:
             print(f"  Warning: could not remove data dir {DATA_DIR}: {e}")
+    # Also remove ~/.synapse parent directory (config files, etc.)
+    if not keep_data:
+        synapse_home = Path.home() / ".synapse"
+        if synapse_home.exists():
+            try:
+                shutil.rmtree(synapse_home)
+                print(f"  Removed Synapse home: {synapse_home}")
+            except Exception as e:
+                print(f"  Warning: could not fully remove {synapse_home}: {e}")
 
     # 4. Remove the installation directory
     print(f"\nRemoving installation directory: {ROOT_DIR}")
@@ -671,10 +694,85 @@ def _uninstall_command(keep_data: bool = False):
         print(f"  Warning: could not fully remove {ROOT_DIR}: {e}")
         print("  You may need to delete it manually.")
 
-    # 5. Clean PATH entries from shell rc files
-    if not IS_WIN:
+    # 5. Remove the pip-installed `synapse` console script
+    print("\nUninstalling Python package...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "synapse-ai"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            print("  Removed pip package synapse-ai.")
+        else:
+            # Try alternate package name
+            result2 = subprocess.run(
+                [sys.executable, "-m", "pip", "uninstall", "-y", "synapse"],
+                capture_output=True, text=True,
+            )
+            if result2.returncode == 0:
+                print("  Removed pip package synapse.")
+            else:
+                print("  Package not found in pip (may already be removed).")
+    except Exception as e:
+        print(f"  Warning: pip uninstall failed: {e}")
+
+    # Fallback: remove the synapse executable directly if it still exists on PATH
+    synapse_exe = shutil.which("synapse")
+    if synapse_exe:
+        try:
+            Path(synapse_exe).unlink(missing_ok=True)
+            print(f"  Removed executable: {synapse_exe}")
+        except PermissionError:
+            print(f"  Warning: no permission to remove {synapse_exe} -- delete it manually.")
+        except Exception as e:
+            print(f"  Warning: could not remove {synapse_exe}: {e}")
+
+    # Windows: also scrub leftover files from the Python Scripts directory
+    if IS_WIN:
+        scripts_dir = Path(sys.executable).parent / "Scripts"
+        for name in ("synapse.exe", "synapse-script.py"):
+            candidate = scripts_dir / name
+            if candidate.exists():
+                try:
+                    candidate.unlink()
+                    print(f"  Removed: {candidate}")
+                except Exception as e:
+                    print(f"  Warning: could not remove {candidate}: {e}")
+
+    # 6. Clean PATH entries from shell rc files (Unix) / registry (Windows)
+    if IS_WIN:
+        _root_bin = str(ROOT_DIR / "bin").lower()
+        _root_str = str(ROOT_DIR).lower()
+        try:
+            import winreg  # type: ignore
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Environment",
+                0, winreg.KEY_READ | winreg.KEY_SET_VALUE,
+            )
+            try:
+                path_val, reg_type = winreg.QueryValueEx(key, "PATH")
+                parts = [p for p in path_val.split(";") if p]
+                new_parts = [
+                    p for p in parts
+                    if p.lower() != _root_bin and p.lower() != _root_str
+                ]
+                if len(new_parts) != len(parts):
+                    winreg.SetValueEx(key, "PATH", 0, reg_type, ";".join(new_parts))
+                    print("  Cleaned PATH from Windows user environment registry.")
+            except FileNotFoundError:
+                pass
+            winreg.CloseKey(key)
+        except Exception:
+            pass
+    else:
         bin_dir = str(ROOT_DIR / "bin")
-        for rc_file in (Path.home() / ".bashrc", Path.home() / ".zshrc"):
+        for rc_file in (
+            Path.home() / ".bashrc",
+            Path.home() / ".zshrc",
+            Path.home() / ".bash_profile",
+            Path.home() / ".profile",
+        ):
             if rc_file.exists():
                 try:
                     lines = rc_file.read_text().splitlines(keepends=True)
@@ -792,7 +890,56 @@ def _profile_command(action: str, output: str | None = None, limit: int = 20, du
         print("Available: stats, reset, cpu-start, cpu-report, memory-start, memory-snapshot, spy")
 
 
+MIN_PYTHON = (3, 11)
+MIN_NODE   = (20, 9, 0)
+
+
+def _warn_versions():
+    """Warn (non-fatally) if Python or Node.js versions are below the minimum required."""
+    # ── Python ───────────────────────────────────────────────────────────────
+    py = sys.version_info[:2]
+    if py < MIN_PYTHON:
+        print(
+            f"Warning: Python {py[0]}.{py[1]} detected -- "
+            f"Synapse requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+.\n"
+            "  Please switch to Python 3.11 or newer (https://www.python.org/downloads/)\n"
+            "  and reinstall: pip install synapse-ai"
+        )
+
+    # ── Node.js ───────────────────────────────────────────────────────────────
+    node = None
+    if IS_WIN:
+        node, _ = _find_node_exe_win()
+        if node is None:
+            node = shutil.which("node")
+    else:
+        node = shutil.which("node")
+
+    if node is None:
+        print(
+            f"Warning: node not found -- Node.js {'.'.join(str(x) for x in MIN_NODE)}+ is required.\n"
+            "  Install from https://nodejs.org/"
+        )
+    else:
+        try:
+            r = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=5)
+            ver_str = r.stdout.strip().lstrip("v")
+            ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+            if ver_tuple < MIN_NODE:
+                min_str = ".".join(str(x) for x in MIN_NODE)
+                print(
+                    f"Warning: Node.js {ver_str} detected -- "
+                    f"Synapse requires Node.js {min_str}+.\n"
+                    f"  Please upgrade from https://nodejs.org/\n"
+                    f"  After upgrading, rebuild the frontend:\n"
+                    f"    cd {FRONTEND_DIR} && npm install && npm run build"
+                )
+        except Exception:
+            pass  # version check failed; let downstream tools surface the error
+
+
 def main():
+    _warn_versions()
     parser = argparse.ArgumentParser(prog="synapse", description="Manage Synapse server (backend + frontend)")
     sub = parser.add_subparsers(dest="cmd")
 

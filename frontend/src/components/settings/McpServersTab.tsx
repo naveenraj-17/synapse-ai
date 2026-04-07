@@ -66,6 +66,8 @@ const STDIO_PRESETS: Preset[] = [
 const REMOTE_PRESETS: Preset[] = [
     { server_type: 'remote', name: 'Vercel', url: 'https://mcp.vercel.com', label: 'Vercel' },
     { server_type: 'remote', name: 'Github', url: 'https://api.githubcopilot.com/mcp/', label: 'GitHub Copilot', token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
+    { server_type: 'remote', name: 'slack', url: 'https://mcp.slack.com/mcp', label: 'Slack' },
+    { server_type: 'remote', name: 'notion', url: 'https://mcp.notion.com/mcp', label: 'Notion' },
     { server_type: 'remote', name: 'Jira', url: 'https://mcp.atlassian.com/v1/mcp', label: 'Jira' },
     { server_type: 'remote', name: 'Zapier', url: 'https://mcp.zapier.com/api/mcp/mcp', label: 'Zapier' },
     { server_type: 'remote', name: 'Figma', url: 'https://mcp.figma.com/mcp', label: 'Figma', token: 'FIGMA_PERSONAL_ACCESS_TOKEN' },

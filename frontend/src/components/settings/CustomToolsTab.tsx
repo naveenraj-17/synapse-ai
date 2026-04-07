@@ -1,25 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { MutableRefObject, useEffect, useRef, useState } from 'react';
-import { Wrench, Plus, Trash, X, ExternalLink } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Wrench, Plus, Trash, X, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw, Container } from 'lucide-react';
 import { PythonToolEditor, type PythonDraftTool } from './PythonToolEditor';
 
 interface CustomToolsTabProps {
     customTools: any[];
     draftTool: any;
     setDraftTool: (v: any) => void;
-    toolBuilderMode: 'config' | 'n8n' | 'python';
-    setToolBuilderMode: (v: 'config' | 'n8n' | 'python') => void;
+    toolBuilderMode: 'config' | 'python';
+    setToolBuilderMode: (v: 'config' | 'python') => void;
     headerRows: { id: string; key: string; value: string }[];
     setHeaderRows: (v: { id: string; key: string; value: string }[]) => void;
     n8nWorkflows: any[];
     n8nWorkflowsLoading: boolean;
     n8nWorkflowId: string | null;
     setN8nWorkflowId: (v: string | null) => void;
-    isIframeFullscreen: boolean;
-    setIsIframeFullscreen: (v: boolean) => void;
-    isN8nLoading: boolean;
-    setIsN8nLoading: (v: boolean) => void;
-    n8nIframeRef: MutableRefObject<HTMLIFrameElement | null>;
     getN8nBaseUrl: () => string;
     onSaveTool: () => void;
     onDeleteTool: (name: string) => void;
@@ -33,36 +28,45 @@ export const CustomToolsTab = ({
     headerRows, setHeaderRows,
     n8nWorkflows, n8nWorkflowsLoading,
     n8nWorkflowId, setN8nWorkflowId,
-    isIframeFullscreen, setIsIframeFullscreen,
-    isN8nLoading, setIsN8nLoading, n8nIframeRef,
     getN8nBaseUrl, onSaveTool, onDeleteTool,
     n8nIntegrated,
 }: CustomToolsTabProps) => {
-    // n8n iframe error state
-    const [isN8nError, setIsN8nError] = useState(false);
-    const n8nTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Docker status state
+    type DockerStatus = { installed: boolean; running: boolean; image_exists: boolean } | null;
+    const [dockerStatus, setDockerStatus] = useState<DockerStatus>(null);
+    const [dockerChecking, setDockerChecking] = useState(false);
+    const [dockerBuilding, setDockerBuilding] = useState(false);
+    const [dockerBuildError, setDockerBuildError] = useState<string | null>(null);
 
-    // Reset error state when switching to n8n mode
-    useEffect(() => {
-        if (toolBuilderMode === 'n8n') {
-            setIsN8nError(false);
-            setIsN8nLoading(true);
-            // 12-second timeout: if iframe hasn't loaded, show error
-            n8nTimerRef.current = setTimeout(() => {
-                setIsN8nError(true);
-                setIsN8nLoading(false);
-            }, 12000);
-        } else {
-            if (n8nTimerRef.current) clearTimeout(n8nTimerRef.current);
+    const checkDockerStatus = useCallback(async () => {
+        setDockerChecking(true);
+        try {
+            const res = await fetch('/api/tools/docker/status');
+            if (res.ok) setDockerStatus(await res.json());
+        } finally {
+            setDockerChecking(false);
         }
-        return () => { if (n8nTimerRef.current) clearTimeout(n8nTimerRef.current); };
-    }, [toolBuilderMode, setIsN8nLoading]);
+    }, []);
 
-    const handleIframeLoad = () => {
-        if (n8nTimerRef.current) clearTimeout(n8nTimerRef.current);
-        setIsN8nLoading(false);
-        setIsN8nError(false);
+    const buildSandboxImage = async () => {
+        setDockerBuilding(true);
+        setDockerBuildError(null);
+        try {
+            const res = await fetch('/api/tools/docker/build', { method: 'POST' });
+            if (res.ok) {
+                await checkDockerStatus();
+            } else {
+                const err = await res.json();
+                setDockerBuildError(err.detail || 'Build failed');
+            }
+        } catch (e: any) {
+            setDockerBuildError(String(e));
+        } finally {
+            setDockerBuilding(false);
+        }
     };
+
+    useEffect(() => { checkDockerStatus(); }, [checkDockerStatus]);
 
     // ── Get tool type badge ────────────────────────────────────────────────
     const getToolBadge = (t: any) => {
@@ -111,6 +115,74 @@ export const CustomToolsTab = ({
                             <Plus className="h-4 w-4" /> New Tool
                         </button>
                     </div>
+
+                    {/* Docker Status Banner */}
+                    {dockerChecking && !dockerStatus ? (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-500">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                            Checking Docker status...
+                        </div>
+                    ) : dockerStatus && (() => {
+                        const allGood = dockerStatus.installed && dockerStatus.running && dockerStatus.image_exists;
+                        if (allGood && !dockerBuildError) {
+                            return (
+                                <div className="flex items-center gap-2 px-3 py-2 bg-green-950/30 border border-green-800/40 rounded text-xs text-green-400">
+                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                    Docker sandbox is ready
+                                    <button onClick={checkDockerStatus} disabled={dockerChecking} className="ml-auto text-green-700 hover:text-green-400 disabled:opacity-50">
+                                        <RefreshCw className={`h-3 w-3 ${dockerChecking ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+                            );
+                        }
+                        return (
+                            <div className="p-3 bg-amber-950/30 border border-amber-700/50 rounded space-y-2">
+                                <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                                    <div className="flex-1 space-y-1">
+                                        {!dockerStatus.installed && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Docker is not installed</p>
+                                                <p className="text-xs text-amber-500/80">Python tools run in a Docker sandbox. Install Docker Desktop to use them.</p>
+                                                <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-200 underline">
+                                                    Install Docker Desktop <ExternalLink className="h-3 w-3" />
+                                                </a>
+                                            </>
+                                        )}
+                                        {dockerStatus.installed && !dockerStatus.running && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Docker is not running</p>
+                                                <p className="text-xs text-amber-500/80">Start Docker Desktop, then refresh the status.</p>
+                                            </>
+                                        )}
+                                        {dockerStatus.installed && dockerStatus.running && !dockerStatus.image_exists && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Python sandbox image not built</p>
+                                                <p className="text-xs text-amber-500/80">The sandbox image needs to be built once. This downloads Python and installs packages (~2–3 min).</p>
+                                            </>
+                                        )}
+                                        {dockerBuildError && (
+                                            <p className="text-xs text-red-400 font-mono whitespace-pre-wrap mt-1">{dockerBuildError}</p>
+                                        )}
+                                    </div>
+                                    <button onClick={checkDockerStatus} disabled={dockerChecking} className="text-amber-700 hover:text-amber-400 shrink-0 disabled:opacity-50">
+                                        <RefreshCw className={`h-3.5 w-3.5 ${dockerChecking ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+                                {dockerStatus.installed && dockerStatus.running && !dockerStatus.image_exists && (
+                                    <button
+                                        onClick={buildSandboxImage}
+                                        disabled={dockerBuilding}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition-colors rounded"
+                                    >
+                                        <Container className="h-3.5 w-3.5" />
+                                        {dockerBuilding ? 'Building… (this may take a few minutes)' : 'Build Sandbox Image'}
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {customTools.map((t: any) => (
@@ -197,21 +269,6 @@ export const CustomToolsTab = ({
                                 >
                                     CONFIG
                                 </button>
-                                {n8nIntegrated && (
-                                    <button
-                                        onClick={() => {
-                                            if (draftTool.tool_type === 'python') {
-                                                const initialInput = { type: 'object', properties: { input: { type: 'string' } } };
-                                                setDraftTool({ ...draftTool, tool_type: 'http', url: draftTool.url || '', method: draftTool.method || 'POST', inputSchema: initialInput, inputSchemaStr: JSON.stringify(initialInput, null, 2), outputSchemaStr: '' });
-                                                setHeaderRows([{ id: 'h1', key: '', value: '' }]);
-                                            }
-                                            setToolBuilderMode('n8n');
-                                        }}
-                                        className={`px-3 py-1 text-xs font-bold rounded ${toolBuilderMode === 'n8n' ? 'bg-[#ff6d5a] text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-                                    >
-                                        n8n BUILDER
-                                    </button>
-                                )}
                                 <button
                                     onClick={() => {
                                         if (draftTool.tool_type !== 'python') {
@@ -319,9 +376,25 @@ export const CustomToolsTab = ({
                                             </option>
                                         ))}
                                     </select>
-                                    <p className="text-[10px] text-zinc-600">
-                                        Selecting a workflow auto-fills the Webhook URL below.
-                                    </p>
+                                    {draftTool.workflowId ? (
+                                        <a
+                                            href={`${getN8nBaseUrl()}/workflow/${draftTool.workflowId}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] text-[#ff6d5a] hover:text-[#ff8a78] hover:underline mt-1"
+                                        >
+                                            Open workflow in n8n <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    ) : (
+                                        <a
+                                            href={`${getN8nBaseUrl()}/workflow/new`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 hover:underline mt-1"
+                                        >
+                                            Create new workflow in n8n <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                    )}
                                 </div>
                             )}
 
@@ -414,84 +487,6 @@ export const CustomToolsTab = ({
                                     />
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* ── n8n BUILDER mode ──────────────────────────────── */}
-                    {toolBuilderMode === 'n8n' && (
-                        <div className="h-[600px] bg-white relative overflow-hidden border border-zinc-800">
-                            {/* Workflow ID Display */}
-                            {draftTool.workflowId && (
-                                <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 bg-zinc-900 border border-zinc-700 p-1.5 rounded shadow-lg">
-                                    <div className="px-1 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">ID:</div>
-                                    <code className="text-xs text-white font-mono">{draftTool.workflowId}</code>
-                                    <button
-                                        onClick={() => navigator.clipboard.writeText(draftTool.workflowId || '')}
-                                        className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded"
-                                        title="Copy ID"
-                                    >
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Fullscreen toggle */}
-                            <button
-                                onClick={() => setIsIframeFullscreen(!isIframeFullscreen)}
-                                className="absolute bottom-4 right-4 z-20 p-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded border border-zinc-700 flex items-center gap-2 text-xs font-bold shadow-lg"
-                            >
-                                {isIframeFullscreen ? (
-                                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>Exit Fullscreen</>
-                                ) : (
-                                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>Fullscreen</>
-                                )}
-                            </button>
-
-                            {/* Loading / error state */}
-                            {!isIframeFullscreen && (isN8nLoading || isN8nError) && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-10">
-                                    {isN8nError ? (
-                                        <div className="text-center max-w-sm">
-                                            <div className="text-3xl mb-3">⚠️</div>
-                                            <p className="font-bold text-zinc-800 mb-1">Cannot reach n8n</p>
-                                            <p className="text-zinc-500 text-xs mb-3">
-                                                Make sure n8n is running at{' '}
-                                                <code className="bg-zinc-100 px-1 text-zinc-700">{getN8nBaseUrl()}</code>
-                                            </p>
-                                            <a
-                                                href={getN8nBaseUrl()}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="inline-flex items-center gap-1 text-xs text-[#ff6d5a] hover:underline"
-                                            >
-                                                Open n8n <ExternalLink className="h-3 w-3" />
-                                            </a>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center text-black/50">
-                                            <p className="font-bold animate-pulse">Loading n8n Editor...</p>
-                                            <p className="text-xs mt-1">Connecting to {getN8nBaseUrl()}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* n8n iframe */}
-                            {!isIframeFullscreen && !isN8nError && (
-                                <iframe
-                                    onLoad={handleIframeLoad}
-                                    src={(() => {
-                                        const base = getN8nBaseUrl();
-                                        if (draftTool?.workflowId) return `${base}/workflow/${draftTool.workflowId}`;
-                                        return `${base}/workflow/new`;
-                                    })()}
-                                    ref={n8nIframeRef}
-                                    className="w-full h-full z-0"
-                                    title="n8n Editor"
-                                    allow="clipboard-read; clipboard-write"
-                                    sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
-                                />
-                            )}
                         </div>
                     )}
 

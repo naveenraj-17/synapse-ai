@@ -361,7 +361,8 @@
         "SLACK_BOT_TOKEN": "xoxb-your-bot-token-here",
         "SLACK_TEAM_ID": "T0XXXXXXXXX"
       },
-      "label": "Slack"
+      "label": "Slack",
+      "server_type": "stdio"
     },
     {
       "name": "notion",
@@ -371,18 +372,15 @@
         "@modelcontextprotocol/server-notion"
       ],
       "env": {},
-      "label": "Notion"
+      "label": "Notion",
+      "server_type": "stdio"
     },
     {
       "name": "jira",
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://mcp.atlassian.com/v1/mcp"
-      ],
-      "env": {},
-      "label": "Jira & Confluence"
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "token": "",
+      "label": "Jira & Confluence",
+      "server_type": "remote"
     }
   ]
 }
