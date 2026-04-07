@@ -594,10 +594,26 @@ def _upgrade_command():
     print("Run 'synapse start' to launch the updated Synapse.")
 
 
+def _get_synapse_install_dir() -> Path | None:
+    """Return the platform-specific SynapseAI install directory written by setup.sh / setup.ps1."""
+    if IS_WIN:
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        if local_app_data:
+            return Path(local_app_data) / "Programs" / "SynapseAI"
+        return None
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "SynapseAI"
+    else:  # Linux
+        return Path.home() / ".local" / "share" / "SynapseAI"
+
+
 def _uninstall_command(keep_data: bool = False):
     """Stop services and remove all Synapse AI files."""
     print("\n=== Synapse AI -- Uninstall ===")
     print()
+
+    # Resolve the platform install directory up-front so later steps can reference it.
+    platform_install = _get_synapse_install_dir()
 
     # Confirm
     try:
@@ -677,22 +693,30 @@ def _uninstall_command(keep_data: bool = False):
             except Exception as e:
                 print(f"  Warning: could not fully remove {synapse_home}: {e}")
 
-    # 4. Remove the installation directory
-    print(f"\nRemoving installation directory: {ROOT_DIR}")
-    try:
-        # Remove large subdirectories first
-        venv_dir = BACKEND_DIR / "venv"
-        if venv_dir.exists():
-            shutil.rmtree(venv_dir)
-        node_modules = FRONTEND_DIR / "node_modules"
-        if node_modules.exists():
-            shutil.rmtree(node_modules)
-        # Remove root directory
-        shutil.rmtree(ROOT_DIR)
-        print("  Removed.")
-    except Exception as e:
-        print(f"  Warning: could not fully remove {ROOT_DIR}: {e}")
-        print("  You may need to delete it manually.")
+    # 4. Remove the installation directory/directories
+    # Collect unique dirs: the running ROOT_DIR plus the platform standard install location
+    # (e.g. ~/.local/share/SynapseAI on Linux, %LOCALAPPDATA%\Programs\SynapseAI on Windows).
+    _dirs_to_remove: list[Path] = [ROOT_DIR]
+    if platform_install and platform_install.resolve() != ROOT_DIR.resolve():
+        _dirs_to_remove.append(platform_install)
+
+    for _install_dir in _dirs_to_remove:
+        if not _install_dir.exists():
+            continue
+        print(f"\nRemoving installation directory: {_install_dir}")
+        try:
+            # Remove large subdirectories first to avoid partial-removal hangs
+            for _big in (
+                _install_dir / "backend" / "venv",
+                _install_dir / "frontend" / "node_modules",
+            ):
+                if _big.exists():
+                    shutil.rmtree(_big)
+            shutil.rmtree(_install_dir)
+            print("  Removed.")
+        except Exception as e:
+            print(f"  Warning: could not fully remove {_install_dir}: {e}")
+            print("  You may need to delete it manually.")
 
     # 5. Remove the pip-installed `synapse` console script
     print("\nUninstalling Python package...")
@@ -739,10 +763,16 @@ def _uninstall_command(keep_data: bool = False):
                 except Exception as e:
                     print(f"  Warning: could not remove {candidate}: {e}")
 
-    # 6. Clean PATH entries from shell rc files (Unix) / registry (Windows)
+    # 6. Clean PATH entries from shell rc files (Unix) / registry + PS profiles (Windows)
+    # Build the set of bin-dir strings to purge (covers both ROOT_DIR and the platform
+    # install dir written by setup.sh / setup.ps1).
+    _bin_dirs_lower = {str(ROOT_DIR / "bin").lower(), str(ROOT_DIR).lower()}
+    if platform_install:
+        _bin_dirs_lower.add(str(platform_install / "bin").lower())
+        _bin_dirs_lower.add(str(platform_install).lower())
+
     if IS_WIN:
-        _root_bin = str(ROOT_DIR / "bin").lower()
-        _root_str = str(ROOT_DIR).lower()
+        # --- Windows registry (user PATH) ---
         try:
             import winreg  # type: ignore
             key = winreg.OpenKey(
@@ -753,10 +783,7 @@ def _uninstall_command(keep_data: bool = False):
             try:
                 path_val, reg_type = winreg.QueryValueEx(key, "PATH")
                 parts = [p for p in path_val.split(";") if p]
-                new_parts = [
-                    p for p in parts
-                    if p.lower() != _root_bin and p.lower() != _root_str
-                ]
+                new_parts = [p for p in parts if p.lower() not in _bin_dirs_lower]
                 if len(new_parts) != len(parts):
                     winreg.SetValueEx(key, "PATH", 0, reg_type, ";".join(new_parts))
                     print("  Cleaned PATH from Windows user environment registry.")
@@ -765,8 +792,22 @@ def _uninstall_command(keep_data: bool = False):
             winreg.CloseKey(key)
         except Exception:
             pass
+
+        # --- Windows PowerShell profiles (written by setup.ps1) ---
+        docs = Path.home() / "Documents"
+        for ps_dir in ("PowerShell", "WindowsPowerShell"):
+            ps_profile = docs / ps_dir / "profile.ps1"
+            if not ps_profile.exists():
+                continue
+            try:
+                lines = ps_profile.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+                new_lines = [l for l in lines if "SynapseAI" not in l and "Synapse AI" not in l]
+                if len(new_lines) != len(lines):
+                    ps_profile.write_text("".join(new_lines), encoding="utf-8")
+                    print(f"  Cleaned PATH entry from PowerShell profile: {ps_profile}")
+            except Exception:
+                pass
     else:
-        bin_dir = str(ROOT_DIR / "bin")
         for rc_file in (
             Path.home() / ".bashrc",
             Path.home() / ".zshrc",
@@ -777,7 +818,8 @@ def _uninstall_command(keep_data: bool = False):
                 try:
                     lines = rc_file.read_text().splitlines(keepends=True)
                     new_lines = [l for l in lines
-                                 if bin_dir not in l and "Synapse AI" not in l]
+                                 if "SynapseAI" not in l and "Synapse AI" not in l
+                                 and not any(d in l for d in _bin_dirs_lower)]
                     if len(new_lines) != len(lines):
                         rc_file.write_text("".join(new_lines))
                         print(f"  Cleaned PATH entry from {rc_file}")
