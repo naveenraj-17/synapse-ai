@@ -134,7 +134,7 @@ async def _open_http_session(
     - streamable_http_client: GitHub Copilot, Vercel, Jira, Zapier
     - sse_client:             Zerodha Kite, older mcp-remote-based servers
     """
-    err_http: Optional[Exception] = None
+    err_http: Optional[BaseException] = None
 
     # ── Try Streamable HTTP ────────────────────────────────────────────────────
     try:
@@ -142,7 +142,7 @@ async def _open_http_session(
             streamable_http_client(url, http_client=http_client)
         )
         return read, write
-    except Exception as e:
+    except BaseException as e:
         err_http = e
         print(f"[MCP] Streamable HTTP failed for {url}: {type(e).__name__}: {e}. Trying SSE…")
 
@@ -158,12 +158,12 @@ async def _open_http_session(
             sse_client(url, headers=explicit_headers or None)
         )
         return read, write
-    except Exception as e:
+    except BaseException as e:
         raise RuntimeError(
             f"Both transports failed for {url}.\n"
-            f"  Streamable HTTP: {err_http}\n"
-            f"  SSE:             {e}"
-        )
+            f"  Streamable HTTP: {type(err_http).__name__}: {err_http}\n"
+            f"  SSE:             {type(e).__name__}: {e}"
+        ) from None
 
 
 # ── Manager ────────────────────────────────────────────────────────────────────
