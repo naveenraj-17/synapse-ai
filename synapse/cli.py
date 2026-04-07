@@ -34,6 +34,45 @@ BACKEND_DIR = PACKAGE_DIR.parent / "backend"
 FRONTEND_DIR = PACKAGE_DIR.parent / "frontend"
 ROOT_DIR = PACKAGE_DIR.parent
 
+
+def _system_python() -> str:
+    """Return the real system Python executable, not one inside a venv."""
+    # If we're already inside a venv (VIRTUAL_ENV is set or sys.prefix !=
+    # sys.base_prefix), try sys.base_prefix first — that's the system install
+    # that owns this interpreter.
+    base = getattr(sys, "base_prefix", sys.prefix)
+    if base != sys.prefix:
+        # Running inside a venv — find python in the base prefix
+        candidates = [
+            os.path.join(base, "python.exe" if IS_WIN else "bin/python"),
+            os.path.join(base, "Scripts", "python.exe") if IS_WIN else None,
+        ]
+        for c in candidates:
+            if c and os.path.isfile(c):
+                return c
+
+    # sys.executable itself might be the venv python; walk up to find the real one
+    exe = sys.executable
+    if IS_WIN:
+        # On Windows a venv python lives at <venv>\Scripts\python.exe
+        # The base install is typically 3 levels up: <base>\python.exe
+        parts = Path(exe).parts
+        if "Scripts" in parts:
+            idx = list(parts).index("Scripts")
+            # <venv>\Scripts\python.exe  → try <base>\python.exe
+            base_dir = Path(*parts[:idx - 1])
+            for name in ("python.exe", "python3.exe"):
+                candidate = base_dir / name
+                if candidate.is_file():
+                    return str(candidate)
+
+    # Fall back to whatever shutil can find on PATH
+    found = shutil.which("python3") or shutil.which("python")
+    if found:
+        return found
+
+    return sys.executable
+
 # ---------------------------------------------------------------------------
 # Load .env from the project root BEFORE reading port defaults so that values
 # set by `synapse setup` (or hand-edited .env) are honoured without the user
@@ -565,7 +604,7 @@ def _upgrade_command():
         print("  Removing old virtual environment...")
         _rmtree(venv_dir)
     print("  Creating virtual environment...")
-    subprocess.check_call([sys.executable, "-m", "venv", str(venv_dir)])
+    subprocess.check_call([_system_python(), "-m", "venv", str(venv_dir)])
 
     # Upgrade pip
     print("  Upgrading pip...")
@@ -579,6 +618,32 @@ def _upgrade_command():
         subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(req_txt)])
     else:
         print(f"  Warning: {req_txt} not found -- skipping requirements.")
+
+    # Read settings to determine which optional requirements to install
+    import json as _json
+    settings_file = DATA_DIR / "settings.json"
+    _settings: dict = {}
+    if settings_file.exists():
+        try:
+            _settings = _json.loads(settings_file.read_text())
+        except Exception:
+            pass
+
+    if _settings.get("coding_agent_enabled", False):
+        coding_req = BACKEND_DIR / "requirements-coding.txt"
+        if coding_req.exists():
+            print("  Installing coding-agent requirements...")
+            subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(coding_req)])
+        else:
+            print(f"  Warning: {coding_req} not found -- skipping.")
+
+    if _settings.get("messaging_enabled", False):
+        messaging_req = BACKEND_DIR / "requirements-messaging.txt"
+        if messaging_req.exists():
+            print("  Installing messaging requirements...")
+            subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(messaging_req)])
+        else:
+            print(f"  Warning: {messaging_req} not found -- skipping.")
 
     # Re-install synapse package in editable mode
     print("  Reinstalling Synapse package...")
