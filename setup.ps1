@@ -485,7 +485,7 @@ function Start-SynapseSetup {
         Write-Host "  synapse status    -- check service status" -ForegroundColor Gray
         Write-Host "  synapse restart   -- restart services" -ForegroundColor Gray
         Write-Host ""
-        exit 0
+        return
     }
 
     Invoke-PrerequisitesCheck
@@ -566,7 +566,6 @@ try {
     }
     Write-Host ""
     Write-Host "The setup script has failed. Please capture the error above."
-    Write-Host "Press Enter to exit..."
-    $null = Read-Host
-    exit 1
+    $null = Read-Host "Press Enter to continue..."
+    return
 }

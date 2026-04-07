@@ -1814,8 +1814,15 @@ def _rebuild_backend(install_dir):
     python_exe  = os.path.join(venv_dir, "Scripts" if IS_WIN else "bin",
                                "python" + (".exe" if IS_WIN else ""))
 
-    if not os.path.exists(python_exe):
-        warn("Virtual environment not found -- creating one now...")
+    pyvenv_cfg = os.path.join(venv_dir, "pyvenv.cfg")
+    venv_broken = os.path.exists(venv_dir) and not os.path.exists(pyvenv_cfg)
+    if not os.path.exists(python_exe) or venv_broken:
+        if venv_broken:
+            warn("Virtual environment is corrupted (missing pyvenv.cfg) -- recreating...")
+            import shutil as _shutil
+            _shutil.rmtree(venv_dir, ignore_errors=True)
+        else:
+            warn("Virtual environment not found -- creating one now...")
         subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
         ok("Virtual environment created.")
 
