@@ -285,7 +285,21 @@ async def import_bundle(req: ImportRequest):
                 session = await _server.mcp_manager.connect_stdio_server(config)
             elif config.get("token"):
                 session = await _server.mcp_manager.connect_remote_server(config)
-            # remote without token = OAuth flow — user must authorize via browser
+            else:
+                # remote without token → trigger OAuth, surface auth_url to frontend
+                import asyncio
+                loop = asyncio.get_event_loop()
+                auth_url_future: asyncio.Future = loop.create_future()
+                asyncio.create_task(_server.mcp_manager.start_oauth_connect(config, auth_url_future))
+                try:
+                    auth_url = await asyncio.wait_for(asyncio.shield(auth_url_future), timeout=15.0)
+                    mcp_result["status"] = "oauth_pending"
+                    mcp_result["auth_url"] = auth_url
+                    mcp_result["message"] = "Authorization required — click Authorize to connect"
+                except asyncio.TimeoutError:
+                    mcp_result["status"] = "disconnected"
+                    mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
+                continue  # session check below doesn't apply for OAuth path
 
             if session:
                 _server.mcp_manager._set_status(name, "connected")
