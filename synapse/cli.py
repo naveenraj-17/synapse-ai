@@ -3,6 +3,7 @@ Synapse CLI - starts the backend and frontend, then opens the browser.
 """
 import os
 import sys
+import stat
 import shutil
 import signal
 import threading
@@ -15,6 +16,17 @@ import argparse
 from pathlib import Path
 
 IS_WIN = sys.platform == "win32"
+
+
+def _rmtree(path):
+    """Remove a directory tree, handling Windows read-only/locked files."""
+    def _onerror(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+    shutil.rmtree(path, onerror=_onerror)
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 # When installed as a package, backend is one level up from synapse/
@@ -551,7 +563,7 @@ def _upgrade_command():
     # Re-create venv
     if venv_dir.exists():
         print("  Removing old virtual environment...")
-        shutil.rmtree(venv_dir)
+        _rmtree(venv_dir)
     print("  Creating virtual environment...")
     subprocess.check_call([sys.executable, "-m", "venv", str(venv_dir)])
 
@@ -581,7 +593,7 @@ def _upgrade_command():
     node_modules = FRONTEND_DIR / "node_modules"
     if node_modules.exists():
         print("  Removing old node_modules...")
-        shutil.rmtree(node_modules)
+        _rmtree(node_modules)
 
     print("  Running npm install...")
     subprocess.check_call([npm, "install"], cwd=str(FRONTEND_DIR))
@@ -679,7 +691,7 @@ def _uninstall_command(keep_data: bool = False):
     # 3. Remove data directory (optional)
     if not keep_data and DATA_DIR.exists():
         try:
-            shutil.rmtree(DATA_DIR)
+            _rmtree(DATA_DIR)
             print(f"  Removed data directory: {DATA_DIR}")
         except Exception as e:
             print(f"  Warning: could not remove data dir {DATA_DIR}: {e}")
@@ -688,7 +700,7 @@ def _uninstall_command(keep_data: bool = False):
         synapse_home = Path.home() / ".synapse"
         if synapse_home.exists():
             try:
-                shutil.rmtree(synapse_home)
+                _rmtree(synapse_home)
                 print(f"  Removed Synapse home: {synapse_home}")
             except Exception as e:
                 print(f"  Warning: could not fully remove {synapse_home}: {e}")
@@ -711,8 +723,8 @@ def _uninstall_command(keep_data: bool = False):
                 _install_dir / "frontend" / "node_modules",
             ):
                 if _big.exists():
-                    shutil.rmtree(_big)
-            shutil.rmtree(_install_dir)
+                    _rmtree(_big)
+            _rmtree(_install_dir)
             print("  Removed.")
         except Exception as e:
             print(f"  Warning: could not fully remove {_install_dir}: {e}")
