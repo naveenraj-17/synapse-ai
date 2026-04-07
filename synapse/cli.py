@@ -163,10 +163,24 @@ def check_prerequisites():
         if not _ensure_node_in_path_win():
             errors.append("Node.js 20.9.0+ not found -- install from https://nodejs.org/ and re-run.")
     else:
-        if shutil.which("node") is None:
-            errors.append("node not found -- install Node.js from https://nodejs.org/")
+        node = shutil.which("node")
+        if node is None:
+            errors.append("node not found -- install Node.js 20.9.0+ from https://nodejs.org/")
+        else:
+            try:
+                r = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=5)
+                ver_str = r.stdout.strip().lstrip("v")
+                ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+                min_str = ".".join(str(x) for x in MIN_NODE)
+                if ver_tuple < MIN_NODE:
+                    errors.append(
+                        f"Node.js {ver_str} is too old (need {min_str}+) -- "
+                        "upgrade from https://nodejs.org/"
+                    )
+            except Exception:
+                pass  # version check failed, proceed and let Node report its own errors
         if shutil.which("npm") is None:
-            errors.append("npm not found -- install Node.js from https://nodejs.org/")
+            errors.append(f"npm not found -- install Node.js {'.'.join(str(x) for x in MIN_NODE)}+ from https://nodejs.org/")
     if shutil.which("ollama") is None:
         print("Warning: ollama not found. Local models won't work; cloud API models (Anthropic, OpenAI, Gemini) still work.")
     if errors:
@@ -792,7 +806,56 @@ def _profile_command(action: str, output: str | None = None, limit: int = 20, du
         print("Available: stats, reset, cpu-start, cpu-report, memory-start, memory-snapshot, spy")
 
 
+MIN_PYTHON = (3, 11)
+MIN_NODE   = (20, 9, 0)
+
+
+def _warn_versions():
+    """Warn (non-fatally) if Python or Node.js versions are below the minimum required."""
+    # ── Python ───────────────────────────────────────────────────────────────
+    py = sys.version_info[:2]
+    if py < MIN_PYTHON:
+        print(
+            f"Warning: Python {py[0]}.{py[1]} detected -- "
+            f"Synapse requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+.\n"
+            "  Please switch to Python 3.11 or newer (https://www.python.org/downloads/)\n"
+            "  and reinstall: pip install synapse-ai"
+        )
+
+    # ── Node.js ───────────────────────────────────────────────────────────────
+    node = None
+    if IS_WIN:
+        node, _ = _find_node_exe_win()
+        if node is None:
+            node = shutil.which("node")
+    else:
+        node = shutil.which("node")
+
+    if node is None:
+        print(
+            f"Warning: node not found -- Node.js {'.'.join(str(x) for x in MIN_NODE)}+ is required.\n"
+            "  Install from https://nodejs.org/"
+        )
+    else:
+        try:
+            r = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=5)
+            ver_str = r.stdout.strip().lstrip("v")
+            ver_tuple = tuple(int(x) for x in ver_str.split(".")[:3])
+            if ver_tuple < MIN_NODE:
+                min_str = ".".join(str(x) for x in MIN_NODE)
+                print(
+                    f"Warning: Node.js {ver_str} detected -- "
+                    f"Synapse requires Node.js {min_str}+.\n"
+                    f"  Please upgrade from https://nodejs.org/\n"
+                    f"  After upgrading, rebuild the frontend:\n"
+                    f"    cd {FRONTEND_DIR} && npm install && npm run build"
+                )
+        except Exception:
+            pass  # version check failed; let downstream tools surface the error
+
+
 def main():
+    _warn_versions()
     parser = argparse.ArgumentParser(prog="synapse", description="Manage Synapse server (backend + frontend)")
     sub = parser.add_subparsers(dest="cmd")
 
