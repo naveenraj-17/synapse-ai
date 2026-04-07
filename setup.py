@@ -1836,6 +1836,32 @@ def _rebuild_backend(install_dir):
     info("Installing / upgrading backend requirements...")
     subprocess.check_call(pip_cmd + ["-r", req_txt])
 
+    # Read settings to determine which optional requirements to install
+    _settings: dict = {}
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            import json as _json
+            with open(SETTINGS_FILE) as _f:
+                _settings = _json.load(_f)
+        except Exception:
+            pass
+
+    if _settings.get("coding_agent_enabled", False):
+        coding_req = os.path.join(backend_dir, "requirements-coding.txt")
+        if os.path.exists(coding_req):
+            info("Installing coding-agent requirements...")
+            subprocess.check_call(pip_cmd + ["-r", coding_req])
+        else:
+            warn(f"requirements-coding.txt not found at {coding_req}")
+
+    if _settings.get("messaging_enabled", False):
+        messaging_req = os.path.join(backend_dir, "requirements-messaging.txt")
+        if os.path.exists(messaging_req):
+            info("Installing messaging requirements...")
+            subprocess.check_call(pip_cmd + ["-r", messaging_req])
+        else:
+            warn(f"requirements-messaging.txt not found at {messaging_req}")
+
     info("Reinstalling Synapse package (editable mode)...")
     subprocess.check_call([python_exe, "-m", "pip", "install", "-e", install_dir])
     ok("Backend dependencies updated.")
