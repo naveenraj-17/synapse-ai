@@ -9,6 +9,8 @@ import zoneinfo
 
 import anyio
 
+from core.config import load_settings
+
 
 # Tools auto-injected per agent type. These bypass the agent's tools[] array.
 # "all_types" applies to every agent regardless of type.
@@ -82,7 +84,12 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
         for tool_name in DEFAULT_TOOLS_BY_TYPE.get(category, set()):
             if tool_name not in allowed_tools:
                 allowed_tools.append(tool_name)
-    
+
+    # Remove search_codebase if embed_code is disabled
+    settings = load_settings()
+    if not settings.get("embed_code", False):
+        allowed_tools = [t for t in allowed_tools if t != "search_codebase"]
+
     # Standard MCP Tools
     for session_name, session in agent_sessions.items():
         # Use cached tools from previous successful call — avoids hanging on flaky sessions
@@ -181,6 +188,9 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
     Returns:
         str: The fully constructed system prompt
     """
+    # Determine if code embedding is enabled (for conditional tool description)
+    _embed_code = load_settings().get("embed_code", False)
+
     # Get current date/time for context injection
     now = datetime.datetime.now(zoneinfo.ZoneInfo("UTC"))
     current_date = now.strftime("%B %d, %Y")
@@ -258,7 +268,7 @@ You have access to the following tools:
 {tools_json}
 
 **CODE & FILE NAVIGATION:**
-- **`search_codebase`** — semantic search across indexed repos. Requires `repo_ids`. Best for broad symbol or concept search.
+{"- **`search_codebase`** — semantic search across indexed repos. Requires `repo_ids`. Best for broad symbol or concept search." if _embed_code else ""}
 - **`grep`** — search for a pattern inside a file or across all files in a folder. Pass a file path to search that file, or a folder path to search all files within it. Use `file_pattern` to filter by extension (e.g. `*.py`, `*.ts`).
 - **`glob`** — discover file paths by pattern (e.g. `**/*.py`, `src/**/*.ts`).
 - **`read_file`** — read an entire file. Use when you already know the path and the file is small. For large files, prefer `read_file_by_lines` or `grep`.

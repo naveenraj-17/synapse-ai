@@ -15,9 +15,6 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from psycopg_pool import ConnectionPool
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
-
-
 def _load_repo_paths() -> dict[str, str]:
     """Load repo_id → absolute_path mapping from repos.json (via core.config DATA_DIR)."""
     try:
@@ -35,15 +32,21 @@ CODE_EMBEDDING_MODEL = "gemini-embedding-001"
 CODE_EMBEDDING_DIM = 768
 
 _pool: ConnectionPool | None = None
+_pool_url: str | None = None
 _VALID_REPO_ID = re.compile(r'^repo_\d+$')
 
 app = Server("code-search-server")
 
 
 def _get_pool() -> ConnectionPool:
-    global _pool
-    if _pool is None:
-        _pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=5)
+    global _pool, _pool_url
+    from core.config import load_settings as _load_settings
+    db_url = _load_settings().get("sql_connection_string", "")
+    if not db_url:
+        raise RuntimeError("No database URL configured. Set sql_connection_string in Settings → General.")
+    if _pool is None or _pool_url != db_url:
+        _pool = ConnectionPool(db_url, min_size=1, max_size=5)
+        _pool_url = db_url
     return _pool
 
 

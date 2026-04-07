@@ -97,6 +97,7 @@ class Settings(BaseModel):
     vault_enabled: bool = True
     vault_threshold: int = 100000
     allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
+    embed_code: bool = False  # If False, search_codebase is disabled and postgres not required
     report_agent_enabled: bool = True
     coding_agent_enabled: bool = True
     messaging_enabled: bool = True

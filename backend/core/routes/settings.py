@@ -3,10 +3,12 @@ Settings, personal details, and config endpoints.
 """
 import os
 import json
+import shutil
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE, TOKEN_FILE
 from core.models import Settings, PersonalDetails
@@ -17,6 +19,14 @@ from core.json_store import JsonStore
 router = APIRouter()
 
 _settings_store = JsonStore(SETTINGS_FILE, default_factory=dict, cache_ttl=2.0)
+
+
+class EmbedSetupRequest(BaseModel):
+    host: str = "localhost"
+    port: int = 5432
+    username: str = "postgres"
+    password: str = ""
+    db_name: str = "synapse"
 
 # Path to the examples directory (sibling of this file's package root)
 _EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "examples")
@@ -108,6 +118,94 @@ async def update_settings(settings: Settings):
         except Exception as e:
             print(f"Warning: failed to reinitialize MemoryStore after settings update: {e}")
     return data
+
+
+# --- Code Embedding Setup ---
+
+@router.get("/api/settings/check-embed")
+async def check_embed_setup():
+    """Check if PostgreSQL + pgvector are correctly set up for code embedding."""
+    settings = load_settings()
+    db_url = settings.get("sql_connection_string", "")
+
+    # Build a masked hint (no password) for the frontend to display
+    db_url_hint = ""
+    if db_url:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(db_url)
+            db_url_hint = f"{p.scheme}://{p.hostname}:{p.port or 5432}{p.path}"
+        except Exception:
+            db_url_hint = db_url[:40] + "…" if len(db_url) > 40 else db_url
+
+    result = {
+        "psql_available": shutil.which("psql") is not None,
+        "db_url_configured": bool(db_url),
+        "db_url_hint": db_url_hint,
+        "db_connection_ok": False,
+        "pgvector_available": False,
+        "all_ok": False,
+    }
+
+    if db_url:
+        try:
+            import psycopg  # type: ignore
+            with psycopg.connect(db_url, connect_timeout=5) as conn:
+                result["db_connection_ok"] = True
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+                    if cur.fetchone() is not None:
+                        result["pgvector_available"] = True
+                    else:
+                        # Extension missing — create it now
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                        conn.commit()
+                        result["pgvector_available"] = True
+        except Exception as e:
+            result["db_error"] = str(e)
+
+    result["all_ok"] = all([
+        result["psql_available"],
+        result["db_url_configured"],
+        result["db_connection_ok"],
+        result["pgvector_available"],
+    ])
+    return result
+
+
+@router.post("/api/settings/setup-embed")
+async def setup_embed(body: EmbedSetupRequest):
+    """Create a PostgreSQL database, enable pgvector, and save the connection string."""
+    try:
+        import psycopg  # type: ignore
+
+        password_part = f":{body.password}" if body.password else ""
+        db_url = f"postgresql://{body.username}{password_part}@{body.host}:{body.port}/{body.db_name}"
+        admin_url = f"postgresql://{body.username}{password_part}@{body.host}:{body.port}/postgres"
+
+        # Create the database if it doesn't exist
+        with psycopg.connect(admin_url, autocommit=True, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (body.db_name,))
+                if not cur.fetchone():
+                    cur.execute(f'CREATE DATABASE "{body.db_name}"')
+
+        # Enable pgvector in the target database
+        with psycopg.connect(db_url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+
+        # Persist the connection string
+        existing = load_settings()
+        existing["sql_connection_string"] = db_url
+        save_settings(existing)
+
+        return {"status": "ok", "connection_string": db_url}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="psycopg not installed. Run: pip install psycopg[binary]")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # --- Personal Details ---

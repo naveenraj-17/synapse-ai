@@ -38,7 +38,9 @@ _stop_events: dict[str, threading.Event] = {}
 # Active index threads so we can check is_alive()
 _active_threads: dict[str, threading.Thread] = {}
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/synapse")
+def _get_db_url() -> str:
+    """Always read the database URL from settings.json (never from the environment)."""
+    return load_settings().get("sql_connection_string", "")
 
 # Known output dimensions for popular embedding models.
 # Only base model IDs are listed here — provisioned-throughput suffixes
@@ -302,7 +304,7 @@ def _ensure_database_exists():
     if not COCOINDEX_AVAILABLE:
         return
     from urllib.parse import urlparse, urlunparse
-    parsed = urlparse(DATABASE_URL)
+    parsed = urlparse(_get_db_url())
     db_name = parsed.path.lstrip("/")
     admin_url = urlunparse(parsed._replace(path="/postgres"))
     try:
@@ -320,7 +322,7 @@ def init_cocoindex():
     if not COCOINDEX_AVAILABLE:
         return
     _ensure_database_exists()
-    os.environ["COCOINDEX_DATABASE_URL"] = DATABASE_URL
+    os.environ["COCOINDEX_DATABASE_URL"] = _get_db_url()
     print("CocoIndex init check done.")
 
 
@@ -329,7 +331,7 @@ def get_index_status(repo_id: str) -> dict:
         return {"status": "unavailable", "count": 0}
     table_name = get_table_name(repo_id)
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
+        with psycopg.connect(_get_db_url()) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT to_regclass(%s);", (f"public.{table_name}",))
                 if not cur.fetchone()[0]:
@@ -350,7 +352,7 @@ def drop_index(repo_id: str):
     tracking = f"ci_{repo_id}__cocoindex_tracking"
     flow_name = f"ci_{repo_id}"
     try:
-        with psycopg.connect(DATABASE_URL) as conn:
+        with psycopg.connect(_get_db_url()) as conn:
             with conn.cursor() as cur:
                 cur.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE;')
                 cur.execute(f'DROP TABLE IF EXISTS "{tracking}" CASCADE;')
@@ -411,7 +413,7 @@ def run_index_task(repo_id: str, repo_path: str, included_patterns: list[str], e
             return
 
         print("[index] Step 2: cocoindex.init()")
-        os.environ["COCOINDEX_DATABASE_URL"] = DATABASE_URL
+        os.environ["COCOINDEX_DATABASE_URL"] = _get_db_url()
         cocoindex.init()
         if stop.is_set():
             print(f"[index] Stop requested after step 2 — aborting {repo_id}")

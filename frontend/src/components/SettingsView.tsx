@@ -119,6 +119,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [loadingCapabilities, setLoadingCapabilities] = useState(true);
     const [messagingEnabled, setMessagingEnabled] = useState(false);
     const [codingEnabled, setCodingEnabled] = useState(false);
+    const [embedCode, setEmbedCode] = useState(false);
 
     // Persistent OAuth postMessage listener — lives here so it survives settings tab switches
     const handleMcpOAuthMessage = useCallback((event: MessageEvent) => {
@@ -211,6 +212,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             vault_enabled: vaultEnabled,
             vault_threshold: vaultThreshold,
             allow_db_write: allowDbWrite,
+            embed_code: embedCode,
         };
 
         try {
@@ -406,6 +408,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
                 setVaultThreshold(data.vault_threshold || 100000);
                 setAllowDbWrite(data.allow_db_write || false);
+                setEmbedCode(data.embed_code || false);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
                 if (data.bedrock_api_key) {
@@ -861,6 +864,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             setVaultThreshold={setVaultThreshold}
                             allowDbWrite={allowDbWrite}
                             setAllowDbWrite={setAllowDbWrite}
+                            embedCode={embedCode}
+                            setEmbedCode={setEmbedCode}
                             onSave={handleSaveSection}
                         />
                     )}
@@ -1002,7 +1007,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
                     {/* REPOS TAB */}
                     {activeTab === 'repos' && (
-                        <ReposTab embeddingModel={embeddingModel} />
+                        <ReposTab embeddingModel={embeddingModel} embedCode={embedCode} />
                     )}
 
                     {/* DB CONFIGS TAB */}

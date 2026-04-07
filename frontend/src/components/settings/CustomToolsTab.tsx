@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { MutableRefObject, useEffect, useRef, useState } from 'react';
-import { Wrench, Plus, Trash, X, ExternalLink } from 'lucide-react';
+import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { Wrench, Plus, Trash, X, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw, Container } from 'lucide-react';
 import { PythonToolEditor, type PythonDraftTool } from './PythonToolEditor';
 
 interface CustomToolsTabProps {
@@ -41,6 +41,43 @@ export const CustomToolsTab = ({
     // n8n iframe error state
     const [isN8nError, setIsN8nError] = useState(false);
     const n8nTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Docker status state
+    type DockerStatus = { installed: boolean; running: boolean; image_exists: boolean } | null;
+    const [dockerStatus, setDockerStatus] = useState<DockerStatus>(null);
+    const [dockerChecking, setDockerChecking] = useState(false);
+    const [dockerBuilding, setDockerBuilding] = useState(false);
+    const [dockerBuildError, setDockerBuildError] = useState<string | null>(null);
+
+    const checkDockerStatus = useCallback(async () => {
+        setDockerChecking(true);
+        try {
+            const res = await fetch('/api/tools/docker/status');
+            if (res.ok) setDockerStatus(await res.json());
+        } finally {
+            setDockerChecking(false);
+        }
+    }, []);
+
+    const buildSandboxImage = async () => {
+        setDockerBuilding(true);
+        setDockerBuildError(null);
+        try {
+            const res = await fetch('/api/tools/docker/build', { method: 'POST' });
+            if (res.ok) {
+                await checkDockerStatus();
+            } else {
+                const err = await res.json();
+                setDockerBuildError(err.detail || 'Build failed');
+            }
+        } catch (e: any) {
+            setDockerBuildError(String(e));
+        } finally {
+            setDockerBuilding(false);
+        }
+    };
+
+    useEffect(() => { checkDockerStatus(); }, [checkDockerStatus]);
 
     // Reset error state when switching to n8n mode
     useEffect(() => {
@@ -111,6 +148,74 @@ export const CustomToolsTab = ({
                             <Plus className="h-4 w-4" /> New Tool
                         </button>
                     </div>
+
+                    {/* Docker Status Banner */}
+                    {dockerChecking && !dockerStatus ? (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-xs text-zinc-500">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                            Checking Docker status...
+                        </div>
+                    ) : dockerStatus && (() => {
+                        const allGood = dockerStatus.installed && dockerStatus.running && dockerStatus.image_exists;
+                        if (allGood && !dockerBuildError) {
+                            return (
+                                <div className="flex items-center gap-2 px-3 py-2 bg-green-950/30 border border-green-800/40 rounded text-xs text-green-400">
+                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                    Docker sandbox is ready
+                                    <button onClick={checkDockerStatus} disabled={dockerChecking} className="ml-auto text-green-700 hover:text-green-400 disabled:opacity-50">
+                                        <RefreshCw className={`h-3 w-3 ${dockerChecking ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+                            );
+                        }
+                        return (
+                            <div className="p-3 bg-amber-950/30 border border-amber-700/50 rounded space-y-2">
+                                <div className="flex items-start gap-2">
+                                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                                    <div className="flex-1 space-y-1">
+                                        {!dockerStatus.installed && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Docker is not installed</p>
+                                                <p className="text-xs text-amber-500/80">Python tools run in a Docker sandbox. Install Docker Desktop to use them.</p>
+                                                <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-200 underline">
+                                                    Install Docker Desktop <ExternalLink className="h-3 w-3" />
+                                                </a>
+                                            </>
+                                        )}
+                                        {dockerStatus.installed && !dockerStatus.running && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Docker is not running</p>
+                                                <p className="text-xs text-amber-500/80">Start Docker Desktop, then refresh the status.</p>
+                                            </>
+                                        )}
+                                        {dockerStatus.installed && dockerStatus.running && !dockerStatus.image_exists && (
+                                            <>
+                                                <p className="text-xs font-semibold text-amber-300">Python sandbox image not built</p>
+                                                <p className="text-xs text-amber-500/80">The sandbox image needs to be built once. This downloads Python and installs packages (~2–3 min).</p>
+                                            </>
+                                        )}
+                                        {dockerBuildError && (
+                                            <p className="text-xs text-red-400 font-mono whitespace-pre-wrap mt-1">{dockerBuildError}</p>
+                                        )}
+                                    </div>
+                                    <button onClick={checkDockerStatus} disabled={dockerChecking} className="text-amber-700 hover:text-amber-400 shrink-0 disabled:opacity-50">
+                                        <RefreshCw className={`h-3.5 w-3.5 ${dockerChecking ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+                                {dockerStatus.installed && dockerStatus.running && !dockerStatus.image_exists && (
+                                    <button
+                                        onClick={buildSandboxImage}
+                                        disabled={dockerBuilding}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition-colors rounded"
+                                    >
+                                        <Container className="h-3.5 w-3.5" />
+                                        {dockerBuilding ? 'Building… (this may take a few minutes)' : 'Build Sandbox Image'}
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {customTools.map((t: any) => (

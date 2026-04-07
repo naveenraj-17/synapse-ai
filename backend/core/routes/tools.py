@@ -120,6 +120,69 @@ DOCKER_IMAGE = "sandbox-python:latest"
 MEMORY_LIMIT = "512m"
 CPU_LIMIT = "1.0"
 VAULT_ROOT = os.path.join(DATA_DIR, "vault")
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+@router.get("/api/tools/docker/status")
+async def get_docker_status():
+    """Check if Docker is installed, running, and if the sandbox image exists."""
+    installed = shutil.which("docker") is not None
+    running = False
+    image_exists = False
+    if installed:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "info",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+            running = proc.returncode == 0
+        except Exception:
+            pass
+        if running:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "images", DOCKER_IMAGE, "--format", "{{.Repository}}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout_b, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+                image_exists = bool(stdout_b.strip())
+            except Exception:
+                pass
+    return {"installed": installed, "running": running, "image_exists": image_exists}
+
+
+@router.post("/api/tools/docker/build")
+async def build_docker_sandbox():
+    """Build the sandbox-python Docker image from backend/tools/sandbox.Dockerfile."""
+    if not shutil.which("docker"):
+        raise HTTPException(status_code=503, detail="Docker is not installed or not in PATH")
+    dockerfile = os.path.join(_BACKEND_DIR, "tools", "sandbox.Dockerfile")
+    build_ctx = os.path.join(_BACKEND_DIR, "tools")
+    if not os.path.isfile(dockerfile):
+        raise HTTPException(status_code=404, detail="Sandbox Dockerfile not found")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "build", "-t", DOCKER_IMAGE, "-f", dockerfile, build_ctx,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout_b, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise HTTPException(status_code=504, detail="Docker build timed out after 10 minutes")
+        output = stdout_b.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Build failed:\n{output[-3000:]}")
+        return {"success": True, "output": output[-3000:]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Build error: {e}")
 
 
 class PythonTestRequest(BaseModel):
