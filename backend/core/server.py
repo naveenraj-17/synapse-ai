@@ -238,7 +238,7 @@ async def lifespan(app: FastAPI):
     try:
         for agent_name, script_path in TOOLS_LIST.items():
             print(f"Connecting to {agent_name} agent at {script_path}...")
-            
+
             # Prepare environment with PYTHONPATH specifically pointing to backend root
             # This is crucial so agents can assume 'services' and 'core' are importable
             env = os.environ.copy()
@@ -249,18 +249,27 @@ async def lifespan(app: FastAPI):
                 args=[script_path],
                 env=env
             )
-            
-            read, write = await exit_stack.enter_async_context(stdio_client(server_params))
-            session = await exit_stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
-            
-            agent_sessions[agent_name] = session
-            
-            # Register tools
-            tools = await session.list_tools()
-            for tool in tools.tools:
-                tool_router[tool.name] = (agent_name, tool.name)
-                print(f"  Registered tool: {tool.name} -> {agent_name}")
+
+            inner_stack = AsyncExitStack()
+            try:
+                read, write = await inner_stack.enter_async_context(stdio_client(server_params))
+                session = await inner_stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                await exit_stack.enter_async_context(inner_stack)
+
+                agent_sessions[agent_name] = session
+
+                # Register tools
+                tools = await session.list_tools()
+                for tool in tools.tools:
+                    tool_router[tool.name] = (agent_name, tool.name)
+                    print(f"  Registered tool: {tool.name} -> {agent_name}")
+            except BaseException as e:
+                print(f"  Warning: Failed to connect agent '{agent_name}': {e}")
+                try:
+                    await inner_stack.aclose()
+                except BaseException:
+                    pass
 
         # --- Initialize Native MCP Servers ---
         for mcp_cfg in _build_native_mcp_servers():
@@ -386,7 +395,10 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 print(f"Warning: Schedule manager shutdown error: {e}")
         if exit_stack:
-            await exit_stack.aclose()
+            try:
+                await exit_stack.aclose()
+            except BaseException as e:
+                print(f"Warning: Error during shutdown cleanup: {e}")
 
 app = FastAPI(lifespan=lifespan)
 

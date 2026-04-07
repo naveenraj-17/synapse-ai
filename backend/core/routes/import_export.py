@@ -139,6 +139,8 @@ class ImportRequest(BaseModel):
     mcp_secrets: Dict[str, Dict[str, str]] = {}
     # Format: { "tool_name": { "Header-Key": "value" }, ... }
     tool_secrets: Dict[str, Dict[str, str]] = {}
+    # Format: { "mcp_server_name": "actual_token_value", ... }
+    mcp_tokens: Dict[str, str] = {}
     # Which entity IDs/names the user selected to import (subset of bundle)
     selected_orchestration_ids: List[str] = []
     selected_agent_ids: List[str] = []
@@ -226,14 +228,19 @@ async def import_bundle(req: ImportRequest):
             })
             continue
 
-        # Merge user-supplied secrets into env
+        # Merge user-supplied secrets into env and token
         mcp_entry = dict(mcp)
         if "server_type" not in mcp_entry:
-            mcp_entry["server_type"] = "stdio"
+            mcp_entry["server_type"] = "remote" if mcp_entry.get("url") else "stdio"
         user_secrets = req.mcp_secrets.get(mname, {})
         if user_secrets and isinstance(mcp_entry.get("env"), dict):
             merged_env = {k: user_secrets.get(k, "") for k in mcp_entry["env"].keys()}
             mcp_entry["env"] = merged_env
+        user_token = req.mcp_tokens.get(mname, "")
+        if user_token:
+            mcp_entry["token"] = user_token
+        elif mcp_entry.get("token") == "xxxxxxxxx":
+            mcp_entry["token"] = ""
         mcp_entry["status"] = "disconnected"
         existing_mcp.append(mcp_entry)
         mcp_changed = True
@@ -278,7 +285,21 @@ async def import_bundle(req: ImportRequest):
                 session = await _server.mcp_manager.connect_stdio_server(config)
             elif config.get("token"):
                 session = await _server.mcp_manager.connect_remote_server(config)
-            # remote without token = OAuth flow — user must authorize via browser
+            else:
+                # remote without token → trigger OAuth, surface auth_url to frontend
+                import asyncio
+                loop = asyncio.get_event_loop()
+                auth_url_future: asyncio.Future = loop.create_future()
+                asyncio.create_task(_server.mcp_manager.start_oauth_connect(config, auth_url_future))
+                try:
+                    auth_url = await asyncio.wait_for(asyncio.shield(auth_url_future), timeout=15.0)
+                    mcp_result["status"] = "oauth_pending"
+                    mcp_result["auth_url"] = auth_url
+                    mcp_result["message"] = "Authorization required — click Authorize to connect"
+                except asyncio.TimeoutError:
+                    mcp_result["status"] = "disconnected"
+                    mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
+                continue  # session check below doesn't apply for OAuth path
 
             if session:
                 _server.mcp_manager._set_status(name, "connected")
@@ -326,12 +347,14 @@ async def import_bundle(req: ImportRequest):
 # --------------------------------------------------------------------------- #
 
 def _sanitize_mcp_servers(servers: List[dict]) -> List[dict]:
-    """Replace MCP server env values with empty strings (keep keys)."""
+    """Replace MCP server env values with empty strings (keep keys). Redact token with placeholder."""
     sanitized = []
     for s in servers:
         entry = dict(s)
         if isinstance(entry.get("env"), dict):
             entry["env"] = {k: "" for k in entry["env"].keys()}
+        if entry.get("token"):
+            entry["token"] = "xxxxxxxxx"
         sanitized.append(entry)
     return sanitized
 

@@ -11,15 +11,13 @@
         "label": "Github",
         "name": "github",
         "server_type": "remote",
-        "status": "connected",
         "url": "https://api.githubcopilot.com/mcp/",
-        "token": "your_github_pat_here"
+        "token": "xxxxxxxxx"
     },
     {
         "label": "Slack",
         "name": "slack",
         "server_type": "remote",
-        "status": "connected",
         "url": "https://mcp.slack.com/mcp",
         "token": ""
     },
@@ -27,7 +25,6 @@
         "label": "Notion",
         "name": "notion",
         "server_type": "remote",
-        "status": "connected",
         "url": "https://mcp.notion.com/mcp",
         "token": ""
     },

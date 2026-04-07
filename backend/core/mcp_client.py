@@ -134,7 +134,7 @@ async def _open_http_session(
     - streamable_http_client: GitHub Copilot, Vercel, Jira, Zapier
     - sse_client:             Zerodha Kite, older mcp-remote-based servers
     """
-    err_http: Optional[Exception] = None
+    err_http: Optional[BaseException] = None
 
     # ── Try Streamable HTTP ────────────────────────────────────────────────────
     try:
@@ -142,7 +142,7 @@ async def _open_http_session(
             streamable_http_client(url, http_client=http_client)
         )
         return read, write
-    except Exception as e:
+    except BaseException as e:
         err_http = e
         print(f"[MCP] Streamable HTTP failed for {url}: {type(e).__name__}: {e}. Trying SSE…")
 
@@ -158,12 +158,12 @@ async def _open_http_session(
             sse_client(url, headers=explicit_headers or None)
         )
         return read, write
-    except Exception as e:
+    except BaseException as e:
         raise RuntimeError(
             f"Both transports failed for {url}.\n"
-            f"  Streamable HTTP: {err_http}\n"
-            f"  SSE:             {e}"
-        )
+            f"  Streamable HTTP: {type(err_http).__name__}: {err_http}\n"
+            f"  SSE:             {type(e).__name__}: {e}"
+        ) from None
 
 
 # ── Manager ────────────────────────────────────────────────────────────────────
@@ -235,18 +235,24 @@ class MCPClientManager:
         env.update(env_vars)
 
         print(f"Connecting to stdio MCP server '{name}' ({command} {args})...")
+        inner_stack = AsyncExitStack()
         try:
             params = StdioServerParameters(command=command, args=args, env=env)
-            read, write = await self.exit_stack.enter_async_context(stdio_client(params))
-            session = await self.exit_stack.enter_async_context(
+            read, write = await inner_stack.enter_async_context(stdio_client(params))
+            session = await inner_stack.enter_async_context(
                 ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
             )
             await session.initialize()
+            await self.exit_stack.enter_async_context(inner_stack)
             self.sessions[name] = session
             print(f"Connected to stdio MCP server '{name}'.")
             return session
-        except Exception as e:
+        except BaseException as e:
             print(f"Failed stdio connect '{name}': {e}")
+            try:
+                await inner_stack.aclose()
+            except BaseException:
+                pass
             return None
 
     # ── Remote connection: bearer token ───────────────────────────────────────
@@ -259,20 +265,26 @@ class MCPClientManager:
 
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         print(f"Connecting to remote MCP server '{name}' ({url})...")
+        inner_stack = AsyncExitStack()
         try:
-            http_client = await self.exit_stack.enter_async_context(
+            http_client = await inner_stack.enter_async_context(
                 httpx.AsyncClient(headers=headers, follow_redirects=True)
             )
-            read, write = await _open_http_session(self.exit_stack, url, http_client)
-            session = await self.exit_stack.enter_async_context(
+            read, write = await _open_http_session(inner_stack, url, http_client)
+            session = await inner_stack.enter_async_context(
                 ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
             )
             await session.initialize()
+            await self.exit_stack.enter_async_context(inner_stack)
             self.sessions[name] = session
             print(f"Connected to remote MCP server '{name}'.")
             return session
-        except Exception as e:
+        except BaseException as e:
             print(f"Failed remote connect '{name}': {e}")
+            try:
+                await inner_stack.aclose()
+            except BaseException:
+                pass
             return None
 
     # ── Remote connection: OAuth (background task) ─────────────────────────────
@@ -365,37 +377,49 @@ class MCPClientManager:
                 redirect_handler=noop_redirect,
                 callback_handler=noop_callback,
             )
+            inner_stack = AsyncExitStack()
             try:
-                http_client = await self.exit_stack.enter_async_context(
+                http_client = await inner_stack.enter_async_context(
                     httpx.AsyncClient(auth=oauth_provider, follow_redirects=True)
                 )
-                read, write = await _open_http_session(self.exit_stack, url, http_client)
-                session = await self.exit_stack.enter_async_context(
+                read, write = await _open_http_session(inner_stack, url, http_client)
+                session = await inner_stack.enter_async_context(
                     ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
                 )
                 await session.initialize()
+                await self.exit_stack.enter_async_context(inner_stack)
                 self.sessions[name] = session
                 print(f"[MCP] Reconnected '{name}' with cached OAuth tokens.")
                 return session
-            except Exception as e:
+            except BaseException as e:
                 print(f"[MCP] Cached OAuth reconnect failed for '{name}': {e}. Falling back to direct connect.")
+                try:
+                    await inner_stack.aclose()
+                except BaseException:
+                    pass
 
         # ── Direct path: no token, no OAuth — server may not need auth ───────
         print(f"[MCP] Attempting direct (no-auth) connection to '{name}' ({url})...")
+        inner_stack = AsyncExitStack()
         try:
-            http_client = await self.exit_stack.enter_async_context(
+            http_client = await inner_stack.enter_async_context(
                 httpx.AsyncClient(follow_redirects=True)
             )
-            read, write = await _open_http_session(self.exit_stack, url, http_client)
-            session = await self.exit_stack.enter_async_context(
+            read, write = await _open_http_session(inner_stack, url, http_client)
+            session = await inner_stack.enter_async_context(
                 ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
             )
             await session.initialize()
+            await self.exit_stack.enter_async_context(inner_stack)
             self.sessions[name] = session
             print(f"[MCP] Connected '{name}' via direct (no-auth) connection.")
             return session
-        except Exception as e:
+        except BaseException as e:
             print(f"[MCP] Direct connect also failed for '{name}': {e}")
+            try:
+                await inner_stack.aclose()
+            except BaseException:
+                pass
             return None
 
     # ── connect_all (startup) ──────────────────────────────────────────────────

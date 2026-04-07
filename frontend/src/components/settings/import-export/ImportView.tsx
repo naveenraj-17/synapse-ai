@@ -92,6 +92,7 @@ export function ImportView({ preloadedBundle, onReset }: {
 
   const [mcpSecrets, setMcpSecrets] = useState<Record<string, Record<string, string>>>({});
   const [toolSecrets, setToolSecrets] = useState<Record<string, Record<string, string>>>({});
+  const [mcpTokens, setMcpTokens] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, ImportResult[]>>({});
 
   // Refs for always-current selection state
@@ -202,13 +203,16 @@ export function ImportView({ preloadedBundle, onReset }: {
     setStep("upload"); setBundle(null); setParseError(null); setResults({});
     setSelOrch(new Set()); setSelAgent(new Set()); setSelMcp(new Set()); setSelTool(new Set());
     setLockedAgent(new Set()); setLockedMcp(new Set()); setLockedTool(new Set());
-    setMcpSecrets({}); setToolSecrets({});
+    setMcpSecrets({}); setToolSecrets({}); setMcpTokens({});
     setUseDefaultModels(false); setModelsExpanded(false);
     onReset?.();
   };
 
   const needsSecrets = bundle && (
-    [...selMcp].some(n => { const m = bundle.mcp_servers.find(x => x.name === n); return m?.env && Object.keys(m.env).length > 0; }) ||
+    [...selMcp].some(n => {
+      const m = bundle.mcp_servers.find(x => x.name === n);
+      return (m?.env && Object.keys(m.env).length > 0) || !!m?.token;
+    }) ||
     [...selTool].some(n => { const t = bundle.custom_tools.find(x => x.name === n); return t?.headers && Object.keys(t.headers).length > 0; })
   );
 
@@ -226,6 +230,7 @@ export function ImportView({ preloadedBundle, onReset }: {
           bundle: bundleToSend,
           mcp_secrets: mcpSecrets,
           tool_secrets: toolSecrets,
+          mcp_tokens: mcpTokens,
           selected_orchestration_ids: [...selOrch],
           selected_agent_ids: [...selAgent],
           selected_mcp_server_names: [...selMcp],
@@ -436,6 +441,7 @@ export function ImportView({ preloadedBundle, onReset }: {
   // ── Secrets ───────────────────────────────────────────────────────────────
   if (step === "secrets" && bundle) {
     const relevantMcp = bundle.mcp_servers.filter(m => selMcp.has(m.name) && m.env && Object.keys(m.env).length > 0);
+    const relevantMcpWithTokens = bundle.mcp_servers.filter(m => selMcp.has(m.name) && !!m.token);
     const relevantTools = bundle.custom_tools.filter(t => selTool.has(t.name) && t.tool_type !== "python" && t.headers && Object.keys(t.headers).length > 0);
 
     return (
@@ -447,6 +453,34 @@ export function ImportView({ preloadedBundle, onReset }: {
             <p className="text-blue-600 text-xs mt-1">MCP server env vars and custom tool headers were redacted during export. Enter the actual values before importing.</p>
           </div>
         </div>
+
+        {relevantMcpWithTokens.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 flex items-center gap-2">
+              <Server className="h-3 w-3" /> Remote MCP Server Tokens
+            </h4>
+            {relevantMcpWithTokens.map(m => (
+              <div key={m.name} className="border border-zinc-800">
+                <div className="px-4 py-2.5 bg-zinc-900 flex items-center gap-2">
+                  <span className="text-sm font-bold text-zinc-200">{m.label || m.name}</span>
+                  <span className="text-[10px] text-zinc-600 font-mono">{m.url}</span>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] uppercase font-bold text-zinc-600 font-mono w-36 flex-shrink-0 truncate">Bearer Token</label>
+                    <input
+                      type="password"
+                      value={mcpTokens[m.name] || ""}
+                      onChange={e => setMcpTokens(prev => ({ ...prev, [m.name]: e.target.value }))}
+                      placeholder="Paste your token here"
+                      className={`${inputCls} flex-1 font-mono`}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {relevantMcp.length > 0 && (
           <div className="space-y-3">
@@ -529,7 +563,7 @@ export function ImportView({ preloadedBundle, onReset }: {
   // ── Results ───────────────────────────────────────────────────────────────
   if (step === "results") {
     const all = Object.values(results).flat();
-    const importedCount = all.filter(r => r.status === "imported").length;
+    const importedCount = all.filter(r => r.status === "imported" || r.status === "connected").length;
     const groups = [
       { key: "orchestrations", label: "Orchestrations", icon: Workflow },
       { key: "agents", label: "Agents", icon: Bot },
@@ -562,13 +596,39 @@ export function ImportView({ preloadedBundle, onReset }: {
                   <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">{label}</span>
                 </div>
                 {items.map((item, i) => {
-                  const StatusIcon = item.status === "imported" ? CheckCircle2 : item.status === "skipped_existing" ? SkipForward : XCircle;
-                  const statusCls = item.status === "imported" ? "text-green-400" : item.status === "skipped_existing" ? "text-yellow-400" : "text-red-400";
-                  const statusLabel = item.status === "imported" ? "Imported" : item.status === "skipped_existing" ? "Skipped — already exists" : "Error";
+                  const st = item.status;
+                  const StatusIcon =
+                    st === "imported" || st === "connected" ? CheckCircle2 :
+                    st === "skipped_existing" ? SkipForward :
+                    st === "disconnected" ? AlertTriangle :
+                    st === "oauth_pending" ? AlertCircle :
+                    XCircle;
+                  const statusCls =
+                    st === "imported" || st === "connected" ? "text-green-400" :
+                    st === "skipped_existing" || st === "disconnected" ? "text-yellow-400" :
+                    st === "oauth_pending" ? "text-blue-400" :
+                    "text-red-400";
+                  const statusLabel =
+                    st === "connected" ? "Connected" :
+                    st === "imported" ? "Imported" :
+                    st === "skipped_existing" ? "Skipped — already exists" :
+                    st === "disconnected" ? "Saved — needs Retry" :
+                    st === "oauth_pending" ? "Needs authorization" :
+                    "Error";
                   return (
                     <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-t border-zinc-800/60">
                       <StatusIcon className={`h-4 w-4 ${statusCls} flex-shrink-0`} />
                       <span className="flex-1 text-sm text-zinc-200 font-bold">{item.name || item.label}</span>
+                      {st === "oauth_pending" && item.auth_url && (
+                        <a
+                          href={item.auth_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-bold text-blue-400 border border-blue-700 px-2 py-0.5 hover:bg-blue-900/30 transition-colors mr-2"
+                        >
+                          Authorize ↗
+                        </a>
+                      )}
                       <span className={`text-xs font-mono ${statusCls}`}>{statusLabel}</span>
                     </div>
                   );
@@ -578,12 +638,23 @@ export function ImportView({ preloadedBundle, onReset }: {
           })}
         </div>
 
-        {results.mcp_servers?.some(m => m.status === "imported") && (
+        {results.mcp_servers?.some(m => m.status === "disconnected") && (
           <div className="flex items-start gap-3 p-4 border border-zinc-800 bg-zinc-900/40">
-            <AlertCircle className="h-4 w-4 text-zinc-500 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
             <p className="text-zinc-500 text-xs leading-relaxed">
-              Imported MCP servers have been saved with status <span className="text-zinc-300 font-bold">Disconnected</span>.
-              Go to the <span className="text-zinc-300 font-bold">MCP Servers</span> tab and click <span className="text-zinc-300 font-bold">Retry</span> to connect them.
+              Some MCP servers could not connect automatically. Go to the{" "}
+              <span className="text-zinc-300 font-bold">MCP Servers</span> tab and click{" "}
+              <span className="text-zinc-300 font-bold">Retry</span> to connect them.
+            </p>
+          </div>
+        )}
+        {results.mcp_servers?.some(m => m.status === "oauth_pending") && (
+          <div className="flex items-start gap-3 p-4 border border-blue-900/40 bg-blue-950/10">
+            <AlertCircle className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              Some servers require OAuth authorization. Click the{" "}
+              <span className="text-blue-400 font-bold">Authorize ↗</span> button next to each server above.
+              Once you complete authorization in the browser, the server will connect automatically.
             </p>
           </div>
         )}
