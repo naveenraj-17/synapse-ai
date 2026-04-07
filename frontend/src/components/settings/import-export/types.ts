@@ -66,6 +66,7 @@ export interface ImportResult {
   id?: string;
   name?: string;
   label?: string;
-  status: "imported" | "skipped_existing" | "error";
+  status: "imported" | "skipped_existing" | "error" | "connected" | "disconnected" | "oauth_pending";
   message?: string;
+  auth_url?: string;
 }
