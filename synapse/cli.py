@@ -667,6 +667,15 @@ def _uninstall_command(keep_data: bool = False):
             print(f"  Removed data directory: {DATA_DIR}")
         except Exception as e:
             print(f"  Warning: could not remove data dir {DATA_DIR}: {e}")
+    # Also remove ~/.synapse parent directory (config files, etc.)
+    if not keep_data:
+        synapse_home = Path.home() / ".synapse"
+        if synapse_home.exists():
+            try:
+                shutil.rmtree(synapse_home)
+                print(f"  Removed Synapse home: {synapse_home}")
+            except Exception as e:
+                print(f"  Warning: could not fully remove {synapse_home}: {e}")
 
     # 4. Remove the installation directory
     print(f"\nRemoving installation directory: {ROOT_DIR}")
@@ -685,10 +694,85 @@ def _uninstall_command(keep_data: bool = False):
         print(f"  Warning: could not fully remove {ROOT_DIR}: {e}")
         print("  You may need to delete it manually.")
 
-    # 5. Clean PATH entries from shell rc files
-    if not IS_WIN:
+    # 5. Remove the pip-installed `synapse` console script
+    print("\nUninstalling Python package...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "synapse-ai"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            print("  Removed pip package synapse-ai.")
+        else:
+            # Try alternate package name
+            result2 = subprocess.run(
+                [sys.executable, "-m", "pip", "uninstall", "-y", "synapse"],
+                capture_output=True, text=True,
+            )
+            if result2.returncode == 0:
+                print("  Removed pip package synapse.")
+            else:
+                print("  Package not found in pip (may already be removed).")
+    except Exception as e:
+        print(f"  Warning: pip uninstall failed: {e}")
+
+    # Fallback: remove the synapse executable directly if it still exists on PATH
+    synapse_exe = shutil.which("synapse")
+    if synapse_exe:
+        try:
+            Path(synapse_exe).unlink(missing_ok=True)
+            print(f"  Removed executable: {synapse_exe}")
+        except PermissionError:
+            print(f"  Warning: no permission to remove {synapse_exe} -- delete it manually.")
+        except Exception as e:
+            print(f"  Warning: could not remove {synapse_exe}: {e}")
+
+    # Windows: also scrub leftover files from the Python Scripts directory
+    if IS_WIN:
+        scripts_dir = Path(sys.executable).parent / "Scripts"
+        for name in ("synapse.exe", "synapse-script.py"):
+            candidate = scripts_dir / name
+            if candidate.exists():
+                try:
+                    candidate.unlink()
+                    print(f"  Removed: {candidate}")
+                except Exception as e:
+                    print(f"  Warning: could not remove {candidate}: {e}")
+
+    # 6. Clean PATH entries from shell rc files (Unix) / registry (Windows)
+    if IS_WIN:
+        _root_bin = str(ROOT_DIR / "bin").lower()
+        _root_str = str(ROOT_DIR).lower()
+        try:
+            import winreg  # type: ignore
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Environment",
+                0, winreg.KEY_READ | winreg.KEY_SET_VALUE,
+            )
+            try:
+                path_val, reg_type = winreg.QueryValueEx(key, "PATH")
+                parts = [p for p in path_val.split(";") if p]
+                new_parts = [
+                    p for p in parts
+                    if p.lower() != _root_bin and p.lower() != _root_str
+                ]
+                if len(new_parts) != len(parts):
+                    winreg.SetValueEx(key, "PATH", 0, reg_type, ";".join(new_parts))
+                    print("  Cleaned PATH from Windows user environment registry.")
+            except FileNotFoundError:
+                pass
+            winreg.CloseKey(key)
+        except Exception:
+            pass
+    else:
         bin_dir = str(ROOT_DIR / "bin")
-        for rc_file in (Path.home() / ".bashrc", Path.home() / ".zshrc"):
+        for rc_file in (
+            Path.home() / ".bashrc",
+            Path.home() / ".zshrc",
+            Path.home() / ".bash_profile",
+            Path.home() / ".profile",
+        ):
             if rc_file.exists():
                 try:
                     lines = rc_file.read_text().splitlines(keepends=True)

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -22,7 +22,6 @@ import { IntegrationsTab } from './settings/IntegrationsTab';
 import { McpServersTab } from './settings/McpServersTab';
 import { ConfirmationModal } from './settings/ConfirmationModal';
 import { ToastNotification } from './settings/ToastNotification';
-import { N8nFullscreenOverlay } from './settings/N8nFullscreenOverlay';
 import { ReposTab } from './settings/ReposTab';
 import { DBsTab } from './settings/DBsTab';
 import { OrchestrationTab } from './settings/OrchestrationTab';
@@ -91,7 +90,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
     // Custom Tools State
     const [draftTool, setDraftTool] = useState<any>(null);
-    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'n8n' | 'python'>('config');
+    const [toolBuilderMode, setToolBuilderMode] = useState<'config' | 'python'>('config');
     const [headerRows, setHeaderRows] = useState<{ id: string, key: string, value: string }[]>([]);
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
     const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
@@ -263,18 +262,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         }
     };
 
-    // Fullscreen State
-    const [isIframeFullscreen, setIsIframeFullscreen] = useState(false);
     const [n8nWorkflowId, setN8nWorkflowId] = useState<string | null>(null);
-    const [isN8nLoading, setIsN8nLoading] = useState(true);
-    const n8nIframeRef = useRef<HTMLIFrameElement>(null);
-
-    // Reset n8n loading state when switching modes
-    useEffect(() => {
-        if (toolBuilderMode === 'n8n') {
-            setIsN8nLoading(true);
-        }
-    }, [toolBuilderMode]);
 
     // Confirmation Modal State
     const [confirmAction, setConfirmAction] = useState<{
@@ -919,11 +907,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             n8nWorkflowsLoading={n8nWorkflowsLoading}
                             n8nWorkflowId={n8nWorkflowId}
                             setN8nWorkflowId={setN8nWorkflowId}
-                            isIframeFullscreen={isIframeFullscreen}
-                            setIsIframeFullscreen={setIsIframeFullscreen}
-                            isN8nLoading={isN8nLoading}
-                            setIsN8nLoading={setIsN8nLoading}
-                            n8nIframeRef={n8nIframeRef}
                             getN8nBaseUrl={getN8nBaseUrl}
                             onSaveTool={handleSaveTool}
                             onDeleteTool={handleDeleteTool}
@@ -1029,14 +1012,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 onClose={() => setConfirmAction(null)}
             />
 
-            {/* Fullscreen n8n Iframe Overlay - Rendered outside modal to avoid clipping */}
-            <N8nFullscreenOverlay
-                isIframeFullscreen={isIframeFullscreen}
-                toolBuilderMode={toolBuilderMode}
-                draftTool={draftTool}
-                setIsIframeFullscreen={setIsIframeFullscreen}
-                getN8nBaseUrl={getN8nBaseUrl}
-            />
         </div>
     );
 };

@@ -1,6 +1,17 @@
 # CLI — synapse
 
-Install the package (system-wide or in a virtualenv):
+## Prerequisites
+
+| Dependency | Minimum | Required |
+|------------|---------|----------|
+| Python | 3.11 | Yes |
+| Node.js | 20.9.0 | Yes |
+| npm | bundled with Node | Yes |
+| ollama | any | No (local models only) |
+
+Warnings are printed at startup if versions are below the minimums. Missing `ollama` is a non-fatal warning — cloud API models (Anthropic, OpenAI, Gemini) still work.
+
+## Installation
 
 ```bash
 # editable install (recommended for development)
@@ -10,19 +21,26 @@ python -m pip install -e .
 python -m pip install .
 ```
 
-Run the interactive setup (optional) before first start to configure keys and settings:
+Run the interactive setup wizard before first start to configure API keys and settings:
 
 ```bash
 python setup.py
+# or after install:
+synapse setup
 ```
 
-Environment variables (optional):
+## Environment variables
 
-- `SYNAPSE_DATA_DIR` — path to data dir (default: `~/.synapse/data`).
-- `SYNAPSE_BACKEND_PORT` — backend port (default: `8765`).
-- `SYNAPSE_FRONTEND_PORT` — frontend port (default: `3000`).
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNAPSE_DATA_DIR` | `~/.synapse/data` | Path to data directory |
+| `SYNAPSE_BACKEND_PORT` | `8765` | Backend API server port |
+| `SYNAPSE_FRONTEND_PORT` | `3000` | Frontend web UI port |
+| `SYNAPSE_PROFILING` | `false` | Enable performance profiling (set by `--profile`) |
 
-Basic commands:
+Values in a `.env` file at the project root are loaded automatically (variables already in the environment are not overridden).
+
+## Commands
 
 ```bash
 # start in foreground (opens browser)
@@ -54,23 +72,94 @@ synapse restart --detach --backend-port 8080 --frontend-port 4000
 
 # run interactive setup wizard (configure API keys and settings)
 synapse setup
+
+# pull latest code and rebuild everything
+synapse upgrade
+
+# uninstall Synapse AI (removes all files, executable, and PATH entries)
+synapse uninstall
+
+# uninstall but keep data directory (~/.synapse)
+synapse uninstall --keep-data
 ```
 
-### `start` flags
+If you prefer running without installing:
+
+```bash
+python -m synapse start
+```
+
+## Command reference
+
+### `start`
+
+Starts the backend and frontend. Waits for both to be ready, then opens the browser (unless `--no-browser` or `--detach`).
+
+In foreground mode, `Ctrl+C` shuts down both processes cleanly. In detach mode, PIDs are written to the data directory and the process returns immediately.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--detach`, `-d` | off | Run in background and write pidfiles |
 | `--no-browser` | off | Do not open a browser on start |
-| `--backend-port PORT` | `8765` | Port for the backend API server |
-| `--frontend-port PORT` | `3000` | Port for the frontend web UI |
+| `--backend-port PORT` | `8765` | Port for the backend API server (overrides `SYNAPSE_BACKEND_PORT`) |
+| `--frontend-port PORT` | `3000` | Port for the frontend web UI (overrides `SYNAPSE_FRONTEND_PORT`) |
 | `--profile` | off | Enable performance profiling (`SYNAPSE_PROFILING=true`) |
 
-### `restart` flags
+### `stop`
 
-Same as `start` except `--no-browser` and `--profile` are not available.
+Reads PID files and terminates both processes. Sends `SIGTERM` first, then `SIGKILL` if the process does not exit within 5 seconds. On Windows uses `taskkill /F /T` to kill the full process tree.
 
-PID files are written to the data directory, e.g.:
+### `status`
+
+Prints whether the backend and frontend processes are running or have a stale PID.
+
+### `restart`
+
+Equivalent to `stop` followed by `start`. Accepts the same port and detach flags as `start` (but not `--no-browser` or `--profile`).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--detach`, `-d` | off | Leave processes detached after restart |
+| `--backend-port PORT` | `8765` | Port for the backend API server |
+| `--frontend-port PORT` | `3000` | Port for the frontend web UI |
+
+### `setup`
+
+Runs the interactive setup wizard. Prompts for API keys and settings and writes them to the project `.env` file.
+
+### `upgrade`
+
+Pulls the latest code and rebuilds everything in place:
+
+1. Stops running services
+2. `git pull --ff-only` in the project root
+3. Recreates the backend virtual environment (`backend/venv`) and reinstalls requirements
+4. Reinstalls the `synapse-ai` package in editable mode
+5. Runs `npm install` and `npm run build` in the frontend directory
+
+```bash
+synapse upgrade
+```
+
+### `uninstall`
+
+Permanently removes Synapse AI. Prompts for confirmation before proceeding.
+
+Steps performed:
+1. Stops running services
+2. Removes startup registration (systemd user service on Linux, LaunchAgent on macOS, Registry run key on Windows)
+3. Removes the data directory (`~/.synapse/data`) and Synapse home (`~/.synapse`) — skipped with `--keep-data`
+4. Removes the installation directory (project root), including `backend/venv` and `frontend/node_modules`
+5. Runs `pip uninstall -y synapse-ai` to remove the package and console script; falls back to deleting the `synapse` executable directly if found on `PATH`; on Windows also removes `synapse.exe` / `synapse-script.py` from the Python Scripts directory
+6. Cleans `PATH` additions from `~/.bashrc`, `~/.zshrc`, `~/.bash_profile`, `~/.profile` (Unix) or the user `Environment` registry key (Windows)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--keep-data` | off | Preserve `~/.synapse` data directory when uninstalling |
+
+## PID files
+
+PID files are written to the data directory:
 
 - `~/.synapse/data/backend.pid`
 - `~/.synapse/data/frontend.pid`
@@ -118,16 +207,13 @@ synapse profile spy --output profile.svg --duration 60
 ```bash
 # install and run in background
 python -m pip install -e .
+synapse setup
 synapse start --detach
 synapse status
 # when finished
 synapse stop
 ```
 
-If you prefer running without installing, use:
+## Extensibility
 
-```bash
-python -m synapse start
-```
-
-This CLI is extensible — future commands (migrations, backup, logs) can be added to `synapse.cli`.
+The CLI is extensible — future commands (migrations, backup, logs) can be added to `synapse.cli`.
