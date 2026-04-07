@@ -1019,7 +1019,7 @@ def ask_google_workspace(cfg):
         info("  2. Set application type to 'Web application'")
         info(f"  3. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
         info("  4. Make sure the OAuth consent screen has all required scopes configured")
-        info("  5. Click Create, then download the JSON file")
+        info("  5. Click Create, download the JSON file, open it, copy all its content, and paste it below")
     else:
         # No gcloud -- full manual flow
         info("gcloud CLI not found -- using manual setup.")
@@ -1030,13 +1030,16 @@ def ask_google_workspace(cfg):
         info("  2. Configure the OAuth consent screen and add these scopes:")
         info("     userinfo.email, userinfo.profile, gmail.modify, gmail.send, drive, calendar,")
         info("     documents, spreadsheets, presentations, forms, tasks, contacts")
-        info("  3. Go to Credentials -> Create Credentials -> OAuth Client ID -> Web application")
+        info("  3. Create OAuth Client ID directly at:")
+        print(f"     {_c(C.CYAN, 'https://console.cloud.google.com/auth/clients/create')}")
+        info("     Choose 'Web application' as the application type.")
         info(f"  4. Set 'Authorized redirect URIs' to: http://localhost:{backend_port}/auth/callback")
-        info("  5. Download the JSON file and paste its contents below.")
+        info("  5. Download the JSON file, open it, copy all its content, and paste it below.")
 
     # Paste area
     print()
-    info("Paste the downloaded credentials JSON here (multi-line OK, end with a blank line):")
+    info("Paste the downloaded credentials JSON here (multi-line OK).")
+    info("When done, press Enter twice (blank line) to save and continue:")
     lines = []
     try:
         while True:

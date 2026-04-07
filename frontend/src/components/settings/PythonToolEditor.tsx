@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Plus, Trash2, Play, ChevronDown, ChevronUp, Terminal, Package, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Play, ChevronDown, ChevronUp, Terminal, Package, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { EditorView } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { python } from '@codemirror/lang-python';
@@ -13,14 +13,6 @@ import { tags } from '@lezer/highlight';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export interface SchemaParam {
-    id: string;
-    name: string;
-    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
-    description: string;
-    required: boolean;
-}
-
 export interface PythonDraftTool {
     name: string;
     generalName: string;
@@ -28,7 +20,7 @@ export interface PythonDraftTool {
     tool_type: 'python';
     code: string;
     inputSchema: any;
-    schemaParams: SchemaParam[];
+    schemaParams?: any[];
 }
 
 interface PythonToolEditorProps {
@@ -104,22 +96,6 @@ result = {"output": f"Processed: {query}"}
 
 print(json.dumps(result))
 `;
-
-/* ─── schema builder → JSON schema ──────────────────────────────────────── */
-
-function paramsToSchema(params: SchemaParam[]): any {
-    const properties: Record<string, any> = {};
-    const required: string[] = [];
-    for (const p of params) {
-        if (!p.name.trim()) continue;
-        properties[p.name] = {
-            type: p.type,
-            description: p.description || undefined,
-        };
-        if (p.required) required.push(p.name);
-    }
-    return { type: 'object', properties, ...(required.length ? { required } : {}) };
-}
 
 /* ─── Simple Python lint (client-side, best-effort) ─────────────────────── */
 
@@ -223,30 +199,22 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    /* ── Schema param helpers ─────────────────────────────────────────────── */
+    /* ── Schema JSON state ───────────────────────────────────────────────── */
 
-    const params: SchemaParam[] = draft.schemaParams || [];
+    const [schemaStr, setSchemaStr] = useState(() =>
+        JSON.stringify(draft.inputSchema || { type: 'object', properties: { input: { type: 'string' } } }, null, 2)
+    );
+    const [schemaError, setSchemaError] = useState<string | null>(null);
 
-    const updateParam = (id: string, field: keyof SchemaParam, value: any) => {
-        const updated = params.map(p => p.id === id ? { ...p, [field]: value } : p);
-        onChange({ ...draft, schemaParams: updated, inputSchema: paramsToSchema(updated) });
-    };
-
-    const addParam = () => {
-        const newParam: SchemaParam = {
-            id: `p${Date.now()}`,
-            name: '',
-            type: 'string',
-            description: '',
-            required: false,
-        };
-        const updated = [...params, newParam];
-        onChange({ ...draft, schemaParams: updated, inputSchema: paramsToSchema(updated) });
-    };
-
-    const removeParam = (id: string) => {
-        const updated = params.filter(p => p.id !== id);
-        onChange({ ...draft, schemaParams: updated, inputSchema: paramsToSchema(updated) });
+    const handleSchemaChange = (val: string) => {
+        setSchemaStr(val);
+        try {
+            const parsed = JSON.parse(val);
+            setSchemaError(null);
+            onChange({ ...draft, inputSchema: parsed });
+        } catch {
+            setSchemaError('Invalid JSON');
+        }
     };
 
     /* ── Test run ─────────────────────────────────────────────────────────── */
@@ -349,90 +317,19 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 )}
             </div>
 
-            {/* ── Input Schema Builder ─────────────────────────────────────── */}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <label className="text-[10px] uppercase font-bold text-zinc-500">Input Parameters (Schema)</label>
-                    <button
-                        onClick={addParam}
-                        className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-white font-bold bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded transition-colors"
-                    >
-                        <Plus className="h-3 w-3" />
-                        Add Parameter
-                    </button>
-                </div>
-
-                {params.length === 0 ? (
-                    <div className="py-6 text-center text-[11px] text-zinc-600 border border-dashed border-zinc-800 rounded-sm">
-                        No input parameters. Add parameters to define the tool's input schema.
-                    </div>
-                ) : (
-                    <div className="space-y-2">
-                        {/* Header Row */}
-                        <div className="grid grid-cols-[1fr_100px_80px_1fr_28px] gap-2 px-1">
-                            {['Name', 'Type', 'Required', 'Description', ''].map((h, i) => (
-                                <span key={i} className="text-[9px] uppercase tracking-wider text-zinc-600 font-bold">{h}</span>
-                            ))}
-                        </div>
-                        {params.map(p => (
-                            <div key={p.id} className="grid grid-cols-[1fr_100px_80px_1fr_28px] gap-2 items-center">
-                                <input
-                                    type="text"
-                                    value={p.name}
-                                    onChange={e => updateParam(p.id, 'name', e.target.value)}
-                                    placeholder="param_name"
-                                    className="bg-zinc-900 border border-zinc-800 p-1.5 text-xs font-mono text-white focus:border-violet-600 focus:outline-none"
-                                />
-                                <select
-                                    value={p.type}
-                                    onChange={e => updateParam(p.id, 'type', e.target.value)}
-                                    className="bg-zinc-900 border border-zinc-800 p-1.5 text-xs text-white focus:border-violet-600 focus:outline-none"
-                                >
-                                    <option value="string">string</option>
-                                    <option value="number">number</option>
-                                    <option value="boolean">boolean</option>
-                                    <option value="array">array</option>
-                                    <option value="object">object</option>
-                                </select>
-                                <div className="flex items-center justify-center">
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={p.required}
-                                            onChange={e => updateParam(p.id, 'required', e.target.checked)}
-                                            className="accent-violet-500"
-                                        />
-                                        <span className="text-[10px] text-zinc-400">req</span>
-                                    </label>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={p.description}
-                                    onChange={e => updateParam(p.id, 'description', e.target.value)}
-                                    placeholder="What this parameter does..."
-                                    className="bg-zinc-900 border border-zinc-800 p-1.5 text-xs text-zinc-300 focus:border-violet-600 focus:outline-none"
-                                />
-                                <button
-                                    onClick={() => removeParam(p.id)}
-                                    className="p-1 text-zinc-600 hover:text-red-400 transition-colors flex items-center justify-center"
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {/* Schema Preview */}
-                {params.length > 0 && (
-                    <details className="mt-1">
-                        <summary className="text-[10px] text-zinc-600 hover:text-zinc-400 cursor-pointer select-none">
-                            Preview generated schema JSON
-                        </summary>
-                        <pre className="mt-1 p-2 bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-400 overflow-auto max-h-32 rounded-sm">
-                            {JSON.stringify(paramsToSchema(params), null, 2)}
-                        </pre>
-                    </details>
+            {/* ── Input Schema (JSON) ──────────────────────────────────────── */}
+            <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-zinc-500">Input Schema (JSON)</label>
+                <textarea
+                    value={schemaStr}
+                    onChange={e => handleSchemaChange(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none min-h-[140px]"
+                    placeholder='{"type": "object", "properties": {"query": {"type": "string", "description": "The input query"}}}'
+                />
+                {schemaError && (
+                    <p className="text-[10px] text-red-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3 shrink-0" /> {schemaError}
+                    </p>
                 )}
             </div>
 
@@ -443,7 +340,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                         <Terminal className="h-3.5 w-3.5" />
                         Test Run
                     </label>
-                    <span className="text-[10px] text-zinc-600">Runs in Docker sandbox (requires sandbox-python image)</span>
+                    <span className="text-[10px] text-zinc-600">Runs in Docker sandbox</span>
                 </div>
 
                 <div className="flex gap-2 items-start">
