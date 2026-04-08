@@ -1583,10 +1583,10 @@ def add_to_bashrc():
     with open(bashrc, "r") as f:
         content = f.read()
     
-    if "Synapse AI" in content or bin_dir in content:
+    if bin_dir in content:
         ok("Synapse already in PATH (bashrc)")
         return True
-    
+
     with open(bashrc, "a") as f:
         f.write(export_line + "\n")
     ok(f"Added Synapse to PATH (bashrc)")
@@ -1604,7 +1604,7 @@ def add_to_zshrc():
     with open(zshrc, "r") as f:
         content = f.read()
     
-    if "Synapse AI" in content or bin_dir in content:
+    if bin_dir in content:
         ok("Synapse already in PATH (zshrc)")
         return True
     

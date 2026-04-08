@@ -2,6 +2,10 @@
 
 set -e
 
+# Detect if script is being sourced (. setup.sh) vs executed (bash setup.sh)
+_SOURCED=false
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && _SOURCED=true
+
 # ---------------------------------------------------------------------------
 # Detect OS and distribution
 # ---------------------------------------------------------------------------
@@ -215,7 +219,7 @@ _node_meets_minimum() {
     local cmd="$1"
     command -v "$cmd" &> /dev/null || return 1
     local version_str
-    version_str=$("$cmd" -v 2>/dev/null | lstrip "v")
+    version_str=$("$cmd" -v 2>/dev/null | sed 's/^v//')
     if [[ -z "$version_str" ]]; then return 1; fi
     
     # Simple semantic version comparison
@@ -343,14 +347,17 @@ main() {
         echo "To start Synapse:"
         echo -e "  \033[96msynapse start\033[0m"
         echo ""
-        echo -e "If 'synapse' is not found, reload your PATH:"
-        echo -e "  \033[96msource ~/.bashrc\033[0m   (or open a new terminal)"
-        echo ""
         echo "Other commands:"
         echo "  synapse stop      -- stop running services"
         echo "  synapse status    -- check service status"
         echo "  synapse restart   -- restart services"
         echo ""
+
+        # Auto-activate PATH in this terminal without requiring the user to source ~/.bashrc
+        if [ "$_SOURCED" = false ] && [ -t 1 ] && [ -f "$HOME/.bashrc" ]; then
+            echo -e "\033[96m==> Activating 'synapse' command in this terminal...\033[0m"
+            exec bash --rcfile "$HOME/.bashrc" -i
+        fi
         exit 0
     fi
 
@@ -381,7 +388,7 @@ main() {
     BIN_DIR="$INSTALL_DIR/bin"
     for profile in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
         if [ -f "$profile" ]; then
-            if ! grep -q "Synapse AI" "$profile"; then
+            if ! grep -q "$BIN_DIR" "$profile"; then
                 echo "" >> "$profile"
                 echo "# Synapse AI" >> "$profile"
                 echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$profile"
@@ -400,10 +407,14 @@ main() {
     echo ""
     echo -e "   To start Synapse:"
     echo -e "     \033[96msynapse start\033[0m"
-    echo ""
-    echo -e "   If 'synapse' is not found, reload your PATH:"
-    echo -e "     \033[96msource ~/.bashrc\033[0m   (or open a new terminal)"
     echo "========================================================"
+
+    # Auto-activate PATH in this terminal without requiring the user to source ~/.bashrc
+    if [ "$_SOURCED" = false ] && [ -t 1 ] && [ -f "$HOME/.bashrc" ]; then
+        echo ""
+        echo -e "\033[96m==> Activating 'synapse' command in this terminal...\033[0m"
+        exec bash --rcfile "$HOME/.bashrc" -i
+    fi
 }
 
 main
