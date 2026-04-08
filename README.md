@@ -56,7 +56,7 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 - **Messaging Apps** — effortlessly connect agents to messaging platforms like Slack and Discord
 - **Import & Export** — portably share orchestrations, agents, and MCP server configs
 - **Plug in any MCP server** — local stdio or remote HTTP, added in seconds via the UI
-- **Build custom tools with n8n** — turn any automation workflow into an agent tool with zero code
+- **Build custom tools with Webhooks and Python** — instantly convert any webhook (zero-code) or Python script into an agent tool.
 - **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
 - **Persistent vault** — agents save and share files across sessions and runs
 - **Local-first** — runs entirely on your machine with Ollama, or connect any cloud LLM
@@ -66,6 +66,13 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 ## Synapse UI
 
 https://github.com/user-attachments/assets/78c526d9-c75b-41fa-9353-589d3207e7db
+
+
+## Synapse Orchestration Demo
+
+This demo features a multi-agent content writing orchestration, utilizing gemini-3-flash-preview and gemini-3.1-pro-preview as evaluators. Each agent can be configured with different models based on your specific needs. (Note: The video is sped up 2x to fit on GitHub.)
+
+https://github.com/user-attachments/assets/4eec5db8-70d0-47b6-8608-f52b1f7b7d68
 
 
 ## The Tool Ecosystem
