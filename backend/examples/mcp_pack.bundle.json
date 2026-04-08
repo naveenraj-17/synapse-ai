@@ -19,7 +19,7 @@
         "name": "slack",
         "server_type": "remote",
         "url": "https://mcp.slack.com/mcp",
-        "token": ""
+        "token": "xxxxxxxxx"
     },
     {
         "label": "Notion",

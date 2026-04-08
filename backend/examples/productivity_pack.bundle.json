@@ -351,29 +351,18 @@
   ],
   "mcp_servers": [
     {
-      "name": "slack",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-slack"
-      ],
-      "env": {
-        "SLACK_BOT_TOKEN": "xoxb-your-bot-token-here",
-        "SLACK_TEAM_ID": "T0XXXXXXXXX"
-      },
-      "label": "Slack",
-      "server_type": "stdio"
+        "label": "Slack",
+        "name": "slack",
+        "server_type": "remote",
+        "url": "https://mcp.slack.com/mcp",
+        "token": "xxxxxxxxx"
     },
     {
-      "name": "notion",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-notion"
-      ],
-      "env": {},
-      "label": "Notion",
-      "server_type": "stdio"
+        "label": "Notion",
+        "name": "notion",
+        "server_type": "remote",
+        "url": "https://mcp.notion.com/mcp",
+        "token": ""
     },
     {
       "name": "jira",

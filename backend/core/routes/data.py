@@ -19,7 +19,6 @@ from services.synthetic_data import generate_synthetic_data, SyntheticDataReques
 
 router = APIRouter()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 # --- Synthetic Data ---
 
 @router.post("/api/synthetic/generate")
@@ -81,7 +80,7 @@ async def get_models():
     async def fetch_ollama() -> tuple[bool, list[str], list[str]]:
         try:
             async with httpx.AsyncClient() as client:
-                r = await client.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3.0)
+                r = await client.get(f"{os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')}/api/tags", timeout=3.0)
                 if r.status_code == 200:
                     models = [m["name"] for m in r.json().get("models", [])]
                     # Simple heuristic: models with 'embed' in name are likely for embeddings

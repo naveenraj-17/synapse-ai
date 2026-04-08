@@ -1607,17 +1607,18 @@
   ],
   "mcp_servers": [
     {
-      "name": "github",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_pat_here"
-      },
-      "label": "GitHub",
-      "server_type": "stdio"
+        "label": "Github",
+        "name": "github",
+        "server_type": "remote",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "token": "xxxxxxxxx"
+    },
+    {
+        "label": "Slack",
+        "name": "slack",
+        "server_type": "remote",
+        "url": "https://mcp.slack.com/mcp",
+        "token": "xxxxxxxxx"
     },
     {
       "name": "jira",
