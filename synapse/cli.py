@@ -3,7 +3,6 @@ Synapse CLI - starts the backend and frontend, then opens the browser.
 """
 import os
 import sys
-import stat
 import shutil
 import signal
 import threading
@@ -19,14 +18,33 @@ IS_WIN = sys.platform == "win32"
 
 
 def _rmtree(path):
-    """Remove a directory tree, handling Windows read-only/locked files."""
+    """Remove a directory tree, handling read-only/locked files on all platforms."""
     def _onerror(func, p, exc_info):
         try:
-            os.chmod(p, stat.S_IWRITE)
+            # Make writable: dir needs 0o755, file needs at least u+w
+            os.chmod(p, 0o755 if os.path.isdir(p) else 0o644)
             func(p)
         except Exception:
-            pass
+            try:
+                # If the file itself is fine but the parent dir is not writable, fix that
+                os.chmod(os.path.dirname(p), 0o755)
+                func(p)
+            except Exception:
+                pass
     shutil.rmtree(path, onerror=_onerror)
+
+
+def _fix_bin_permissions():
+    """Ensure bin/synapse has execute permissions (chmod 755) on Unix."""
+    if IS_WIN:
+        return
+    synapse_bin = ROOT_DIR / "bin" / "synapse"
+    if synapse_bin.exists():
+        try:
+            synapse_bin.chmod(0o755)
+        except PermissionError as e:
+            print(f"  Warning: could not set permissions on {synapse_bin}: {e}")
+            print(f"  Fix manually: chmod 755 {synapse_bin}")
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 # When installed as a package, backend is one level up from synapse/
@@ -667,8 +685,17 @@ def _upgrade_command():
     subprocess.check_call([npm, "run", "build"], cwd=str(FRONTEND_DIR))
     print("  Frontend rebuild complete.")
 
+    # 5. Re-apply execute permissions on the synapse bin script
+    # (git pull can reset the execute bit, especially on WSL/Linux)
+    _fix_bin_permissions()
+
     print("\n=== Upgrade complete! ===")
     print("Run 'synapse start' to launch the updated Synapse.")
+    if not IS_WIN:
+        bin_dir = str(ROOT_DIR / "bin")
+        print(f"\nIf 'synapse' is not found in your terminal, run:")
+        print(f"  export PATH=\"{bin_dir}:$PATH\"")
+        print("(Already saved to ~/.bashrc / ~/.zshrc for new terminals.)")
 
 
 def _get_synapse_install_dir() -> Path | None:

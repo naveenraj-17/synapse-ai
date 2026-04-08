@@ -332,6 +332,9 @@ main() {
             $PYTHON_CMD setup.py --upgrade
         fi
 
+        # Activate the updated PATH in the current shell session
+        export PATH="$INSTALL_DIR/bin:$PATH"
+
         echo ""
         echo "======================================================"
         echo -e "\033[92m   Synapse AI has been updated and rebuilt!\033[0m"
@@ -339,6 +342,9 @@ main() {
         echo ""
         echo "To start Synapse:"
         echo -e "  \033[96msynapse start\033[0m"
+        echo ""
+        echo -e "If 'synapse' is not found, reload your PATH:"
+        echo -e "  \033[96msource ~/.bashrc\033[0m   (or open a new terminal)"
         echo ""
         echo "Other commands:"
         echo "  synapse stop      -- stop running services"
@@ -384,11 +390,19 @@ main() {
         fi
     done
 
+    # Activate the new PATH in the current shell session
+    export PATH="$BIN_DIR:$PATH"
+
     echo ""
     echo "========================================================"
     echo -e "\033[92m   Synapse AI setup complete!\033[0m"
-    echo -e "   To start Synapse:  \033[96msynapse start\033[0m"
-    echo -e "   Installed at:      \033[96m$INSTALL_DIR\033[0m"
+    echo -e "   Installed at:  \033[96m$INSTALL_DIR\033[0m"
+    echo ""
+    echo -e "   To start Synapse:"
+    echo -e "     \033[96msynapse start\033[0m"
+    echo ""
+    echo -e "   If 'synapse' is not found, reload your PATH:"
+    echo -e "     \033[96msource ~/.bashrc\033[0m   (or open a new terminal)"
     echo "========================================================"
 }
 

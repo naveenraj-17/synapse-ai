@@ -6,7 +6,6 @@ Uses only Python stdlib so it works before the venv exists.
 import json
 import os
 import signal
-import stat
 import platform
 import shutil
 import subprocess
@@ -1085,22 +1084,11 @@ def _fetch_json(url, headers=None):
     with urllib.request.urlopen(req, timeout=8) as r:
         return json.loads(r.read().decode())
 
-def _ollama_models():
-    """Returns list of installed Ollama model names, or [] on failure."""
+def _fetch_ollama_models(base_url="http://127.0.0.1:11434"):
+    """Returns list of installed Ollama model names via HTTP API, or [] on failure."""
     try:
-        result = subprocess.run(
-            ["ollama", "list"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode != 0:
-            return []
-        lines = result.stdout.strip().splitlines()
-        models = []
-        for line in lines[1:]:  # skip header
-            parts = line.split()
-            if parts:
-                models.append(parts[0])
-        return models
+        data = _fetch_json(f"{base_url}/api/tags")
+        return [m["name"] for m in data.get("models", []) if m.get("name")]
     except Exception:
         return []
 
@@ -1212,7 +1200,7 @@ def ask_llm(cfg):
 
     # Try Ollama first
     info("Checking for Ollama...")
-    ollama_models = _ollama_models()
+    ollama_models = _fetch_ollama_models()
     if ollama_models:
         ok(f"Ollama detected with {len(ollama_models)} model(s).")
         model = ask_choice("Select model", ollama_models)
@@ -1225,9 +1213,9 @@ def ask_llm(cfg):
     if ask_yn("Ollama not detected on default port. Do you have Ollama running?"):
         base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
         cfg["ollama_base_url"] = base_url
-        os.environ["OLLAMA_HOST"] = base_url  # ollama CLI respects OLLAMA_HOST
+        _update_env_file("OLLAMA_BASE_URL", base_url)
         info("Checking for models at that URL...")
-        ollama_models = _ollama_models()
+        ollama_models = _fetch_ollama_models(base_url)
         if ollama_models:
             ok(f"Found {len(ollama_models)} model(s).")
             model = ask_choice("Select model", ollama_models)
@@ -1574,16 +1562,15 @@ def add_to_bashrc():
     bashrc = os.path.expanduser("~/.bashrc")
     bin_dir = os.path.join(ROOT_DIR, "bin")
     
-    # --- NEW: Ensure the binary has execution permissions ---
+    # Ensure the binary has full execution permissions (chmod 755)
     synapse_bin = os.path.join(bin_dir, "synapse")
     if os.path.exists(synapse_bin):
-        # Get current permissions
-        st = os.stat(synapse_bin)
-        # Add the 'Executable' bit for the Owner (User), Group, and Others
-        # This is the Python equivalent of 'chmod +x'
-        os.chmod(synapse_bin, st.st_mode | stat.S_IEXEC)
+        os.chmod(synapse_bin, 0o755)
         ok(f"Set execution permissions for {synapse_bin}")
-    # --------------------------------------------------------
+    # Also chmod any .sh wrapper if present
+    synapse_sh = os.path.join(bin_dir, "synapse.sh")
+    if os.path.exists(synapse_sh):
+        os.chmod(synapse_sh, 0o755)
 
     export_line = f"\nexport PATH=\"{bin_dir}:$PATH\"  # Synapse AI"
     
@@ -1675,6 +1662,10 @@ def setup_path():
 
         # Update PATH in the current process so synapse is immediately usable
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+        info("")
+        info("To use 'synapse' in your CURRENT terminal, run:")
+        info(f"  export PATH=\"{bin_dir}:$PATH\"")
+        info("(Already saved to ~/.bashrc / ~/.zshrc for future sessions.)")
         ok("PATH setup complete.")
 
 def show_restart_instructions():
@@ -1698,8 +1689,9 @@ def show_restart_instructions():
         info(f"  synapse start")
         info("")
         info("If the command is not found, either:")
-        info(f"  1. Restart your terminal (to reload ~/.bashrc or ~/.zshrc)")
-        info(f"  2. Or use: python -m synapse start")
+        info(f"  1. Run: source ~/.bashrc   (or source ~/.zshrc)")
+        info(f"  2. Or open a new terminal")
+        info(f"  3. Or use: python -m synapse start")
         info("")
         info("Other useful commands:")
         info(f"  synapse stop      # Stop running services")
@@ -1943,7 +1935,12 @@ def _handle_already_installed(install_dir):
         warn(f"Frontend rebuild failed: {e}")
 
     # ------------------------------------------------------------------
-    # 4. Show instructions
+    # 4. Refresh PATH and execute permissions
+    # ------------------------------------------------------------------
+    setup_path()
+
+    # ------------------------------------------------------------------
+    # 5. Show instructions
     # ------------------------------------------------------------------
     print()
     print(f"{C.BOLD}{C.GREEN}Synapse AI has been updated and rebuilt!{C.RESET}")
@@ -2219,6 +2216,7 @@ def main():
             _rebuild_frontend(ROOT_DIR)
         except Exception as e:
             warn(f"Frontend rebuild failed: {e}")
+        setup_path()
         print()
         ok("Rebuild complete.")
         sys.exit(0)
