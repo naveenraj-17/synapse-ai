@@ -183,7 +183,7 @@ def _build_native_mcp_servers() -> list[dict]:
         servers.append({
             "name": "Google Workspace",
             "command": "uvx",
-            "args": ["workspace-mcp", "--single-user", "--tools", "gmail", "drive", "calendar"],
+            "args": ["workspace-mcp", "--single-user", "--tools", "gmail", "drive", "calendar", "docs", "sheets", "slides", "forms", "tasks", "contacts"],
             "env": google_env,
         })
     else:
