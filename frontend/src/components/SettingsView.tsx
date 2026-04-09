@@ -8,7 +8,7 @@ import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wren
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/store';
-import { fetchAllSettingsData, removeAgent, removeMcpServer, removeCustomTool, updateCustomTool, addCustomTool, addMcpServer, updateMcpServerStatus } from '@/store/settingsSlice';
+import { fetchAllSettingsData, setAgents, setMcpServers, setCustomTools, removeAgent, removeMcpServer, removeCustomTool, updateCustomTool, addCustomTool, addMcpServer, updateMcpServerStatus } from '@/store/settingsSlice';
 
 import type { Tab } from './settings/types';
 import { GeneralTab } from './settings/GeneralTab';
@@ -494,12 +494,60 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, draftTool, toolBuilderMode]);
 
-    // Fetch MCP Servers
+    // Refresh tab-specific data on every tab switch (after initial load)
     useEffect(() => {
-        if (activeTab === 'mcp_servers' && !initialized) {
-            dispatch(fetchAllSettingsData());
+        if (!initialized) return;
+
+        if (activeTab === 'agents') {
+            fetch('/api/agents')
+                .then(r => r.ok ? r.json() : [])
+                .then(data => dispatch(setAgents(Array.isArray(data) ? data : [])));
+            fetch('/api/tools/available')
+                .then(r => r.json())
+                .then(data => {
+                    const tools = data.tools || [];
+                    const groups: Record<string, any> = {};
+                    tools.forEach((t: any) => {
+                        if (t.source === 'custom_http') {
+                            const capId = t.name;
+                            if (!groups[capId]) {
+                                groups[capId] = {
+                                    id: capId,
+                                    label: t.label || t.name,
+                                    description: t.description,
+                                    tools: [t.name],
+                                    toolDetails: [{ name: t.name, description: t.description || '' }],
+                                    toolType: 'custom'
+                                };
+                            }
+                        } else {
+                            const source = t.source || 'unknown';
+                            if (!groups[source]) {
+                                groups[source] = {
+                                    id: source,
+                                    label: t.source_label || source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' '),
+                                    description: `Tools from ${source}`,
+                                    tools: [],
+                                    toolDetails: [],
+                                    toolType: t.type === 'mcp_external' ? 'mcp' : (t.type === 'mcp_native' ? 'native' : 'custom')
+                                };
+                            }
+                            groups[source].tools.push(t.name);
+                            groups[source].toolDetails.push({ name: t.name, description: t.description || '' });
+                        }
+                    });
+                    setAvailableCapabilities(Object.values(groups));
+                });
+        } else if (activeTab === 'mcp_servers') {
+            fetch('/api/mcp/servers')
+                .then(r => r.ok ? r.json() : [])
+                .then(data => dispatch(setMcpServers(Array.isArray(data) ? data : [])));
+        } else if (activeTab === 'custom_tools') {
+            fetch('/api/tools/custom')
+                .then(r => r.ok ? r.json() : [])
+                .then(data => dispatch(setCustomTools(Array.isArray(data) ? data : [])));
         }
-    }, [activeTab, dispatch, initialized]);
+    }, [activeTab, initialized, dispatch]);
 
     const handleAddMcpServer = async () => {
         if (!draftMcpServer.name) {
