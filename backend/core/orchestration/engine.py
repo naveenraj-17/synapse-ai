@@ -9,6 +9,7 @@ from typing import AsyncGenerator
 import anyio
 
 from core.models_orchestration import Orchestration, OrchestrationRun, StepConfig, StepType
+from core.usage_tracker import get_usage_logs
 from .state import SharedState
 from .steps import STEP_EXECUTORS
 from .logger import OrchestrationLogger
@@ -202,6 +203,21 @@ class OrchestrationEngine:
                     "step_name": step.name,
                     "duration_seconds": step_duration,
                 }
+
+                # --- Cost guardrail ---
+                if self.orch.max_total_cost_usd is not None:
+                    cost_logs = get_usage_logs(run_id=run.run_id)
+                    run.total_cost_usd = sum(log.get("estimated_cost", 0.0) for log in cost_logs)
+                    if run.total_cost_usd >= self.orch.max_total_cost_usd:
+                        run.status = "failed"
+                        yield {
+                            "type": "orchestration_error",
+                            "error": (
+                                f"Max cost limit ${self.orch.max_total_cost_usd:.2f} exceeded "
+                                f"(accumulated: ${run.total_cost_usd:.4f})"
+                            ),
+                        }
+                        break
 
                 # Resolve next step
                 next_step_id, extra_event = self._resolve_next(step, run)
