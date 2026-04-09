@@ -103,71 +103,176 @@ class AgentStepExecutor:
 
 
 class ToolStepExecutor:
-    """Single forced tool call with ReAct retry loop.
+    """Single forced tool call — lightweight direct LLM call (no full agent/ReAct stack).
 
-    Constrains run_agent_step to exactly one tool. The LLM must call that tool —
-    if it gets the arguments wrong, the ReAct loop retries (up to max_turns).
-    No agent_id required — uses the active/default agent for model/provider settings.
+    Asks the LLM to generate arguments for exactly one tool as JSON, then executes
+    the tool directly via the MCP session. Retries up to max_turns if the LLM output
+    cannot be parsed or the tool call fails.
+
+    This mirrors EvaluatorStepExecutor's approach: a direct llm_generate call with
+    only the target tool's schema embedded in the prompt, avoiding the 276K-char
+    system prompt overhead of run_agent_step.
     """
 
     async def execute(
         self, step: StepConfig, run: OrchestrationRun, engine: "OrchestrationEngine"
     ) -> AsyncGenerator[dict, None]:
-        from core.react_engine import run_agent_step
-        from core.agent_logger import AgentLogger
+        from core.llm_providers import generate_response as llm_generate, detect_mode_from_model
+        from core.config import load_settings
+        from core.react_engine import parse_tool_call
+        from core.tools import aggregate_all_tools
+        from core.routes.agents import load_user_agents
 
         if not step.forced_tool:
             yield {"type": "step_warning", "orch_step_id": step.id,
                    "message": f"No tool configured for TOOL step '{step.name}'"}
             return
 
-        from .context import build_origin_aware_context
+        from .context import build_origin_aware_context, TransitionContext
         transition = getattr(engine, "current_transition", None)
         if transition is None:
-            from .context import TransitionContext
             transition = TransitionContext(origin_type="entry", execution_number=1)
         prompt, system_prompt_extra = build_origin_aware_context(step, run, engine, transition)
 
         yield {"type": "_log_prompt", "orch_step_id": step.id, "prompt": prompt, "system_prompt_extra": system_prompt_extra}
 
-        agent_id = step.agent_id
-        session_id = run.session_id or f"orch_{run.run_id}"
+        # Model resolution — same pattern as EvaluatorStepExecutor and LLMStepExecutor
+        settings = load_settings()
+        _step_model = step.model if (step.model and step.model.strip().lower() not in ("", "default")) else None
+        model = _step_model if _step_model else settings.get("model", "mistral")
+        mode = detect_mode_from_model(model)
 
-        agent_log = AgentLogger(
-            agent_id=agent_id or "tool_step",
-            agent_name=engine.agent_names.get(agent_id, step.name) if agent_id else step.name,
-            session_id=session_id,
-            source=f"orchestration:{run.run_id}",
-            user_message=prompt,
+        # Load only the forced tool's schema — aggregate all tools then filter to one
+        agents = load_user_agents()
+        active_agent = next((a for a in agents if a.get("id") == step.agent_id), agents[0] if agents else {})
+        custom_tools = self._load_custom_tools()
+        all_tools, _, _, _ = await aggregate_all_tools(
+            engine.server_module.agent_sessions, active_agent, custom_tools
         )
-        agent_log.log_event({"type": "_log_prompt", "prompt": prompt})
 
+        tool_name = step.forced_tool
+        tool_obj = next((t for t in all_tools if t.name == tool_name), None)
+        if not tool_obj:
+            yield {"type": "step_error", "orch_step_id": step.id,
+                   "error": f"Tool '{tool_name}' not found in available tools"}
+            return
+
+        # Build evaluator-style prompt: ask LLM to output JSON tool call (no tools= API param)
+        tool_schema_str = str(tool_obj.inputSchema)
+        tool_prompt = (
+            f"{prompt}\n\n"
+            f"Call the tool '{tool_obj.name}'.\n"
+            f"Tool description: {tool_obj.description}\n"
+            f"Tool parameters schema: {tool_schema_str}\n\n"
+            f'Respond with ONLY a JSON object: {{"tool": "{tool_obj.name}", "arguments": {{...}}}}'
+        )
+
+        yield {
+            "type": "thinking", "orch_step_id": step.id,
+            "message": f"Tool step '{step.name}' — preparing to call '{tool_name}'...",
+        }
+
+        max_turns = max(1, step.max_turns or 3)
+        last_error = None
         final_response = None
-        _log_status = "completed"
-        try:
-            async for event in run_agent_step(
-                message=prompt,
-                agent_id=agent_id,
-                session_id=session_id,
-                server_module=engine.server_module,
-                max_turns=step.max_turns,
-                allowed_tools_override=[step.forced_tool],
-                source="orchestration",
-                run_id=run.run_id,
-                system_prompt_extra=system_prompt_extra,
-            ):
-                agent_log.log_event(event)
-                yield {**event, "orch_step_id": step.id, "step_name": step.name}
-                if event.get("type") == "final":
-                    final_response = event.get("response", "")
-        except Exception:
-            _log_status = "error"
-            raise
-        finally:
-            agent_log.run_end(_log_status)
 
-        if step.output_key and final_response:
-            run.shared_state[step.output_key] = final_response
+        for turn in range(max_turns):
+            turn_prompt = tool_prompt
+            if last_error:
+                turn_prompt += f"\n\nPrevious attempt failed: {last_error}\nPlease try again with correct arguments."
+
+            print(f"DEBUG TOOL STEP: turn {turn + 1}/{max_turns} model={model} tool={tool_name}", flush=True)
+            try:
+                response = await llm_generate(
+                    prompt_msg=turn_prompt,
+                    sys_prompt="You are a tool-calling assistant. Output ONLY valid JSON.",
+                    mode=mode,
+                    current_model=model,
+                    current_settings=settings,
+                    session_id=run.session_id,
+                    agent_id=step.agent_id or "tool_step",
+                    source="orchestration",
+                    run_id=run.run_id,
+                )
+            except Exception as e:
+                from core.llm_providers import LLMError
+                if isinstance(e, LLMError):
+                    raise
+                raise RuntimeError(f"Tool step '{step.name}' LLM call failed: {e}") from e
+
+            # Log the LLM response (mirrors _log_evaluator for evaluator steps)
+            yield {"type": "_log_tool_step_llm", "orch_step_id": step.id,
+                   "prompt": turn_prompt, "llm_response": response}
+
+            tool_call, json_error = parse_tool_call(response)
+            if not tool_call:
+                last_error = json_error or "LLM did not return a valid tool call JSON"
+                print(f"DEBUG TOOL STEP: ⚠ parse failed turn={turn + 1}: {last_error}", flush=True)
+                continue
+
+            called_tool = tool_call.get("tool") or tool_call.get("name", "")
+            tool_args = tool_call.get("arguments", {})
+
+            # tool_execution matches the event type the logger and react_engine emit
+            yield {
+                "type": "tool_execution",
+                "orch_step_id": step.id,
+                "step_name": step.name,
+                "tool_name": called_tool,
+                "args": tool_args,
+            }
+            print(f"DEBUG TOOL STEP: 🔧 Tool Call: {called_tool}", flush=True)
+            print(f"DEBUG TOOL STEP: 📥 Args: {json.dumps(tool_args, indent=2, default=str)[:1000]}", flush=True)
+
+            try:
+                result = await self._execute_tool(called_tool, tool_args, engine)
+                final_response = result
+                if step.output_key:
+                    run.shared_state[step.output_key] = result
+                preview = str(result)[:500] if result else ""
+                yield {
+                    "type": "tool_result",
+                    "orch_step_id": step.id,
+                    "step_name": step.name,
+                    "tool_name": called_tool,
+                    "preview": preview,
+                }
+                print(f"DEBUG TOOL STEP: 📤 Tool Result ({called_tool}): {preview}", flush=True)
+                print(f"DEBUG TOOL STEP: ✅ tool '{called_tool}' succeeded", flush=True)
+                break
+            except Exception as e:
+                last_error = str(e)
+                print(f"DEBUG TOOL STEP: ❌ tool execution failed turn={turn + 1}: {last_error}", flush=True)
+
+        yield {
+            "type": "final",
+            "orch_step_id": step.id,
+            "step_name": step.name,
+            "response": final_response if final_response is not None
+                        else f"Tool step '{step.name}' failed after {max_turns} attempt(s): {last_error}",
+        }
+
+    async def _execute_tool(self, tool_name: str, tool_args: dict, engine: "OrchestrationEngine") -> str:
+        """Execute a tool via the MCP session and return its text output."""
+        from datetime import timedelta
+        server_module = engine.server_module
+        tool_router = getattr(server_module, "tool_router", {})
+        if tool_name in tool_router:
+            agent_name, actual_tool_name = tool_router[tool_name]
+            session = server_module.agent_sessions.get(agent_name)
+            if session:
+                result = await session.call_tool(
+                    actual_tool_name, tool_args, read_timeout_seconds=timedelta(seconds=30)
+                )
+                return result.content[0].text if result.content else ""
+        raise RuntimeError(f"Tool '{tool_name}' not found in tool router")
+
+    def _load_custom_tools(self) -> list:
+        try:
+            from core.routes.custom_tools import load_custom_tools
+            return load_custom_tools()
+        except Exception:
+            return []
 
 
 class EvaluatorStepExecutor:

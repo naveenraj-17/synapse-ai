@@ -80,7 +80,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
 
                 {/* ===== TOOL config ===== */}
                 {step.type === 'tool' && (
-                    <ToolStepConfig step={step} update={update} textareaCls={textareaCls} selectCls={selectCls} />
+                    <ToolStepConfig step={step} update={update} textareaCls={textareaCls} selectCls={selectCls} availableModels={availableModels} />
                 )}
 
                 {/* ===== LLM config ===== */}
@@ -496,12 +496,13 @@ function HumanStepConfig({ step, update, textareaCls, inputCls, selectCls }: {
     );
 }
 
-/** Tool Step config — single tool picker + prompt template. */
-function ToolStepConfig({ step, update, textareaCls, selectCls }: {
+/** Tool Step config — single tool picker + prompt template + model override. */
+function ToolStepConfig({ step, update, textareaCls, selectCls, availableModels }: {
     step: StepConfig;
     update: (patch: Partial<StepConfig>) => void;
     textareaCls: string;
     selectCls: string;
+    availableModels?: string[];
 }) {
     const [availableTools, setAvailableTools] = useState<{ name: string; description: string }[]>([]);
 
@@ -545,6 +546,15 @@ function ToolStepConfig({ step, update, textareaCls, selectCls }: {
                     placeholder={`Search for relevant data about {state.user_input}`}
                 />
                 <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values.</p>
+            </div>
+            <div>
+                <label className="text-xs text-zinc-400 block mb-1">Model <span className="text-zinc-600 normal-case">(override)</span></label>
+                <select className={selectCls} value={step.model || ''} onChange={(e) => update({ model: e.target.value || undefined })}>
+                    <option value="">(Default)</option>
+                    {(availableModels || []).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                    ))}
+                </select>
             </div>
         </div>
     );
