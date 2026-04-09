@@ -14,22 +14,45 @@ from core.config import TOKEN_FILE, CREDENTIALS_FILE
 # If modifying these scopes, delete the file token.json.
 # Make sure to delete the old token.json whenever you modify these scopes!
 SCOPES = [
+    'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
+    # Gmail
     'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.settings.basic',
+    # Drive
     'https://www.googleapis.com/auth/drive',
+    # Calendar
     'https://www.googleapis.com/auth/calendar',
+    # Docs
     'https://www.googleapis.com/auth/documents',
+    # Sheets
     'https://www.googleapis.com/auth/spreadsheets',
+    # Slides
     'https://www.googleapis.com/auth/presentations',
-    'https://www.googleapis.com/auth/forms',
+    # Forms (workspace-mcp uses forms.body scopes, not the legacy auth/forms)
+    'https://www.googleapis.com/auth/forms.body',
+    'https://www.googleapis.com/auth/forms.body.readonly',
+    'https://www.googleapis.com/auth/forms.responses.readonly',
+    # Tasks
     'https://www.googleapis.com/auth/tasks',
+    # Contacts
     'https://www.googleapis.com/auth/contacts',
 ]
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent
-GOOGLE_CREDENTIALS_DIR = Path(os.getenv("SYNAPSE_DATA_DIR", str(BACKEND_ROOT / "data"))) / "google-credentials"
+# Mirror server.py's pattern: always derive from __file__ so the path is
+# anchored to the backend directory regardless of SYNAPSE_DATA_DIR being
+# a relative string (which would otherwise resolve against CWD).
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent  # backend/services/google.py → backend/
+_project_root = _BACKEND_ROOT.parent
+_data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
+if _data_dir_env:
+    _data_dir_p = Path(_data_dir_env)
+    _DATA_DIR = _data_dir_p if _data_dir_p.is_absolute() else _project_root / _data_dir_p
+else:
+    _DATA_DIR = _BACKEND_ROOT / "data"
+GOOGLE_CREDENTIALS_DIR = _DATA_DIR / "google-credentials"
 
 
 class UnauthenticatedError(Exception):

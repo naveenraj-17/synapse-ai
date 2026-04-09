@@ -280,6 +280,10 @@ async def get_config():
         # Mask: show only last 4 chars, e.g. ****h453
         masked_client_id = ("****" + client_id_full[-8:]) if len(client_id_full) > 8 else "****"
 
+        # Connected only if both the main token and the workspace-mcp token exist
+        mcp_token_file = os.path.join(DATA_DIR, "google-credentials", "token.json")
+        is_connected = os.path.exists(TOKEN_FILE) and os.path.exists(mcp_token_file)
+
         # Read user email from token.json if available
         user_email = None
         if has_token:
@@ -303,11 +307,13 @@ async def get_config():
             "has_credentials": True,
             "client_id": masked_client_id,
             "project_id": app_info.get("project_id", ""),
-            "is_connected": has_token,
+            "is_connected": is_connected,
             "user_email": user_email,
         }
     except Exception as e:
-        return {"has_credentials": True, "error": str(e), "is_connected": has_token}
+        mcp_token_file = os.path.join(DATA_DIR, "google-credentials", "token.json")
+        is_connected = os.path.exists(TOKEN_FILE) and os.path.exists(mcp_token_file)
+        return {"has_credentials": True, "error": str(e), "is_connected": is_connected}
 
 
 @router.get("/api/file")
