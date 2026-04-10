@@ -79,7 +79,7 @@ jobs:
             tsconfig.tsbuildinfo,
             frontend/tsconfig.tsbuildinfo
 
-      # 3. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
+      # 2. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
       - name: Split SARIF into individual files
         run: |
           sudo python3 -c '
@@ -135,7 +135,7 @@ jobs:
           print("Successfully split " + str(len(runs)) + " runs into individual SARIF files.")
           '
 
-      # 4. Upload each file SEPARATELY via GitHub API
+      # 3. Upload each file SEPARATELY via GitHub API
       - name: Upload SARIF files separately
         env:
           # This is automatically provided by GitHub. You do NOT need to add it to your secrets.
