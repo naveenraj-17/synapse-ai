@@ -22,18 +22,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Run Codacy Analysis — reads .codacy.yaml from repo root
+      # 1. Generate local config to run only your preferred security tools
+      - name: Generate Codacy Configuration
+        run: |
+          cat > .codacy.yaml <<'EOF'
+          ---
+          engines:
+            bandit:
+              enabled: true
+            semgrep:
+              enabled: true
+            checkov:
+              enabled: true
+            eslint:
+              enabled: true
+            trivy:
+              enabled: false
+            stylelint:
+              enabled: false
+          EOF
+
+      # 2. Run Codacy Analysis (without the tool: flag so it reads .codacy.yaml)
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@master
+        timeout-minutes: 20
         continue-on-error: true
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           verbose: true
           output: results.sarif
           format: sarif
-          # gh-code-scanning-compat causes the CLI to read every scanned file's raw bytes
-          # to embed source snippets in the SARIF — binary/non-UTF-8 files crash with
-          # MalformedInputException. Omitting it keeps the SARIF valid for GitHub upload.
           max-allowed-issues: 2147483647
           skip-uncommitted-files-check: true
           exclude-paths: >
