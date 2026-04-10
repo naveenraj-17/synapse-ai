@@ -22,27 +22,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Generate local config to run only your preferred security tools
-      - name: Generate Codacy Configuration
-        run: |
-          cat > .codacy.yaml <<'EOF'
-          ---
-          engines:
-            bandit:
-              enabled: true
-            semgrep:
-              enabled: true
-            checkov:
-              enabled: true
-            trivy:
-              enabled: true
-            eslint:
-              enabled: false
-            stylelint:
-              enabled: false
-          EOF
-
-      # 2. Run Codacy Analysis (without the tool: flag so it reads .codacy.yaml)
+      # 1. Run Codacy Analysis — reads .codacy.yaml from repo root
       - name: Run Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@master
         continue-on-error: true
@@ -51,7 +31,9 @@ jobs:
           verbose: true
           output: results.sarif
           format: sarif
-          gh-code-scanning-compat: true
+          # gh-code-scanning-compat causes the CLI to read every scanned file's raw bytes
+          # to embed source snippets in the SARIF — binary/non-UTF-8 files crash with
+          # MalformedInputException. Omitting it keeps the SARIF valid for GitHub upload.
           max-allowed-issues: 2147483647
           skip-uncommitted-files-check: true
           exclude-paths: >
@@ -71,15 +53,33 @@ jobs:
             synapse/_frontend,
             **/__pycache__,
             **/*.egg-info,
+            **/*.pyc,
+            **/*.pyo,
             **/*.whl,
             **/*.tar.gz,
+            **/*.zip,
+            **/*.db,
+            **/*.sqlite,
+            **/*.sqlite3,
+            **/*.pkl,
+            **/*.pickle,
+            **/*.png,
+            **/*.jpg,
+            **/*.jpeg,
+            **/*.gif,
+            **/*.ico,
+            **/*.woff,
+            **/*.woff2,
+            **/*.ttf,
+            **/*.eot,
+            **/*.otf,
             package-lock.json,
             frontend/package-lock.json,
             backend/package-lock.json,
             tsconfig.tsbuildinfo,
             frontend/tsconfig.tsbuildinfo
 
-      # 3. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
+      # 2. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
       - name: Split SARIF into individual files
         run: |
           sudo python3 -c '
@@ -135,7 +135,7 @@ jobs:
           print("Successfully split " + str(len(runs)) + " runs into individual SARIF files.")
           '
 
-      # 4. Upload each file SEPARATELY via GitHub API
+      # 3. Upload each file SEPARATELY via GitHub API
       - name: Upload SARIF files separately
         env:
           # This is automatically provided by GitHub. You do NOT need to add it to your secrets.

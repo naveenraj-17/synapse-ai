@@ -253,7 +253,7 @@ class ToolStepExecutor:
         }
 
     async def _execute_tool(self, tool_name: str, tool_args: dict, engine: "OrchestrationEngine") -> str:
-        """Execute a tool via the MCP session and return its text output."""
+        """Execute a tool via MCP session or Docker sandbox (custom Python tools)."""
         from datetime import timedelta
         server_module = engine.server_module
         tool_router = getattr(server_module, "tool_router", {})
@@ -265,11 +265,90 @@ class ToolStepExecutor:
                     actual_tool_name, tool_args, read_timeout_seconds=timedelta(seconds=30)
                 )
                 return result.content[0].text if result.content else ""
+        # Custom Python tools — execute in Docker sandbox
+        from core.routes.tools import load_custom_tools
+        custom_tools = load_custom_tools()
+        target_tool = next((t for t in custom_tools if t["name"] == tool_name), None)
+        if target_tool and target_tool.get("tool_type") == "python":
+            return await self._execute_python_tool(target_tool, tool_args)
         raise RuntimeError(f"Tool '{tool_name}' not found in tool router")
+
+    async def _execute_python_tool(self, tool: dict, tool_args: dict) -> str:
+        """Execute a custom Python tool in the Docker sandbox (sandbox-python:latest)."""
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        python_code = tool.get("code", "")
+        if not python_code.strip():
+            raise ValueError("Python tool has no code defined.")
+        if not shutil.which("docker"):
+            raise RuntimeError("Docker is not available. Cannot execute Python tool.")
+
+        args_json = json.dumps(tool_args)
+        escaped = args_json.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+        injected_code = (
+            f'import json\n_args = json.loads("""{escaped}""")\n\n'
+            + python_code
+        )
+
+        DATA_DIR_PATH = Path(__file__).resolve().parent.parent.parent / "data"
+        vault_root = DATA_DIR_PATH / "vault"
+        docker_image = "sandbox-python:latest"
+
+        tmp_dir = tempfile.mkdtemp(prefix="pytool_")
+        script_path = f"{tmp_dir}/script.py"
+        try:
+            with open(script_path, "w") as f:
+                f.write(injected_code)
+
+            docker_cmd = [
+                "docker", "run", "--rm",
+                "--memory", "512m",
+                "--cpus", "1.0",
+                "--pids-limit", "64",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,size=256m",
+                "--tmpfs", "/root:rw,size=256m",
+                "--network", "none",
+                "-v", f"{script_path}:/sandbox/script.py:ro",
+            ]
+            if vault_root.exists():
+                docker_cmd += ["-v", f"{vault_root}:/data:ro"]
+            docker_cmd += [docker_image, "python", "/sandbox/script.py"]
+
+            proc = await asyncio.create_subprocess_exec(
+                *docker_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=35)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise RuntimeError("Python tool execution timed out after 30s")
+
+            stdout_text = stdout_b.decode("utf-8", errors="replace")[:20000]
+            stderr_text = stderr_b.decode("utf-8", errors="replace")[:5000]
+
+            if proc.returncode != 0:
+                return json.dumps({
+                    "error": f"Python tool exited with code {proc.returncode}",
+                    "stderr": stderr_text,
+                    "stdout": stdout_text,
+                })
+            try:
+                parsed = json.loads(stdout_text.strip())
+                return json.dumps(parsed)
+            except Exception:
+                return json.dumps({"output": stdout_text})
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def _load_custom_tools(self) -> list:
         try:
-            from core.routes.custom_tools import load_custom_tools
+            from core.routes.tools import load_custom_tools
             return load_custom_tools()
         except Exception:
             return []
@@ -764,39 +843,74 @@ class TransformStepExecutor:
             yield {"type": "step_error", "orch_step_id": step.id, "error": f"Transform error: {e}"}
 
     async def _run_sandboxed(self, code: str, state: dict, timeout: int = 30):
-        """Run Python code in a subprocess with resource limits."""
-        wrapper = f"""
-import json, sys, math
+        """Run Python code in the Docker sandbox (sandbox-python:latest)."""
+        import shutil
+        import tempfile
+        from pathlib import Path
 
-state = json.loads(sys.stdin.read())
-result = None
+        if not shutil.which("docker"):
+            raise RuntimeError("Docker is not available. Cannot execute transform code in sandbox.")
 
-{code}
+        state_json = json.dumps(state, default=str)
+        escaped = state_json.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+        script_content = (
+            f'import json\nstate = json.loads("""{escaped}""")\nresult = None\n\n'
+            + code
+            + '\n\nif result is not None:\n    print(json.dumps({"result": result}, default=str))\nelse:\n    print(json.dumps({"result": None}))\n'
+        )
 
-if result is not None:
-    print(json.dumps({{"result": result}}, default=str))
-else:
-    print(json.dumps({{"result": None}}))
-"""
-        loop = asyncio.get_event_loop()
+        DATA_DIR_PATH = Path(__file__).resolve().parent.parent.parent / "data"
+        vault_root = DATA_DIR_PATH / "vault"
+        docker_image = "sandbox-python:latest"
 
-        def _run():
-            proc = subprocess.run(
-                [sys.executable, "-c", wrapper],
-                input=json.dumps(state, default=str),
-                capture_output=True,
-                text=True,
-                timeout=min(timeout, 60),
+        tmp_dir = tempfile.mkdtemp(prefix="transform_")
+        script_path = f"{tmp_dir}/transform.py"
+        try:
+            with open(script_path, "w") as f:
+                f.write(script_content)
+
+            docker_cmd = [
+                "docker", "run", "--rm",
+                "--memory", "512m",
+                "--cpus", "1.0",
+                "--pids-limit", "64",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,size=256m",
+                "--tmpfs", "/root:rw,size=256m",
+                "--network", "none",
+                "-v", f"{script_path}:/sandbox/transform.py:ro",
+            ]
+            if vault_root.exists():
+                docker_cmd += ["-v", f"{vault_root}:/data:ro"]
+            docker_cmd += [docker_image, "python", "/sandbox/transform.py"]
+
+            proc = await asyncio.create_subprocess_exec(
+                *docker_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            if proc.returncode != 0:
-                raise RuntimeError(f"Transform failed: {proc.stderr}")
             try:
-                output = json.loads(proc.stdout)
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(), timeout=min(timeout, 60) + 5
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise RuntimeError(f"Transform timed out after {timeout}s")
+
+            stdout_text = stdout_b.decode("utf-8", errors="replace")
+            stderr_text = stderr_b.decode("utf-8", errors="replace")
+
+            if proc.returncode != 0:
+                raise RuntimeError(f"Transform failed (exit {proc.returncode}): {stderr_text[:500]}")
+
+            try:
+                output = json.loads(stdout_text)
                 return output.get("result")
             except json.JSONDecodeError:
-                return proc.stdout.strip() if proc.stdout.strip() else None
-
-        return await loop.run_in_executor(None, _run)
+                return stdout_text.strip() if stdout_text.strip() else None
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 class LLMStepExecutor:

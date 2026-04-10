@@ -5,7 +5,7 @@ import os
 import json
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from core.models import Repo
-from core.config import DATA_DIR
+from core.config import DATA_DIR, load_settings
 from core.json_store import JsonStore
 
 router = APIRouter()
@@ -68,13 +68,25 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
         if r["id"] == repo.id:
             repos[i] = repo.dict()
             save_repos(repos)
+            try:
+                import core.server as _server
+                await _server.restart_filesystem_mcp()
+            except Exception as e:
+                print(f"Warning: Failed to restart filesystem MCP after repo update: {e}")
             return repo
 
     repos.append(repo.dict())
     save_repos(repos)
 
-    # Auto-index new repos if path exists
-    if os.path.isdir(repo.path):
+    try:
+        import core.server as _server
+        await _server.restart_filesystem_mcp()
+    except Exception as e:
+        print(f"Warning: Failed to restart filesystem MCP after adding repo: {e}")
+
+    # Auto-index new repos if path exists and embed_code is enabled
+    real_path = os.path.realpath(repo.path)
+    if os.path.isdir(real_path) and load_settings().get("embed_code", False):
         try:
             from services.code_indexer import run_index
             for r in repos:
@@ -82,7 +94,7 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
                     r["status"] = "indexing"
                     break
             save_repos(repos)
-            background_tasks.add_task(run_index, repo.id, repo.path, repo.included_patterns, repo.excluded_patterns)
+            background_tasks.add_task(run_index, repo.id, real_path, repo.included_patterns, repo.excluded_patterns)
         except ImportError:
             pass
 
@@ -93,7 +105,29 @@ async def delete_repo(repo_id: str):
     repos = load_repos()
     repos = [r for r in repos if r["id"] != repo_id]
     save_repos(repos)
-    # TODO: also drop table in DB via code_indexer.drop_index(repo_id)
+
+    # Remove deleted repo from all agents' repos list
+    try:
+        from core.routes.agents import load_user_agents, save_user_agents
+        agents = load_user_agents()
+        modified = False
+        for agent in agents:
+            if repo_id in agent.get("repos", []):
+                agent["repos"] = [r for r in agent["repos"] if r != repo_id]
+                modified = True
+        if modified:
+            save_user_agents(agents)
+            print(f"Removed repo {repo_id} from agents.")
+    except Exception as e:
+        print(f"Warning: Failed to remove repo {repo_id} from agents: {e}")
+
+    # Restart filesystem MCP to drop the deleted repo path
+    try:
+        import core.server as _server
+        await _server.restart_filesystem_mcp()
+    except Exception as e:
+        print(f"Warning: Failed to restart filesystem MCP after deleting repo: {e}")
+
     try:
         from services.code_indexer import drop_index
         drop_index(repo_id)
@@ -108,10 +142,14 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
 
+    if not load_settings().get("embed_code", False):
+        raise HTTPException(status_code=400, detail="Code indexing is disabled (embed_code=false)")
+
     if repo.get("status") == "indexing":
         raise HTTPException(status_code=409, detail="Repo is already being indexed")
 
-    if not os.path.isdir(repo.get("path", "")):
+    real_path = os.path.realpath(repo.get("path", ""))
+    if not os.path.isdir(real_path):
         raise HTTPException(status_code=400, detail=f"Repo path does not exist: {repo.get('path')}")
 
     # Set status
@@ -125,7 +163,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
     # Run in background
     try:
         from services.code_indexer import run_index
-        background_tasks.add_task(run_index, repo_id, repo["path"], repo["included_patterns"], repo["excluded_patterns"])
+        background_tasks.add_task(run_index, repo_id, real_path, repo["included_patterns"], repo["excluded_patterns"])
     except ImportError as e:
         print("Indexer unavailable:", e)
         repo["status"] = "error"

@@ -418,7 +418,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
 
                                     {/* Action buttons — only visible on hover */}
                                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {isIndexing || isStopping ? (
+                                        {embedCode && (isIndexing || isStopping ? (
                                             /* Stop / Force-reset button */
                                             <button
                                                 onClick={e => handleStop(repo.id, e)}
@@ -440,7 +440,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                             >
                                                 <RefreshCw className="w-4 h-4" />
                                             </button>
-                                        )}
+                                        ))}
                                         <button
                                             onClick={e => { e.stopPropagation(); setConfirmDeleteId(repo.id); }}
                                             disabled={isIndexing && !isStopping}
@@ -460,15 +460,17 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                     <p className="text-sm text-zinc-400 mt-3 line-clamp-2">{repo.description}</p>
                                 )}
 
-                                <div className="flex gap-4 mt-4 text-xs font-bold text-zinc-600 uppercase tracking-wider">
-                                    <span>
-                                        {(repo.file_count || 0).toLocaleString()} CHUNKS
-                                        {isIndexing || isStopping ? ' INDEXED SO FAR…' : ' INDEXED'}
-                                    </span>
-                                    {repo.last_indexed && !isIndexing && !isStopping && (
-                                        <span>• UPDATED {new Date(repo.last_indexed).toLocaleString()}</span>
-                                    )}
-                                </div>
+                                {embedCode && (
+                                    <div className="flex gap-4 mt-4 text-xs font-bold text-zinc-600 uppercase tracking-wider">
+                                        <span>
+                                            {(repo.file_count || 0).toLocaleString()} CHUNKS
+                                            {isIndexing || isStopping ? ' INDEXED SO FAR…' : ' INDEXED'}
+                                        </span>
+                                        {repo.last_indexed && !isIndexing && !isStopping && (
+                                            <span>• UPDATED {new Date(repo.last_indexed).toLocaleString()}</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

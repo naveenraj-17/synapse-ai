@@ -209,6 +209,65 @@ def _build_native_mcp_servers() -> list[dict]:
     return servers
 
 
+async def restart_filesystem_mcp() -> None:
+    """Restart the Filesystem MCP server with the current repo paths from repos.json.
+
+    Called automatically when repos are added or deleted so the MCP subprocess
+    reflects the latest allowed directory list without a full backend restart.
+    """
+    global _filesystem_stack
+
+    # Remove stale Filesystem tools from routing tables
+    stale_tools = [k for k, v in tool_router.items() if v[0] == "Filesystem"]
+    for t in stale_tools:
+        del tool_router[t]
+    agent_sessions.pop("Filesystem", None)
+
+    # Close old subprocess
+    if _filesystem_stack:
+        try:
+            await _filesystem_stack.aclose()
+        except Exception as e:
+            print(f"Warning: Error closing old filesystem MCP stack: {e}")
+        _filesystem_stack = None
+
+    # Build fresh config — _get_repo_paths() re-reads repos.json
+    fs_cfg = next((c for c in _build_native_mcp_servers() if c["name"] == "Filesystem"), None)
+    if not fs_cfg:
+        print("Warning: Could not build Filesystem MCP config — skipping restart.")
+        return
+
+    cmd = fs_cfg["command"]
+    if not shutil.which(cmd):
+        print(f"Warning: '{cmd}' not found — cannot restart Filesystem MCP server.")
+        return
+
+    print("Restarting Filesystem MCP server with updated repo paths...")
+    _filesystem_stack = AsyncExitStack()
+    try:
+        env = os.environ.copy()
+        env.update(fs_cfg.get("env", {}))
+        server_params = StdioServerParameters(command=cmd, args=fs_cfg["args"], env=env)
+        read, write = await _filesystem_stack.enter_async_context(stdio_client(server_params))
+        session = await _filesystem_stack.enter_async_context(
+            ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
+        )
+        await session.initialize()
+
+        agent_sessions["Filesystem"] = session
+        tools = await session.list_tools()
+        for tool in tools.tools:
+            tool_router[tool.name] = ("Filesystem", tool.name)
+        print(f"Filesystem MCP server restarted ({len(tools.tools)} tools registered).")
+    except Exception as e:
+        print(f"Failed to restart Filesystem MCP server: {e}")
+        try:
+            await _filesystem_stack.aclose()
+        except Exception:
+            pass
+        _filesystem_stack = None
+
+
 # ---------------------------------------------------------------------------
 # Module-level mutable state.
 # Accessed by routes via `import core.server as _server; _server.agent_sessions`.
@@ -217,6 +276,7 @@ def _build_native_mcp_servers() -> list[dict]:
 agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
 tool_router: dict[str, tuple[str, str]] = {}     # tool_key -> (session_name, actual_tool_name)
 exit_stack: Optional[AsyncExitStack] = None
+_filesystem_stack: Optional[AsyncExitStack] = None  # separate stack for Filesystem MCP — allows independent restart
 memory_store: Any = None
 mcp_manager: Optional[MCPClientManager] = None
 messaging_manager: Any = None  # MessagingManager (set in lifespan if enabled)
@@ -292,10 +352,20 @@ async def lifespan(app: FastAPI):
                     args=mcp_cfg["args"],
                     env=env,
                 )
-                read, write = await exit_stack.enter_async_context(stdio_client(server_params))
-                session = await exit_stack.enter_async_context(
-                    ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
-                )
+                # Filesystem MCP uses its own stack so it can be restarted independently
+                # when repos are added or deleted without tearing down the whole exit_stack.
+                if mcp_name == "Filesystem":
+                    global _filesystem_stack
+                    _filesystem_stack = AsyncExitStack()
+                    read, write = await _filesystem_stack.enter_async_context(stdio_client(server_params))
+                    session = await _filesystem_stack.enter_async_context(
+                        ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
+                    )
+                else:
+                    read, write = await exit_stack.enter_async_context(stdio_client(server_params))
+                    session = await exit_stack.enter_async_context(
+                        ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
+                    )
                 await session.initialize()
 
                 agent_sessions[mcp_name] = session
@@ -394,6 +464,11 @@ async def lifespan(app: FastAPI):
                 await schedule_manager.stop()
             except Exception as e:
                 print(f"Warning: Schedule manager shutdown error: {e}")
+        if _filesystem_stack:
+            try:
+                await _filesystem_stack.aclose()
+            except BaseException as e:
+                print(f"Warning: Error closing filesystem MCP stack during shutdown: {e}")
         if exit_stack:
             try:
                 await exit_stack.aclose()
