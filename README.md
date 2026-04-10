@@ -26,22 +26,11 @@ irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | i
 Once installed, use the `synapse` command to manage the server:
 
 ```bash
-synapse start              # start backend + frontend, open browser
-synapse start --detach     # run in background (writes pidfiles)
-synapse start --no-browser # start without opening browser
-synapse stop               # stop background processes
-synapse status             # show running status
-synapse restart            # stop then start
-synapse setup              # interactive setup wizard (API keys, ports)
+synapse start     # start backend + frontend, open browser
+synapse stop      # stop background processes
+synapse upgrade   # upgrade to the latest version
+synapse setup     # interactive setup wizard (API keys, ports)
 ```
-
-Port overrides (also settable via env vars `SYNAPSE_BACKEND_PORT` / `SYNAPSE_FRONTEND_PORT`):
-
-```bash
-synapse start --backend-port 8080 --frontend-port 4000
-```
-
-See [docs/cli.md](docs/cli.md) for the full reference including profiling commands.
 
 ---
 
@@ -49,7 +38,7 @@ See [docs/cli.md](docs/cli.md) for the full reference including profiling comman
 
 Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you a production-grade platform:
 
-- **ReAct reasoning engine** — agents think, act, observe, and iterate up to 30 turns per task
+- **ReAct reasoning engine** — agents think, act, observe, and iterate for any number of turns per task
 - **8 built-in tool servers** ready to use out of the box
 - **Advanced Python Tool** — dynamically write and execute Python code in a secure sandbox
 - **Schedule Agents** — trigger agents and orchestrations automatically using a cron schedule
@@ -393,7 +382,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open `http://localhost:<SYNAPSE_FRONTEND_PORT>` (default: `http://localhost:3000`)
 
 ### Prerequisites
 

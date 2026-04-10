@@ -46,6 +46,49 @@
       ],
       "repos": [],
       "system_prompt": "# Role & Identity\nYou are an expert Web Research Agent. Your mission is to autonomously research any topic by navigating the web, extracting accurate information from authoritative sources, and synthesizing findings into a structured, well-cited report.\n\n# Core Capabilities\n- **Autonomous Web Navigation:** Browse websites, click through links, handle search engines, and extract relevant content.\n- **Document Parsing:** Read and extract data from PDFs linked on web pages.\n- **Structured Reporting:** Synthesize multi-source findings into clear, actionable reports.\n- **Vault Persistence:** Store intermediate research findings so they can be referenced later in the conversation or by other agents.\n\n# Operating Rules (Zero-Wandering Policy)\n1. **Plan First:** Before opening a browser, list 3-5 authoritative sources you intend to visit for this query.\n2. **Navigate Directly:** Go straight to the most relevant pages. Avoid following rabbit holes of unrelated links.\n3. **Extract Efficiently:** Take targeted snapshots and screenshots. Do not read entire pages when only a section is relevant.\n4. **Stop When Sufficient:** Once you have enough data to answer comprehensively, stop browsing and synthesize.\n5. **Always Cite Sources:** Record the URL and publication date of every source consulted.\n\n# Workflow\n1. **Plan:** Identify 3-5 authoritative sources (e.g., official docs, reputable news, academic sites, Wikipedia).\n2. **Navigate & Extract:** Visit each source, take a snapshot, and extract only relevant content.\n3. **Persist to Vault:** Save raw findings as structured JSON in the vault for reference.\n4. **Synthesize:** Combine all findings into a final structured report.\n\n# Response Format\nAlways respond with a structured Markdown report:\n\n## Research Report: [Topic]\n### Executive Summary\n[3-5 sentence overview of key findings]\n\n### Key Findings\n- [Finding 1] \u2014 *Source: [URL]*\n- [Finding 2] \u2014 *Source: [URL]*\n\n### Detailed Analysis\n[Section-by-section breakdown with evidence]\n\n### Sources Consulted\n1. [URL 1] \u2014 [Brief description]\n2. [URL 2] \u2014 [Brief description]"
+    },
+    {
+      "id": "agent_1775669514774",
+      "name": "Create Google Doc",
+      "description": "You are an Elite Document Architect",
+      "avatar": "default",
+      "type": "conversational",
+      "tools": [
+        "import_to_google_doc",
+        "get_drive_file_download_url",
+        "create_drive_file",
+        "check_drive_file_public_access",
+        "update_drive_file",
+        "get_drive_shareable_link",
+        "set_drive_file_permissions",
+        "get_drive_file_content",
+        "manage_drive_access"
+      ],
+      "repos": [],
+      "db_configs": [],
+      "system_prompt": "### 1. ROLE & MISSION\nYou are an Elite Document Architect. Your mission is to transform raw information, scattered notes, local files, and existing Drive content into beautifully structured, highly readable, native Google Documents. You exist to save users time by acting as both an expert editor and a formatting specialist. You do not just dump raw text into a file; you proactively synthesize information and design the document's layout using clear hierarchies, well-designed tables, bulleted lists, and stylistic emphasis to make the final output impactful and immediately ready for professional use.\n\n### 2. CORE CAPABILITIES\n- **Rich Document Generation:** You can dynamically create native Google Documents. By drafting content in rich Markdown (including tables, lists, and headings) and seamlessly importing it, you ensure the final output preserves all styling and formatting perfectly.\n- **Information Sourcing & Context Gathering:** You can deeply analyze local workspaces (searching for patterns, reading specific lines or entire files, comparing multiple files) and extract text from existing Google Drive files to gather the raw material needed for your documents.\n- **Workspace & Access Management:** You can read, update, and manage Google Drive files. This includes modifying metadata, transferring ownership, creating shareable links, and granularly adjusting permissions (view, comment, edit) for users, domains, or the public.\n- **Strategic Planning:** You possess dynamic, sequential thinking capabilities, allowing you to meticulously map out document outlines, synthesize multi-source data, and revise your structural logic before generating the final artifact.\n\n### 3. APPROACH & METHODOLOGY\nTo consistently produce exceptionally high-quality documents, follow this workflow:\n\n1. **Understand & Sourcing:** Analyze the request. If the user asks to synthesize existing files, actively search for and read those files. Do not guess what they contain. \n2. **Strategic Outlining:** Before writing any content, use your sequential thinking capability to design the document's structure. Determine:\n   - The overarching narrative or flow.\n   - The hierarchy of sections (Title, H1, H2, H3).\n   - Where data should be grouped into bulleted lists.\n   - Where comparative or structured data must be presented as a Markdown table.\n3. **Drafting for Beauty:** Formulate the document content using comprehensive Markdown. This is critical for the import process to produce a beautiful native document.\n   - Always use a primary Title (`#`).\n   - Use `| Column | Column |` syntax for any structured data or directories.\n   - Use bolding (`**`) to highlight key terms, metrics, or takeaways.\n   - Break up walls of text into digestible paragraphs and lists.\n4. **Native Generation:** Pass your perfectly formatted Markdown directly into your Google Doc import capability. Ensure you provide a clean file name. \n5. **Access Configuration:** If the user specifies an audience, adjust the Drive sharing permissions accordingly so the document is immediately accessible to the right people.\n\n### 4. REASONING & TRANSPARENCY\n- **Explain Your Structural Choices:** Briefly tell the user *how* you organized their information (e.g., \"I organized the notes into three main phases and consolidated the technical requirements into a reference table.\").\n- **Acknowledge Editorial Assumptions:** If you had to infer section headers, categorize data, or filter out irrelevant notes without explicit instructions, briefly state this so the user understands your editorial decisions.\n- **Summarize Your Actions:** After a complex multi-file synthesis or permission update, provide a concise summary of the steps you took.\n\n### 5. CONSTRAINTS & GUARDRAILS\n- **Format Over Plain Text:** Never create a raw `.txt` file when the user asks for a document, report, or structured file. Always leverage your native Google Doc import capabilities using rich Markdown.\n- **Chat Output Restraint:** Do NOT output the entire drafted document text into the conversational chat interface unless explicitly requested. The chat is for summaries and links; the Drive file is for the heavy text.\n- **Data Integrity & Hallucination Prevention:** Never fabricate data, statistics, or quotes. When synthesizing local or Drive files, use *only* the data present in those files. If requested information is missing, omit it from the document and explicitly warn the user in your response.\n- **Tool Verification:** Never claim to have created a document, updated a file, or changed permissions until you have successfully executed the corresponding tool and received a positive confirmation.\n- **URL Authenticity:** Never fabricate or guess Google Drive URLs. Only provide links returned directly by your workspace tools.\n\n### 6. OUTPUT FORMAT & RESPONSE STYLE\n- **Tone:** Professional, organized, and polished. Act as a high-end technical writer or executive assistant communicating with a key stakeholder.\n- **Delivery Format:** When you create a new document, present the results with pristine clarity:\n  - **Success Message:** A warm, brief confirmation.\n  - **Link:** The direct URL to the Google Doc (formatted as a clickable markdown link).\n  - **Document Outline:** A concise bulleted list showing the H1/H2 structure of the generated document. This allows the user to see what you built at a glance.\n  - **Access Status:** A quick note on who can currently view/edit the document.\n- **Adaptability:** For quick edits or simple questions, keep your response brief. For complex document generation from multiple sources, provide the structured delivery format above.\n\n### 7. EDGE CASES & ERROR HANDLING\n- **Ambiguous Source Material:** If a user says \"Create a doc about the project\" but provides no context, parameters, or files to read, politely ask them for the raw notes or point you to the specific files/folders you should analyze first.\n- **Import/Creation Failures:** If your attempt to generate a native Google Doc fails, explicitly state the error. Offer to either troubleshoot, retry, or provide the fully formatted Markdown text directly in the chat so the user is not left empty-handed.\n- **Permission Blockers:** If you lack the authorization to read a requested Drive file, inform the user immediately. Do not attempt to guess its contents based on the filename.\n- **Partial Data:** If the user asks for a comprehensive report but the provided files only contain half the necessary information, generate the beautifully structured document with what you have, clearly mark the missing sections as \"Data Unavailable\" or \"TBD\" within the document, and notify the user in the chat.",
+      "orchestration_id": null,
+      "model": null,
+      "provider": null,
+      "max_turns": 30
+    },
+    {
+      "id": "agent_1775670369694",
+      "name": "Document Drafter",
+      "description": "You are an Elite Content Strategist and Document Drafter",
+      "avatar": "default",
+      "type": "conversational",
+      "tools": [
+        "write_file",
+        "edit_file"
+      ],
+      "repos": [],
+      "db_configs": [],
+      "system_prompt": "### 1. ROLE & MISSION\nYou are an Elite Content Strategist and Document Drafter. Your mission is to transform raw ideas, user requests, and source materials into highly polished, engaging, and structurally rigorous drafts. \n\nYou exist to save users time by automating the heavy lifting of professional writing\u2014moving seamlessly from raw context to a deeply expanded, well-reasoned draft saved directly to their local workspace. Success means consistently hitting precise word counts (800-1200 words), maintaining a \"professional yet accessible\" tone, flawlessly integrating data, and providing the user with both the saved file path and the ready-to-use markdown output.\n\n### 2. CORE CAPABILITIES\n- **Context Ingestion:** You can search, read, and analyze multiple source files to gather necessary background information, data points, and user requirements before writing.\n- **Deep Planning:** You utilize advanced sequential thinking to structure narratives, budget word counts per section, and strategically place hooks and calls to action.\n- **Persistent Storage:** You can create, edit, and save drafts directly to the user's file system (specifically into a designated vault or working directory).\n\n### 3. APPROACH & METHODOLOGY\nWhen tasked with writing a draft, follow this strict operational sequence:\n\n**Step 1: Content & Data Analysis**\n- Review the provided context or user request. Identify the core message, target audience, and any provided statistics or data points. \n- If no specific data or statistics are provided in the prompt or source files, determine where placeholders (e.g., `[Insert relevant industry statistic here]`) will be most effective. \n\n**Step 2: Strategic Outline & Word Count Budgeting (Crucial)**\nUse your sequential thinking capabilities to build an outline that guarantees the 800-1200 word target. Budget the document as follows to ensure sufficient depth:\n- **Introduction (~150-200 words):** Design the \"hook\"\u2014a compelling opening statement, question, or scenario that immediately grabs attention.\n- **Body Sections (3 to 4 sections, ~200-250 words each):** Define clear, benefit-driven headers. Plan to expand on points with examples, implications, and natural data integration rather than surface-level summaries.\n- **Conclusion (~100-150 words):** Summarize the core value and draft a definitive, actionable Call to Action (CTA).\n\n**Step 3: Drafting & Expansion**\nWrite the content. Prioritize depth over brevity. To hit the required word count naturally:\n- Elaborate on the \"why\" and \"how\" of your key points.\n- Use illustrative examples or hypothetical scenarios.\n- Transition smoothly between paragraphs.\n- Weave data seamlessly into sentences (e.g., \"This trend is underscored by [Statistic], which reveals...\") rather than just dropping numbers in lists.\n\n**Step 4: Persistence & Delivery**\n- Save the completed draft to a newly created vault file (e.g., `vault/draft_topic_name.md`). \n- Present the final output to the user in the chat.\n\n### 4. REASONING & TRANSPARENCY\n- Before outputting the final draft, briefly share your structural plan with the user (e.g., \"I will structure this into 4 main sections, budgeting about 200 words each to hit your target...\").\n- If the source material provided is extremely sparse, acknowledge that you are using creative expansion to reach the 800+ word requirement.\n- When saving the file, explicitly state the exact absolute or relative path where the document was created.\n\n### 5. CONSTRAINTS & GUARDRAILS\n- **Length Mandate:** You MUST generate between 800 and 1200 words. Do not provide a 300-word summary and consider the job done. Expand your thoughts thoroughly.\n- **Data Integrity:** NEVER fabricate or hallucinate specific real-world statistics, dates, or financial figures. If the user did not provide data, use clearly bracketed placeholders (e.g., `[XX% increase in revenue]`) so the user can fill them in later, or use general undeniable facts. \n- **Tool Discipline:** You MUST physically write the file to the file system using your file manipulation capabilities. Never just pretend to save it. Always verify the file was written successfully.\n- **Tone Boundaries:** \"Professional but accessible\" means avoiding overly dense corporate jargon while maintaining authoritative grammar and structure. Write as an industry expert speaking to an intelligent peer.\n\n### 6. OUTPUT FORMAT & RESPONSE STYLE\nYour final response to the user must follow this exact structure:\n\n1. **Brief Summary:** 1-2 sentences explaining what you did and the structural approach you took.\n2. **File Path:** A clear, bolded statement of where the file was saved (e.g., **Saved to:** `vault/draft_content_strategy.md`).\n3. **The Draft:** The complete document printed directly in the chat, formatted in clean Markdown.\n\n**Draft Formatting Rules:**\n- Use `#` for the main Title.\n- Use `##` for the 3-4 body section headers.\n- Use bold text for emphasis on key phrases.\n- Integrate statistics naturally within paragraph text; do not isolate them in bullet points unless summarizing a specific dataset.\n- The conclusion must be clearly separated (e.g., `## Conclusion & Next Steps`) and end with a distinct Call to Action.\n\n### 7. EDGE CASES & ERROR HANDLING\n- **Insufficient Input:** If the user's prompt is so brief (e.g., \"Write a draft about cars\") that reaching 800 words would require pure hallucination of a specific narrative, make your best logical assumption about the angle (e.g., the future of electric vehicles) to satisfy the prompt, but state your chosen angle in your opening summary.\n- **File System Errors:** If you encounter permission errors or missing directories when trying to write to the vault, immediately notify the user, output the markdown text in the chat anyway, and ask for a valid directory path to attempt the save again.\n- **Missing Statistics:** If the user demands data but provides none, prioritize placeholders over hallucinations. Inform the user in your brief summary: \"I have included placeholders where specific statistics will have the strongest narrative impact.\"",
+      "orchestration_id": null,
+      "model": null,
+      "provider": null,
+      "max_turns": 30
     }
   ],
   "orchestrations": [
@@ -72,9 +115,14 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
-          "input_keys": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
+          "input_keys": [
+            "research_evaluation"
+          ],
           "output_key": "research_result",
-          "max_turns": 30,
+          "forced_tool": null,
+          "max_turns": 50,
           "timeout_seconds": 600,
           "allowed_tools": null,
           "next_step_id": "step_eval_research",
@@ -97,7 +145,7 @@
             "needs_clarification": "The research is too vague, lacks sources, or the topic is ambiguous. The user needs to provide more specific direction before proceeding."
           },
           "evaluator_prompt": "Evaluate the research output. Check: (1) Are there at least 3 credible source URLs cited? (2) Are there concrete facts or statistics, not just vague summaries? (3) Is the topic scope clear and focused? If all three are met, choose 'sufficient'. Otherwise, choose 'needs_clarification'.",
-          "model": "claude-sonnet-4-6",
+          "model": "gemini-3.1-pro-preview",
           "parallel_branches": [],
           "merge_strategy": "list",
           "loop_count": 3,
@@ -105,12 +153,15 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
             "research_result"
           ],
           "output_key": "research_evaluation",
+          "forced_tool": null,
           "max_turns": 5,
-          "timeout_seconds": 60,
+          "timeout_seconds": 300,
           "allowed_tools": null,
           "next_step_id": null,
           "max_iterations": 3,
@@ -140,11 +191,14 @@
               "type": "textarea"
             }
           ],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
             "research_result",
             "research_evaluation"
           ],
           "output_key": null,
+          "forced_tool": null,
           "max_turns": 5,
           "timeout_seconds": 300,
           "allowed_tools": null,
@@ -177,8 +231,11 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [],
           "output_key": null,
+          "forced_tool": null,
           "max_turns": 5,
           "timeout_seconds": 900,
           "allowed_tools": null,
@@ -191,7 +248,7 @@
           "id": "step_write_draft",
           "name": "Write Article Draft",
           "type": "agent",
-          "agent_id": "agent_content_writer",
+          "agent_id": "agent_1775670369694",
           "prompt_template": "Using the research findings provided, write a complete, publication-ready article.\n\nRequirements:\n- 800-1200 words\n- Engaging introduction that hooks the reader\n- 3-4 well-structured body sections with clear headers\n- Data and statistics integrated naturally into the narrative\n- Strong conclusion with a call to action\n- Tone: Professional but accessible\n\nSave the draft to the vault and return the full article text.",
           "route_map": {},
           "route_descriptions": {},
@@ -204,11 +261,14 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
             "research_result"
           ],
           "output_key": "article_draft",
-          "max_turns": 30,
+          "forced_tool": null,
+          "max_turns": 50,
           "timeout_seconds": 600,
           "allowed_tools": null,
           "next_step_id": "step_merge_content",
@@ -233,11 +293,15 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
-            "research_result"
+            "research_result",
+            "article_draft"
           ],
           "output_key": "examples_result",
-          "max_turns": 30,
+          "forced_tool": null,
+          "max_turns": 50,
           "timeout_seconds": 600,
           "allowed_tools": null,
           "next_step_id": "step_merge_content",
@@ -262,11 +326,14 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
             "article_draft",
             "examples_result"
           ],
           "output_key": "merged_content",
+          "forced_tool": null,
           "max_turns": 5,
           "timeout_seconds": 90,
           "allowed_tools": null,
@@ -282,7 +349,7 @@
           "agent_id": null,
           "prompt_template": null,
           "route_map": {
-            "approved": null,
+            "approved": "step_ilo9fz3",
             "needs_revision": "step_revise"
           },
           "route_descriptions": {
@@ -290,7 +357,7 @@
             "needs_revision": "The article has issues that need to be fixed \u2014 missing examples, weak sections, unsupported claims, or formatting problems. Route to revision."
           },
           "evaluator_prompt": "Review the merged article draft and examples. Evaluate: (1) Does the article flow logically? (2) Are the real-world examples actually woven into the article or just appended? (3) Are all major claims backed by cited data? (4) Is the length 800-1200 words? If all checks pass, approve. If any fail, send to revision.",
-          "model": "claude-sonnet-4-6",
+          "model": "gemini-3.1-pro-preview",
           "parallel_branches": [],
           "merge_strategy": "list",
           "loop_count": 3,
@@ -298,12 +365,15 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
             "merged_content"
           ],
           "output_key": "review_result",
+          "forced_tool": null,
           "max_turns": 5,
-          "timeout_seconds": 90,
+          "timeout_seconds": 300,
           "allowed_tools": null,
           "next_step_id": null,
           "max_iterations": 3,
@@ -314,7 +384,7 @@
           "id": "step_revise",
           "name": "Revise Article",
           "type": "agent",
-          "agent_id": "agent_content_writer",
+          "agent_id": "agent_1775670369694",
           "prompt_template": "The article draft has been reviewed and requires revision. Read the review feedback and revise the article to address all noted issues. Integrate the real-world examples naturally into the body of the article. Ensure all claims are backed by the cited sources from the research. Return the fully revised article.",
           "route_map": {},
           "route_descriptions": {},
@@ -327,18 +397,86 @@
           "transform_code": null,
           "human_prompt": null,
           "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
           "input_keys": [
+            "research_result",
             "merged_content",
             "review_result"
           ],
           "output_key": "merged_content",
-          "max_turns": 35,
+          "forced_tool": null,
+          "max_turns": 55,
           "timeout_seconds": 600,
           "allowed_tools": null,
           "next_step_id": "step_final_review",
           "max_iterations": 3,
           "position_x": 700.0,
           "position_y": 300.0
+        },
+        {
+          "id": "step_ilo9fz3",
+          "name": "Document creator",
+          "type": "agent",
+          "agent_id": "agent_1775669514774",
+          "prompt_template": "Create an extended document on all the details collected so far",
+          "route_map": {},
+          "route_descriptions": {},
+          "evaluator_prompt": null,
+          "model": null,
+          "parallel_branches": [],
+          "merge_strategy": "list",
+          "loop_count": 3,
+          "loop_step_ids": [],
+          "transform_code": null,
+          "human_prompt": null,
+          "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
+          "input_keys": [
+            "merged_content"
+          ],
+          "output_key": "final_result",
+          "forced_tool": null,
+          "max_turns": 35,
+          "timeout_seconds": 300,
+          "allowed_tools": null,
+          "next_step_id": "step_egl7c6o",
+          "max_iterations": 3,
+          "position_x": 1024.1870837142703,
+          "position_y": -147.1974583548412
+        },
+        {
+          "id": "step_egl7c6o",
+          "name": "Llm Step",
+          "type": "llm",
+          "agent_id": null,
+          "prompt_template": "Give a summary and document link on the created document",
+          "route_map": {},
+          "route_descriptions": {},
+          "evaluator_prompt": null,
+          "model": null,
+          "parallel_branches": [],
+          "merge_strategy": "list",
+          "loop_count": 3,
+          "loop_step_ids": [],
+          "transform_code": null,
+          "human_prompt": null,
+          "human_fields": [],
+          "human_channel_id": null,
+          "human_timeout_seconds": 3600,
+          "input_keys": [
+            "final_result"
+          ],
+          "output_key": "final_summary",
+          "forced_tool": null,
+          "max_turns": 15,
+          "timeout_seconds": 300,
+          "allowed_tools": null,
+          "next_step_id": null,
+          "max_iterations": 3,
+          "position_x": 1011.7588235294115,
+          "position_y": 113.58991854050586
         }
       ],
       "entry_step_id": "step_research",
@@ -347,8 +485,8 @@
       "max_total_cost_usd": null,
       "timeout_minutes": 45,
       "trigger": "manual",
-      "created_at": "2026-01-01T00:00:00Z",
-      "updated_at": "2026-01-01T00:00:00Z"
+      "created_at": "2026-04-05T12:11:14Z",
+      "updated_at": "2026-04-08T19:35:59Z"
     }
   ],
   "mcp_servers": []
