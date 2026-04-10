@@ -5,7 +5,7 @@ import os
 import json
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from core.models import Repo
-from core.config import DATA_DIR
+from core.config import DATA_DIR, load_settings
 from core.json_store import JsonStore
 
 router = APIRouter()
@@ -84,8 +84,8 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
     except Exception as e:
         print(f"Warning: Failed to restart filesystem MCP after adding repo: {e}")
 
-    # Auto-index new repos if path exists
-    if os.path.isdir(repo.path):
+    # Auto-index new repos if path exists and embed_code is enabled
+    if os.path.isdir(repo.path) and load_settings().get("embed_code", False):
         try:
             from services.code_indexer import run_index
             for r in repos:
@@ -140,6 +140,9 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
     repo = next((r for r in repos if r["id"] == repo_id), None)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
+
+    if not load_settings().get("embed_code", False):
+        raise HTTPException(status_code=400, detail="Code indexing is disabled (embed_code=false)")
 
     if repo.get("status") == "indexing":
         raise HTTPException(status_code=409, detail="Repo is already being indexed")
