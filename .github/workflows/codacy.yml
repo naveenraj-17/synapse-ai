@@ -50,7 +50,6 @@ jobs:
       - name: Run Codacy Analysis CLI
         timeout-minutes: 20
         uses: codacy/codacy-analysis-cli-action@master
-        timeout-minutes: 20
         continue-on-error: true
         env:
           JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
