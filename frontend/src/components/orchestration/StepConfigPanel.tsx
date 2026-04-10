@@ -1,7 +1,14 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { EditorView } from '@codemirror/view';
+import { basicSetup } from 'codemirror';
+import { python } from '@codemirror/lang-python';
+import { oneDarkTheme } from '@codemirror/theme-one-dark';
+import { EditorState } from '@codemirror/state';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import type { StepConfig, StepType } from '@/types/orchestration';
 import { STEP_TYPE_META } from '@/types/orchestration';
 
@@ -300,15 +307,17 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
 
                 {/* ===== TRANSFORM config ===== */}
                 {step.type === 'transform' && (
-                    <div>
+                    <div className="space-y-2">
+                        <div className="rounded bg-amber-950/40 border border-amber-800/40 px-3 py-2 text-[10px] text-amber-400 leading-relaxed">
+                            <strong>Python sandbox</strong> — runs in Docker (512MB RAM, no network). <code>state</code> dict is injected. Assign to <code>result</code> to write the output key.
+                        </div>
                         <label className="text-xs text-zinc-400 block mb-1">Python Code</label>
-                        <textarea
-                            className={textareaCls}
-                            rows={6}
-                            value={step.transform_code || ''}
-                            onChange={(e) => update({ transform_code: e.target.value })}
-                            placeholder="# state dict is available&#10;result = state['a'] + state['b']"
-                        />
+                        <div className="border border-zinc-700 rounded overflow-hidden h-[220px] focus-within:border-amber-600 transition-colors">
+                            <PythonCodeEditor
+                                value={step.transform_code || ''}
+                                onChange={(code) => update({ transform_code: code })}
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -572,6 +581,78 @@ function LocalInput({ value, onCommit, ...props }: { value: string; onCommit: (v
             onBlur={() => onCommit(local)}
         />
     );
+}
+
+/** Syntax-highlighted Python code editor (CodeMirror) for the transform step. */
+const pythonHighlight = syntaxHighlighting(HighlightStyle.define([
+    { tag: tags.keyword, color: '#c792ea', fontWeight: 'bold' },
+    { tag: tags.definitionKeyword, color: '#c792ea', fontWeight: 'bold' },
+    { tag: tags.self, color: '#f78c6c', fontStyle: 'italic' },
+    { tag: tags.bool, color: '#ff9cac' },
+    { tag: tags.null, color: '#ff9cac' },
+    { tag: tags.definition(tags.function(tags.variableName)), color: '#82aaff', fontWeight: 'bold' },
+    { tag: tags.function(tags.variableName), color: '#82aaff' },
+    { tag: tags.definition(tags.className), color: '#ffcb6b', fontWeight: 'bold' },
+    { tag: tags.className, color: '#ffcb6b' },
+    { tag: tags.meta, color: '#ffa759', fontStyle: 'italic' },
+    { tag: tags.variableName, color: '#eeffff' },
+    { tag: tags.propertyName, color: '#89ddff' },
+    { tag: tags.string, color: '#c3e88d' },
+    { tag: tags.special(tags.string), color: '#c3e88d' },
+    { tag: tags.number, color: '#f78c6c' },
+    { tag: tags.operator, color: '#89ddff' },
+    { tag: tags.punctuation, color: '#89ddff' },
+    { tag: tags.bracket, color: '#ffcb6b' },
+    { tag: tags.comment, color: '#546e7a', fontStyle: 'italic' },
+    { tag: tags.typeName, color: '#ffcb6b' },
+    { tag: tags.escape, color: '#f78c6c' },
+]));
+
+function PythonCodeEditor({ value, onChange }: { value: string; onChange: (code: string) => void }) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const editorRef = useRef<EditorView | null>(null);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+
+    useEffect(() => {
+        if (!containerRef.current || editorRef.current) return;
+        const state = EditorState.create({
+            doc: value,
+            extensions: [
+                basicSetup,
+                python(),
+                oneDarkTheme,
+                pythonHighlight,
+                EditorView.updateListener.of((update) => {
+                    if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+                }),
+                EditorView.theme({
+                    '&': { backgroundColor: '#09090b', height: '100%' },
+                    '.cm-scroller': { overflow: 'auto', fontFamily: 'monospace', fontSize: '12px' },
+                    '.cm-content': { padding: '8px 0' },
+                    '.cm-line': { padding: '0 12px' },
+                    '&.cm-focused .cm-cursor': { borderLeftColor: '#d97706' },
+                    '.cm-selectionBackground': { backgroundColor: '#3f3f46' },
+                    '&.cm-focused .cm-selectionBackground': { backgroundColor: '#78350f' },
+                }),
+            ],
+        });
+        editorRef.current = new EditorView({ state, parent: containerRef.current });
+        return () => { editorRef.current?.destroy(); editorRef.current = null; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Sync external value changes (e.g. step switching)
+    useEffect(() => {
+        const view = editorRef.current;
+        if (!view) return;
+        const current = view.state.doc.toString();
+        if (current !== value) {
+            view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+        }
+    }, [value]);
+
+    return <div ref={containerRef} className="h-full" />;
 }
 
 /** Route label editor — uses local state so typing doesn't cause focus loss. */
