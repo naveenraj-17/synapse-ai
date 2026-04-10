@@ -8,12 +8,10 @@ chromadb
 ollama
 beautifulsoup4
 playwright
-duckduckgo-search
 boto3
 sqlalchemy
 psycopg2-binary
 pymysql
-pypdf
 pdfplumber
 pandas
 openpyxl
