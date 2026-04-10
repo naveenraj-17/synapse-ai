@@ -119,6 +119,17 @@ class OrchestrationLogger:
 {self._indent(response)}
 """)
 
+        elif etype == "_log_tool_step_llm":
+            prompt = event.get("prompt", "")
+            response = event.get("llm_response", "")
+            self._write(f"""
+  📝 TOOL STEP LLM CALL:
+{self._indent(prompt)}
+
+  🤖 LLM RESPONSE (tool call JSON):
+{self._indent(response)}
+""")
+
         elif etype == "tool_execution":
             tool_name = event.get("tool_name", "")
             args = event.get("args", {})

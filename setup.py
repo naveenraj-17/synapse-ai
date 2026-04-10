@@ -721,7 +721,7 @@ DEFAULT_SETTINGS = {
     "report_agent_enabled": False,
     "browser_automation_enabled": True,
     "playwright_browsers_path": "",
-    "messaging_enabled": False,
+    "messaging_enabled": True,
     "embed_code": False,
 }
 
@@ -850,65 +850,49 @@ def ask_embed_code(cfg):
 
 
 # ---------------------------------------------------------------------------
-# Q2c -- Browser Automation
+# Browser Automation -- install playwright automatically, no prompt
 # ---------------------------------------------------------------------------
-def ask_browser_automation(cfg):
-    step("Browser Automation")
-    info("Allows your agents to use the browser and browse the web.")
-    if ask_yn("Do your agents need to use the browser?", default="y"):
-        cfg["browser_automation_enabled"] = True
-        
-        # Determine default playwright path
-        system = platform.system()
-        user_home = os.path.expanduser("~")
-        if system == "Windows":
-            default_pw_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.join(user_home, "AppData", "Local")), "ms-playwright")
-        elif system == "Darwin":
-            default_pw_path = os.path.join(user_home, "Library", "Caches", "ms-playwright")
-        else: # Linux
-            default_pw_path = os.path.join(user_home, ".cache", "ms-playwright")
+def setup_browser_automation(cfg):
+    cfg["browser_automation_enabled"] = True
 
-        # Check if playwright browsers already exist
-        if os.path.exists(default_pw_path) and os.path.isdir(default_pw_path) and os.listdir(default_pw_path):
-            ok(f"Playwright browsers found.")
-            cfg["playwright_browsers_path"] = default_pw_path
-        else:
-            info("Playwright browsers not found. Installing... (this may take a minute)")
-            try:
-                if IS_WIN:
-                    npx_exe, bin_dir = _find_node_exe_win()
-                    npx_cmd = os.path.join(os.path.dirname(npx_exe) if npx_exe else "", "npx.cmd")
-                    if not os.path.isfile(npx_cmd):
-                        npx_cmd = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
-                    subprocess.check_call([npx_cmd, "-y", "playwright", "install", "chromium"])
-                else:
-                    subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"])
-                ok("Playwright installed successfully.")
-                cfg["playwright_browsers_path"] = default_pw_path
-            except subprocess.CalledProcessError as e:
-                warn(f"Failed to install Playwright browsers automatically: {e}")
-                info("You can install it manually by running:")
-                info("  npx -y playwright install chromium")
-                cfg["playwright_browsers_path"] = default_pw_path
+    system = platform.system()
+    user_home = os.path.expanduser("~")
+    if system == "Windows":
+        default_pw_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.join(user_home, "AppData", "Local")), "ms-playwright")
+    elif system == "Darwin":
+        default_pw_path = os.path.join(user_home, "Library", "Caches", "ms-playwright")
+    else:  # Linux
+        default_pw_path = os.path.join(user_home, ".cache", "ms-playwright")
+
+    if os.path.exists(default_pw_path) and os.path.isdir(default_pw_path) and os.listdir(default_pw_path):
+        ok("Playwright browsers found.")
+        cfg["playwright_browsers_path"] = default_pw_path
     else:
-        cfg["browser_automation_enabled"] = False
-        ok("Browser Automation disabled.")
-
+        info("Playwright browsers not found. Installing... (this may take a minute)")
+        try:
+            if IS_WIN:
+                npx_exe, bin_dir = _find_node_exe_win()
+                npx_cmd = os.path.join(os.path.dirname(npx_exe) if npx_exe else "", "npx.cmd")
+                if not os.path.isfile(npx_cmd):
+                    npx_cmd = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+                subprocess.check_call([npx_cmd, "-y", "playwright", "install", "chromium"])
+            else:
+                subprocess.check_call(["npx", "-y", "playwright", "install", "chromium"])
+            ok("Playwright installed successfully.")
+            cfg["playwright_browsers_path"] = default_pw_path
+        except subprocess.CalledProcessError as e:
+            warn(f"Failed to install Playwright browsers automatically: {e}")
+            info("You can install it manually by running:")
+            info("  npx -y playwright install chromium")
+            cfg["playwright_browsers_path"] = default_pw_path
 
 
 # ---------------------------------------------------------------------------
-# Q2d -- Messaging App Integration
+# Messaging App -- enabled by default, no prompt
 # ---------------------------------------------------------------------------
-def ask_messaging_app(cfg):
-    step("Messaging App Integration")
-    info("Allows your agents to be reached via Telegram, Discord, Slack, Teams, or WhatsApp.")
-    info("You can configure individual bots later in Settings -> Messaging.")
-    enabled = ask_yn("Enable Messaging App support?", default="n")
-    cfg["messaging_enabled"] = enabled
-    if not enabled:
-        ok("Messaging disabled -- skipping.")
-        return
-    ok("Messaging enabled. Required libraries will be installed now.")
+def setup_messaging_app(cfg):
+    cfg["messaging_enabled"] = True
+    ok("Messaging App support enabled.")
 
 
 
@@ -2246,8 +2230,8 @@ def main():
     ask_coding_agent(cfg)
     ask_embed_code(cfg)
 
-    ask_browser_automation(cfg)
-    ask_messaging_app(cfg)
+    setup_browser_automation(cfg)
+    setup_messaging_app(cfg)
     ask_ports(cfg)
     ask_google_workspace(cfg)
     ask_agent_name(cfg)
@@ -2292,7 +2276,7 @@ def main():
 
     backend_proc = start_backend(backend_port=_backend_port)
 
-    if not wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend", timeout=90):
+    if not wait_for_server(f"http://127.0.0.1:{_backend_port}/docs", "Backend", timeout=300):
         err("Backend did not start in time. Check the output above for errors.")
         backend_proc.terminate()
         sys.exit(1)

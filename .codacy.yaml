@@ -1,0 +1,79 @@
+---
+# Codacy configuration — controls both API-upload scans and Actions workflow scans.
+# Stack: Python backend + TypeScript/Next.js frontend + Docker
+engines:
+  # Python security — keep
+  bandit:
+    enabled: true
+  ruff:
+    enabled: true
+  pylint:
+    enabled: true
+  prospector:
+    enabled: false   # redundant with ruff + pylint
+  pylintpython3:
+    enabled: false   # duplicate of pylint
+
+  # JavaScript / TypeScript — keep ESLint only
+  eslint:
+    enabled: true
+  jshint:
+    enabled: false   # deprecated, ESLint covers it
+  tslint:
+    enabled: false   # deprecated, ESLint covers it
+
+  # CSS — keep Stylelint only
+  stylelint:
+    enabled: true
+  csslint:
+    enabled: false   # redundant with stylelint
+
+  # Infrastructure / Docker
+  checkov:
+    enabled: true
+  hadolint:
+    enabled: true
+
+  # Shell scripts (setup.sh, start.sh)
+  shellcheck:
+    enabled: true
+  psscriptanalyzer:
+    enabled: false   # PowerShell — not a focus
+
+  # Static analysis
+  semgrep:
+    enabled: true
+
+  # Disabled — not relevant to this stack
+  pmd:
+    enabled: false   # Java only
+  pmd-7:
+    enabled: false   # Java only
+  lizard:
+    enabled: false   # complexity metrics, not security
+  jacksonlinter:
+    enabled: false
+  markdownlint:
+    enabled: false
+  remark-lint:
+    enabled: false
+  opengrep:
+    enabled: false
+  spectral:
+    enabled: false
+
+exclude_paths:
+  - node_modules/**
+  - frontend/node_modules/**
+  - backend/node_modules/**
+  - frontend/.next/**
+  - backend/venv/**
+  - backend/.venv/**
+  - backend/chroma_db/**
+  - backend/data/**
+  - backend/logs/**
+  - dist/**
+  - frontend-build/**
+  - synapse/_frontend/**
+  - "**/__pycache__/**"
+  - "**/*.egg-info/**"

@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  security-events: write # Required to upload SARIF to GitHub Security tab
+  security-events: write
   actions: read
 
 jobs:
@@ -22,134 +22,70 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Generate local config to run only your preferred security tools
-      - name: Generate Codacy Configuration
-        run: |
-          cat > .codacy.yaml <<'EOF'
-          ---
-          engines:
-            bandit:
-              enabled: true
-            semgrep:
-              enabled: true
-            checkov:
-              enabled: true
-            trivy:
-              enabled: true
-            eslint:
-              enabled: false
-            stylelint:
-              enabled: false
-          EOF
-
-      # 2. Run Codacy Analysis (without the tool: flag so it reads .codacy.yaml)
-      - name: Run Codacy Analysis CLI
-        uses: codacy/codacy-analysis-cli-action@master
+      # Run only the security tools relevant to this project (Python + TypeScript + Docker)
+      - name: Run Security Analysis
+        timeout-minutes: 20
         continue-on-error: true
-        with:
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-          verbose: true
-          output: results.sarif
-          format: sarif
-          gh-code-scanning-compat: true
-          max-allowed-issues: 2147483647
-          skip-uncommitted-files-check: true
-          exclude-paths: >
-            node_modules,
-            frontend/node_modules,
-            backend/node_modules,
-            frontend/.next,
-            backend/venv,
-            backend/.venv,
-            backend/chroma_db,
-            backend/data,
-            backend/logs,
-            backend/data/orchestration_runs,
-            backend/.playwright-mcp,
-            dist,
-            frontend-build,
-            synapse/_frontend,
-            **/__pycache__,
-            **/*.egg-info,
-            **/*.whl,
-            **/*.tar.gz,
-            package-lock.json,
-            frontend/package-lock.json,
-            backend/package-lock.json,
-            tsconfig.tsbuildinfo,
-            frontend/tsconfig.tsbuildinfo
+        run: |
+          mkdir -p sarif_results
 
-      # 3. Automatically split the SARIF file to bypass GitHub limits while retaining tool names
-      - name: Split SARIF into individual files
+          TOOLS="bandit semgrep checkov eslint"
+          for tool in $TOOLS; do
+            echo "::group::Running $tool"
+            docker run --rm \
+              --env CODACY_CODE="$PWD" \
+              --env CODACY_PROJECT_TOKEN="${{ secrets.CODACY_PROJECT_TOKEN }}" \
+              --env JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" \
+              --volume /var/run/docker.sock:/var/run/docker.sock \
+              --volume "$PWD":"$PWD" \
+              --volume /tmp:/tmp \
+              codacy/codacy-analysis-cli:7.10.0 -- \
+              analyze \
+              --tool "$tool" \
+              --verbose \
+              --format sarif \
+              --output "$PWD/sarif_results/${tool}.sarif" \
+              --max-allowed-issues 2147483647 \
+              --skip-uncommitted-files-check || echo "::warning::$tool analysis failed"
+            echo "::endgroup::"
+          done
+
+      # Tag each SARIF with a unique category so GitHub doesn't merge them
+      - name: Prepare SARIF for upload
         run: |
           sudo python3 -c '
-          import json, sys, os
+          import json, os, glob
 
-          # Create a directory to hold the split files
-          output_dir = "sarif_split"
-          os.makedirs(output_dir, exist_ok=True)
-
-          # Fallback if Codacy CLI failed to generate a valid file
-          if not os.path.exists("results.sarif") or os.path.getsize("results.sarif") == 0:
-              print("Warning: SARIF file missing or empty. Creating a valid placeholder.")
-              data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
-          else:
+          for path in glob.glob("sarif_results/*.sarif"):
+              if os.path.getsize(path) == 0:
+                  continue
               try:
-                  with open("results.sarif", "r") as f:
+                  with open(path) as f:
                       data = json.load(f)
-              except json.JSONDecodeError:
-                  print("Warning: SARIF file was corrupt. Creating a valid placeholder.")
-                  data = {"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json", "version": "2.1.0", "runs": []}
-
-          runs = data.get("runs", [])
-          if not runs:
-              # Create a single empty file if there are no runs
-              with open(os.path.join(output_dir, "empty.sarif"), "w") as f:
-                  json.dump(data, f)
-              print("No runs found. Created empty placeholder.")
-              sys.exit(0)
-
-          # Split each run into its own file with a unique category ID
-          for i, run in enumerate(runs):
-              tool_name = run.get("tool", {}).get("driver", {}).get("name", "tool")
-              clean_name = tool_name.lower().replace(" ", "-")
-              
-              if "automationDetails" not in run:
-                  run["automationDetails"] = {}
-              
-              # Provide a strictly unique category for GitHub Advanced Security
-              run["automationDetails"]["id"] = "codacy-" + clean_name + "-" + str(i)
-              
-              # Build the single-run SARIF structure
-              new_sarif = {
-                  "$schema": data.get("$schema", "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"),
-                  "version": data.get("version", "2.1.0"),
-                  "runs": [run]
-              }
-              
-              # Save it in the split directory
-              file_path = os.path.join(output_dir, "run_" + str(i) + ".sarif")
-              with open(file_path, "w") as out_f:
-                  json.dump(new_sarif, out_f, indent=2)
-
-          print("Successfully split " + str(len(runs)) + " runs into individual SARIF files.")
+                  tool = os.path.basename(path).replace(".sarif", "")
+                  for i, run in enumerate(data.get("runs", [])):
+                      if "automationDetails" not in run:
+                          run["automationDetails"] = {}
+                      run["automationDetails"]["id"] = f"codacy-{tool}-{i}"
+                  with open(path, "w") as f:
+                      json.dump(data, f, indent=2)
+              except (json.JSONDecodeError, KeyError):
+                  print(f"Warning: Could not process {path}")
           '
 
-      # 4. Upload each file SEPARATELY via GitHub API
-      - name: Upload SARIF files separately
+      - name: Fix file permissions
+        run: sudo chown -R $(id -u):$(id -g) sarif_results/
+
+      - name: Upload SARIF results
         env:
-          # This is automatically provided by GitHub. You do NOT need to add it to your secrets.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Starting individual uploads to bypass GitHub Action merging..."          
-          for file in sarif_split/*.sarif; do
+          for file in sarif_results/*.sarif; do
+            [ -f "$file" ] || continue
+            [ -s "$file" ] || continue
             echo "Uploading $file..."
-            
-            # Compress and encode the file as required by the GitHub API
             gzip -c "$file" > payload.gz
             b64_payload=$(base64 -w0 payload.gz)
-            
-            # Upload directly via the GitHub CLI API (Removed the invalid flag)
             gh api \
               --method POST \
               -H "Accept: application/vnd.github+json" \
@@ -157,10 +93,7 @@ jobs:
               /repos/${{ github.repository }}/code-scanning/sarifs \
               -f commit_sha="${{ github.sha }}" \
               -f ref="${{ github.ref }}" \
-              -f sarif="$b64_payload"
-              
-            # A tiny 2-second pause to respect API rate limits
+              -f sarif="$b64_payload" || echo "::warning::Failed to upload $file"
             sleep 2
           done
-          
-          echo "All SARIF files successfully uploaded independently!"
+          echo "All uploads complete!"

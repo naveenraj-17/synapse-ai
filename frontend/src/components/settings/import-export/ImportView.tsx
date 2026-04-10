@@ -94,6 +94,7 @@ export function ImportView({ preloadedBundle, onReset }: {
   const [toolSecrets, setToolSecrets] = useState<Record<string, Record<string, string>>>({});
   const [mcpTokens, setMcpTokens] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, ImportResult[]>>({});
+  const [googleStatus, setGoogleStatus] = useState<{ is_connected: boolean; user_email?: string | null } | null>(null);
 
   // Refs for always-current selection state
   const bundleRef = useRef<ImportBundle | null>(null);
@@ -130,6 +131,7 @@ export function ImportView({ preloadedBundle, onReset }: {
       }
       setToolSecrets(ts);
       recalcImport(orchIds, agentIds, preloadedBundle);
+      fetchGoogleStatus();
       setStep("preview");
     } catch (err: any) { setParseError(err.message); }
   // Only run when preloadedBundle changes
@@ -161,6 +163,13 @@ export function ImportView({ preloadedBundle, onReset }: {
     setSelTool(prev => new Set([...prev, ...agentLockedTool]));
   }, []);
 
+  const fetchGoogleStatus = async () => {
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) setGoogleStatus(await res.json());
+    } catch { /* ignore */ }
+  };
+
   const parseFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
@@ -187,6 +196,7 @@ export function ImportView({ preloadedBundle, onReset }: {
         }
         setToolSecrets(ts);
         recalcImport(orchIds, agentIds, parsed);
+        fetchGoogleStatus();
         setStep("preview");
       } catch (err: any) { setParseError(err.message); }
     };
@@ -205,6 +215,7 @@ export function ImportView({ preloadedBundle, onReset }: {
     setLockedAgent(new Set()); setLockedMcp(new Set()); setLockedTool(new Set());
     setMcpSecrets({}); setToolSecrets({}); setMcpTokens({});
     setUseDefaultModels(false); setModelsExpanded(false);
+    setGoogleStatus(null);
     onReset?.();
   };
 
@@ -272,6 +283,9 @@ export function ImportView({ preloadedBundle, onReset }: {
     const total = selOrch.size + selAgent.size + selMcp.size + selTool.size;
     const allModels = collectModels(bundle);
     const hasModels = allModels.length > 0;
+    const googleDependentAgents = (bundle.agents || [])
+      .filter(a => selAgent.has(a.id) && (a.tools || []).some(t => t.startsWith("Google Workspace__")))
+      .map(a => a.name);
 
     return (
       <div className="space-y-5">
@@ -285,6 +299,27 @@ export function ImportView({ preloadedBundle, onReset }: {
           </div>
           <button onClick={reset} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors underline underline-offset-2">Change file</button>
         </div>
+
+        {googleDependentAgents.length > 0 && googleStatus?.is_connected === false && (
+          <div className="flex items-start gap-3 p-4 border border-orange-900/50 bg-orange-950/10">
+            <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div className="space-y-1.5">
+              <p className="text-orange-400 text-xs font-bold uppercase tracking-wider">Google Workspace Not Connected</p>
+              <p className="text-orange-600 text-xs">
+                The following agent{googleDependentAgents.length !== 1 ? "s" : ""} use Google Workspace tools
+                (Gmail, Drive, Calendar, etc.) but Google is not connected:
+              </p>
+              <ul className="space-y-0.5 pl-1">
+                {googleDependentAgents.map(name => (
+                  <li key={name} className="text-orange-400 text-xs font-mono">· {name}</li>
+                ))}
+              </ul>
+              <p className="text-orange-600 text-xs pt-0.5">
+                Go to <span className="text-orange-400 font-bold">Settings → Integrations</span> and connect your Google account, then come back and try importing again.
+              </p>
+            </div>
+          </div>
+        )}
 
         {bundle.has_python_tools && (
           <div className="flex items-start gap-3 p-4 border border-yellow-900/50 bg-yellow-950/10">

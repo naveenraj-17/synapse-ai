@@ -83,7 +83,7 @@ export default function SettingsLayout({
                         </h2>
                     </div>
 
-                    <nav className="flex-1 p-2 space-y-1 overflow-x-auto md:overflow-visible flex md:flex-col modern-scrollbar">
+                    <nav className="flex-1 p-2 space-y-1 overflow-x-auto overflow-y-hidden md:overflow-x-hidden md:overflow-y-auto flex md:flex-col modern-scrollbar">
                         {displayTabs.map((tab) => {
                             const Icon = tab.icon;
                             const isActive = activeTab === tab.id;

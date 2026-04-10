@@ -43,7 +43,7 @@ async def get_available_tools():
     all_tools = []
 
     # 1. Active MCP Sessions (Native + External)
-    for name, session in _server.agent_sessions.items():
+    for name, session in list(_server.agent_sessions.items()):
         try:
             is_external = name.startswith("ext_mcp_")
             server_name = name[len("ext_mcp_"):] if is_external else name

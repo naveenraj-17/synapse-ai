@@ -27,6 +27,29 @@ def _load_repo_paths() -> dict[str, str]:
         return {}
 
 
+def _get_allowed_base_paths() -> list[str]:
+    """Return allowed base paths: all configured repo paths + vault directory."""
+    try:
+        from core.config import DATA_DIR
+        vault = os.path.join(DATA_DIR, "vault")
+    except Exception:
+        vault = None
+    paths = list(_load_repo_paths().values())
+    if vault:
+        paths.append(vault)
+    return paths
+
+
+def _is_path_allowed(path: str) -> bool:
+    """Return True if path resolves to within a configured repo or vault."""
+    resolved = os.path.realpath(path)
+    for base in _get_allowed_base_paths():
+        base_real = os.path.realpath(base)
+        if resolved == base_real or resolved.startswith(base_real + os.sep):
+            return True
+    return False
+
+
 # Must match the indexing config in services/code_indexer.py
 CODE_EMBEDDING_MODEL = "gemini-embedding-001"
 CODE_EMBEDDING_DIM = 768
@@ -458,6 +481,8 @@ async def call_tool(
             max_matches = int(arguments.get("max_matches", 1000))
 
             resolved = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+            if not _is_path_allowed(resolved):
+                return [types.TextContent(type="text", text=json.dumps({"error": f"Access denied: '{path}' is not within a configured repository or vault."}))]
             if os.path.isdir(resolved):
                 file_pattern = arguments.get("file_pattern", "*")
                 recursive = bool(arguments.get("recursive", True))
@@ -471,6 +496,10 @@ async def call_tool(
             folder_path = arguments.get("folder_path")
             if not folder_path:
                 return [types.TextContent(type="text", text=json.dumps({"error": "'folder_path' is required."}))]
+
+            _fp_resolved = folder_path if os.path.isabs(folder_path) else os.path.join(os.getcwd(), folder_path)
+            if not _is_path_allowed(_fp_resolved):
+                return [types.TextContent(type="text", text=json.dumps({"error": f"Access denied: '{folder_path}' is not within a configured repository or vault."}))]
 
             pattern = arguments.get("pattern", "**/*")
             recursive = bool(arguments.get("recursive", True))

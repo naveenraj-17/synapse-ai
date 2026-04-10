@@ -319,7 +319,7 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
     )
 
 
-def wait_for_url(url: str, name: str, timeout: int = 90) -> bool:
+def wait_for_url(url: str, name: str, timeout: int = 300) -> bool:
     start = time.time()
     port = url.split(":")[-1].split("/")[0]
     while True:

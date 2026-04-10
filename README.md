@@ -26,22 +26,11 @@ irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | i
 Once installed, use the `synapse` command to manage the server:
 
 ```bash
-synapse start              # start backend + frontend, open browser
-synapse start --detach     # run in background (writes pidfiles)
-synapse start --no-browser # start without opening browser
-synapse stop               # stop background processes
-synapse status             # show running status
-synapse restart            # stop then start
-synapse setup              # interactive setup wizard (API keys, ports)
+synapse start     # start backend + frontend, open browser
+synapse stop      # stop background processes
+synapse upgrade   # upgrade to the latest version
+synapse setup     # interactive setup wizard (API keys, ports)
 ```
-
-Port overrides (also settable via env vars `SYNAPSE_BACKEND_PORT` / `SYNAPSE_FRONTEND_PORT`):
-
-```bash
-synapse start --backend-port 8080 --frontend-port 4000
-```
-
-See [docs/cli.md](docs/cli.md) for the full reference including profiling commands.
 
 ---
 
@@ -49,7 +38,7 @@ See [docs/cli.md](docs/cli.md) for the full reference including profiling comman
 
 Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you a production-grade platform:
 
-- **ReAct reasoning engine** — agents think, act, observe, and iterate up to 30 turns per task
+- **ReAct reasoning engine** — agents think, act, observe, and iterate for any number of turns per task
 - **8 built-in tool servers** ready to use out of the box
 - **Advanced Python Tool** — dynamically write and execute Python code in a secure sandbox
 - **Schedule Agents** — trigger agents and orchestrations automatically using a cron schedule
@@ -70,10 +59,15 @@ https://github.com/user-attachments/assets/78c526d9-c75b-41fa-9353-589d3207e7db
 
 ## Synapse Orchestration Demo
 
-This demo features a multi-agent content writing orchestration, utilizing gemini-3-flash-preview and gemini-3.1-pro-preview as evaluators. Each agent can be configured with different models based on your specific needs. (Note: The video is sped up 2x to fit on GitHub.)
+### Content Writing Orchestration
+This demo showcases a multi-agent content writing orchestration pipeline. The agents autonomously open a browser, research a user-provided topic, draft the content in a Google Doc, and return the shared link. By default, the worker agents utilize `gemini-3-flash-preview`, while the evaluator agents use `gemini-3.1-pro-preview`. Each agent can be configured with different models based on your specific requirements. (Note: The video is sped up 2x to fit on GitHub.)
 
 https://github.com/user-attachments/assets/4eec5db8-70d0-47b6-8608-f52b1f7b7d68
 
+### Autonomous Code Development & PR Creation
+This demo highlights a multi-agent software development system that writes code and generates pull requests on its own. A human-in-the-loop step is integrated into each stage, allowing you to review and confirm the agents' actions before the system finalizes the PR and outputs the repository link.
+
+https://github.com/user-attachments/assets/95a511e1-e3e9-4812-b9ca-f7f4c28ef80f
 
 ## The Tool Ecosystem
 
@@ -94,6 +88,7 @@ These run automatically when Synapse starts:
 | **Collect Data** | Generate dynamic forms that pause execution and collect user input. Supports text, number, email, date, phone, and option fields. |
 | **Time** | Natural language date/time parsing. Handles relative offsets, weekday targets, timezone conversions, and complex expressions like "next Friday at 3pm EST". |
 | **Code Search** | Semantic code search across indexed repositories using vector embeddings. Search by natural language query, get back relevant code snippets with file paths and line numbers. |
+| **Web Scraper** | Powerful web scraping powered by crawl4ai. Scrape any URL to clean markdown, extract structured data with CSS schemas, crawl multiple URLs in parallel, capture screenshots, handle infinite-scroll pages, and run multi-step authenticated sessions. Built-in stealth mode bypasses anti-bot protections — works on LinkedIn, financial sites, and JavaScript-heavy pages. |
 
 ### Built-in MCP Servers
 
@@ -387,7 +382,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open `http://localhost:<SYNAPSE_FRONTEND_PORT>` (default: `http://localhost:3000`)
 
 ### Prerequisites
 
