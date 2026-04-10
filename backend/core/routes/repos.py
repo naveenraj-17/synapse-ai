@@ -85,7 +85,8 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
         print(f"Warning: Failed to restart filesystem MCP after adding repo: {e}")
 
     # Auto-index new repos if path exists and embed_code is enabled
-    if os.path.isdir(repo.path) and load_settings().get("embed_code", False):
+    real_path = os.path.realpath(repo.path)
+    if os.path.isdir(real_path) and load_settings().get("embed_code", False):
         try:
             from services.code_indexer import run_index
             for r in repos:
@@ -93,7 +94,7 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
                     r["status"] = "indexing"
                     break
             save_repos(repos)
-            background_tasks.add_task(run_index, repo.id, repo.path, repo.included_patterns, repo.excluded_patterns)
+            background_tasks.add_task(run_index, repo.id, real_path, repo.included_patterns, repo.excluded_patterns)
         except ImportError:
             pass
 
@@ -147,7 +148,8 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
     if repo.get("status") == "indexing":
         raise HTTPException(status_code=409, detail="Repo is already being indexed")
 
-    if not os.path.isdir(repo.get("path", "")):
+    real_path = os.path.realpath(repo.get("path", ""))
+    if not os.path.isdir(real_path):
         raise HTTPException(status_code=400, detail=f"Repo path does not exist: {repo.get('path')}")
 
     # Set status
@@ -161,7 +163,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks):
     # Run in background
     try:
         from services.code_indexer import run_index
-        background_tasks.add_task(run_index, repo_id, repo["path"], repo["included_patterns"], repo["excluded_patterns"])
+        background_tasks.add_task(run_index, repo_id, real_path, repo["included_patterns"], repo["excluded_patterns"])
     except ImportError as e:
         print("Indexer unavailable:", e)
         repo["status"] = "error"
