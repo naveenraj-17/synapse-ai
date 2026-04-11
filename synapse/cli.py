@@ -617,12 +617,29 @@ def _upgrade_command():
     venv_dir = BACKEND_DIR / "venv"
     python_exe = venv_dir / ("Scripts/python.exe" if IS_WIN else "bin/python")
 
-    # Re-create venv
-    if venv_dir.exists():
-        print("  Removing old virtual environment...")
-        _rmtree(venv_dir)
-    print("  Creating virtual environment...")
-    subprocess.check_call([_system_python(), "-m", "venv", str(venv_dir)])
+    def _venv_is_healthy() -> bool:
+        """Return True if the venv exists and its Python is actually usable."""
+        if not python_exe.exists():
+            return False
+        result = subprocess.run([str(python_exe), "--version"],
+                                capture_output=True, timeout=10)
+        return result.returncode == 0
+
+    if _venv_is_healthy():
+        # Upgrade in place — avoids deleting locked/protected files on Windows
+        # and is faster on all platforms. Safe because requirements.txt uses
+        # loose pinning (bare package names), so --upgrade gets the same result
+        # as a clean install.
+        print("  Existing virtual environment found, upgrading packages in place...")
+        pip_extra = ["--upgrade"]
+    else:
+        # Venv is missing or broken — delete (best-effort) and recreate.
+        if venv_dir.exists():
+            print("  Removing old virtual environment...")
+            _rmtree(venv_dir)
+        print("  Creating virtual environment...")
+        subprocess.check_call([_system_python(), "-m", "venv", str(venv_dir)])
+        pip_extra = []
 
     # Upgrade pip
     print("  Upgrading pip...")
@@ -633,7 +650,8 @@ def _upgrade_command():
     req_txt = BACKEND_DIR / "requirements.txt"
     if req_txt.exists():
         print("  Installing backend requirements...")
-        subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(req_txt)])
+        subprocess.check_call([str(python_exe), "-m", "pip", "install",
+                               *pip_extra, "-r", str(req_txt)])
     else:
         print(f"  Warning: {req_txt} not found -- skipping requirements.")
 
@@ -651,7 +669,8 @@ def _upgrade_command():
         coding_req = BACKEND_DIR / "requirements-coding.txt"
         if coding_req.exists():
             print("  Installing coding-agent requirements...")
-            subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(coding_req)])
+            subprocess.check_call([str(python_exe), "-m", "pip", "install",
+                                   *pip_extra, "-r", str(coding_req)])
         else:
             print(f"  Warning: {coding_req} not found -- skipping.")
 
@@ -659,13 +678,15 @@ def _upgrade_command():
         messaging_req = BACKEND_DIR / "requirements-messaging.txt"
         if messaging_req.exists():
             print("  Installing messaging requirements...")
-            subprocess.check_call([str(python_exe), "-m", "pip", "install", "-r", str(messaging_req)])
+            subprocess.check_call([str(python_exe), "-m", "pip", "install",
+                                   *pip_extra, "-r", str(messaging_req)])
         else:
             print(f"  Warning: {messaging_req} not found -- skipping.")
 
     # Re-install synapse package in editable mode
     print("  Reinstalling Synapse package...")
-    subprocess.check_call([str(python_exe), "-m", "pip", "install", "-e", str(ROOT_DIR)])
+    subprocess.check_call([str(python_exe), "-m", "pip", "install",
+                           "--upgrade", "-e", str(ROOT_DIR)])
     print("  Backend rebuild complete.")
 
     # 4. Rebuild frontend
