@@ -1,5 +1,8 @@
 # Synapse AI — A Multi-Agent Orchestrator
 
+*A tool becomes an agent. An agent becomes a pipeline.*
+*A pipeline becomes whatever you were too busy to build.*
+
 **Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can wrap in an MCP server or n8n workflow.
 
 ---
