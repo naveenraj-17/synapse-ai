@@ -1,17 +1,17 @@
 [
   {
-    "id": "simple_orch_pack",
+    "id": "simple_orch",
     "name": "Simple Orchestration Pack",
     "description": "Simple orchestration that includes a minimal job searching and creating sheets agents",
     "tags": [
       "agents",
       "orchestrations"
     ],
-    "agent_count": 2,
+    "agent_count": 3,
     "orchestration_count": 1,
     "mcp_count": 0,
     "tool_count": 0,
-    "file": "starter_pack.bundle.json"
+    "file": "simple_orch.bundle.json"
   },
   {
     "id": "starter_pack",
@@ -21,8 +21,8 @@
       "agents",
       "orchestrations"
     ],
-    "agent_count": 2,
-    "orchestration_count": 1,
+    "agent_count": 5,
+    "orchestration_count": 2,
     "mcp_count": 0,
     "tool_count": 0,
     "file": "starter_pack.bundle.json"
