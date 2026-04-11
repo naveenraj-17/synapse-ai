@@ -47,6 +47,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
     const [excludedText, setExcludedText] = useState('');
     const [includedText, setIncludedText] = useState('');
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
 
     const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
@@ -110,6 +111,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             showToast('Name and Path are required', 'warning');
             return;
         }
+        setIsSaving(true);
         const parseLines = (text: string) =>
             text.split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -146,6 +148,8 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             }
         } catch {
             showToast('Failed to save repo', 'error');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -347,9 +351,11 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                         </button>
                         <button
                             onClick={handleSaveRepo}
-                            className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                            disabled={isSaving}
+                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Save Repository
+                            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {isSaving ? 'Saving…' : 'Save Repository'}
                         </button>
                     </div>
                 </div>
