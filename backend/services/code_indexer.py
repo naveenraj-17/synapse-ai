@@ -329,9 +329,12 @@ def init_cocoindex():
 def get_index_status(repo_id: str) -> dict:
     if not COCOINDEX_AVAILABLE:
         return {"status": "unavailable", "count": 0}
+    db_url = _get_db_url()
+    if not db_url:
+        return {"status": "unavailable", "count": 0}
     table_name = get_table_name(repo_id)
     try:
-        with psycopg.connect(_get_db_url()) as conn:
+        with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT to_regclass(%s);", (f"public.{table_name}",))
                 if not cur.fetchone()[0]:

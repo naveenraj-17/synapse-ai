@@ -24,40 +24,51 @@ def save_repos(repos: list[dict]):
 async def get_repos():
     repos = load_repos()
 
-    try:
-        from services.code_indexer import get_index_status, _active_threads
-        updated = False
-        for r in repos:
-            if r.get("status") in ("indexing", "stopping"):
-                # Check whether the background thread is still alive.
-                # After a backend restart _active_threads is empty, so any
-                # repo left in "indexing" / "stopping" is a stale artifact.
-                thread = _active_threads.get(r["id"])
-                if not thread or not thread.is_alive():
-                    r["status"] = "stopped"
-                    updated = True
-                else:
-                    # Thread alive — just refresh the live chunk count
-                    stats = get_index_status(r["id"])
-                    if stats["count"] != r.get("file_count", 0):
+    if load_settings().get("embed_code", False):
+        try:
+            from services.code_indexer import get_index_status, _active_threads
+            updated = False
+            for r in repos:
+                if r.get("status") in ("indexing", "stopping"):
+                    # Check whether the background thread is still alive.
+                    # After a backend restart _active_threads is empty, so any
+                    # repo left in "indexing" / "stopping" is a stale artifact.
+                    thread = _active_threads.get(r["id"])
+                    if not thread or not thread.is_alive():
+                        r["status"] = "stopped"
+                        updated = True
+                    else:
+                        # Thread alive — just refresh the live chunk count
+                        stats = get_index_status(r["id"])
+                        if stats["count"] != r.get("file_count", 0):
+                            r["file_count"] = stats["count"]
+                            updated = True
+                    continue
+
+                stats = get_index_status(r["id"])
+                if stats["status"] == "indexed":
+                    if r.get("status") != "indexed" or r.get("file_count") != stats["count"]:
+                        r["status"] = "indexed"
                         r["file_count"] = stats["count"]
                         updated = True
-                continue
-
-            stats = get_index_status(r["id"])
-            if stats["status"] == "indexed":
-                if r.get("status") != "indexed" or r.get("file_count") != stats["count"]:
-                    r["status"] = "indexed"
-                    r["file_count"] = stats["count"]
-                    updated = True
-            elif stats["status"] == "error":
-                if r.get("status") != "error":
-                    r["status"] = "error"
-                    updated = True
+                elif stats["status"] == "error":
+                    if r.get("status") != "error":
+                        r["status"] = "error"
+                        updated = True
+            if updated:
+                save_repos(repos)
+        except ImportError:
+            pass
+    else:
+        # embed_code is off — reset any repos previously poisoned with "error"
+        # (from a failed DB connection) back to "pending".
+        updated = False
+        for r in repos:
+            if r.get("status") == "error":
+                r["status"] = "pending"
+                updated = True
         if updated:
             save_repos(repos)
-    except ImportError:
-        pass
 
     return repos
 
