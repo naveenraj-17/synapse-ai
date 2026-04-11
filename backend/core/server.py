@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import shutil
@@ -211,40 +212,24 @@ def _build_native_mcp_servers() -> list[dict]:
     return servers
 
 
-async def restart_filesystem_mcp() -> None:
-    """Restart the Filesystem MCP server with the current repo paths from repos.json.
-
-    Called automatically when repos are added or deleted so the MCP subprocess
-    reflects the latest allowed directory list without a full backend restart.
+async def _connect_filesystem_mcp(label: str = "started") -> None:
+    """
+    Connect the Filesystem MCP subprocess and register its tools.
+    MUST only be called from _filesystem_mcp_manager — anyio cancel scopes
+    must be entered and exited by the same task.
     """
     global _filesystem_stack
 
-    # Remove stale Filesystem tools from routing tables
-    stale_tools = [k for k, v in tool_router.items() if v[0] == "Filesystem"]
-    for t in stale_tools:
-        del tool_router[t]
-    agent_sessions.pop("Filesystem", None)
-
-    # Close old subprocess
-    if _filesystem_stack:
-        try:
-            await _filesystem_stack.aclose()
-        except Exception as e:
-            print(f"Warning: Error closing old filesystem MCP stack: {e}")
-        _filesystem_stack = None
-
-    # Build fresh config — _get_repo_paths() re-reads repos.json
     fs_cfg = next((c for c in _build_native_mcp_servers() if c["name"] == "Filesystem"), None)
     if not fs_cfg:
-        print("Warning: Could not build Filesystem MCP config — skipping restart.")
+        print("Warning: Could not build Filesystem MCP config — skipping.")
         return
 
     cmd = fs_cfg["command"]
     if not shutil.which(cmd):
-        print(f"Warning: '{cmd}' not found — cannot restart Filesystem MCP server.")
+        print(f"Warning: '{cmd}' not found — cannot start Filesystem MCP server.")
         return
 
-    print("Restarting Filesystem MCP server with updated repo paths...")
     _filesystem_stack = AsyncExitStack()
     try:
         env = os.environ.copy()
@@ -255,19 +240,86 @@ async def restart_filesystem_mcp() -> None:
             ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
         )
         await session.initialize()
-
         agent_sessions["Filesystem"] = session
         tools = await session.list_tools()
         for tool in tools.tools:
             tool_router[tool.name] = ("Filesystem", tool.name)
-        print(f"Filesystem MCP server restarted ({len(tools.tools)} tools registered).")
+        print(f"Filesystem MCP server {label} ({len(tools.tools)} tools registered).")
     except Exception as e:
-        print(f"Failed to restart Filesystem MCP server: {e}")
+        print(f"Failed to start Filesystem MCP server: {e}")
         try:
             await _filesystem_stack.aclose()
         except Exception:
             pass
         _filesystem_stack = None
+
+
+async def _filesystem_mcp_manager() -> None:
+    """
+    Long-running task that exclusively owns the Filesystem MCP subprocess lifecycle.
+
+    anyio requires that cancel scopes are exited by the same task that entered them.
+    Previously, restart_filesystem_mcp() called _filesystem_stack.aclose() from an
+    HTTP request-handler task (a different task than lifespan), which caused a cancel-
+    scope violation that propagated a CancelledError to the lifespan, tearing down
+    ALL MCP sessions.  Concentrating every open/close operation here eliminates that.
+
+    Route handlers request a restart by putting an asyncio.Future on
+    _filesystem_restart_queue; this task performs the work and resolves the future.
+    """
+    global _filesystem_stack
+
+    await _connect_filesystem_mcp(label="started")
+
+    if _filesystem_ready is not None:
+        _filesystem_ready.set()
+
+    try:
+        while True:
+            future: Optional[asyncio.Future] = await _filesystem_restart_queue.get()
+
+            # Clear stale Filesystem tools from shared routing tables
+            stale_tools = [k for k, v in tool_router.items() if v[0] == "Filesystem"]
+            for t in stale_tools:
+                del tool_router[t]
+            agent_sessions.pop("Filesystem", None)
+
+            # Close old stack in the task that created it — no cancel-scope violation
+            if _filesystem_stack:
+                try:
+                    await _filesystem_stack.aclose()
+                except Exception as e:
+                    print(f"Warning: Error closing old filesystem MCP stack: {e}")
+                _filesystem_stack = None
+
+            print("Restarting Filesystem MCP server with updated repo paths...")
+            await _connect_filesystem_mcp(label="restarted")
+
+            if future is not None and not future.done():
+                future.set_result(None)
+
+    except asyncio.CancelledError:
+        # Graceful shutdown — clean up the subprocess we own
+        if _filesystem_stack:
+            try:
+                await _filesystem_stack.aclose()
+            except Exception as e:
+                print(f"Warning: Error closing filesystem MCP stack during shutdown: {e}")
+            _filesystem_stack = None
+
+
+async def restart_filesystem_mcp() -> None:
+    """
+    Signal the filesystem manager task to restart with the latest repo paths.
+    Called from route handlers when repos are added, updated, or deleted.
+    Awaits completion so the caller knows the new path list is active.
+    """
+    if _filesystem_restart_queue is None:
+        return
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    await _filesystem_restart_queue.put(future)
+    await future
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +330,10 @@ async def restart_filesystem_mcp() -> None:
 agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
 tool_router: dict[str, tuple[str, str]] = {}     # tool_key -> (session_name, actual_tool_name)
 exit_stack: Optional[AsyncExitStack] = None
-_filesystem_stack: Optional[AsyncExitStack] = None  # separate stack for Filesystem MCP — allows independent restart
+_filesystem_stack: Optional[AsyncExitStack] = None          # owned exclusively by _filesystem_mcp_manager
+_filesystem_restart_queue: Optional[asyncio.Queue] = None   # route handlers put Futures here to request restarts
+_filesystem_manager_task: Optional[asyncio.Task] = None     # the long-running manager task
+_filesystem_ready: Optional[asyncio.Event] = None           # set once initial FS MCP connection attempt finishes
 memory_store: Any = None
 mcp_manager: Optional[MCPClientManager] = None
 messaging_manager: Any = None  # MessagingManager (set in lifespan if enabled)
@@ -333,9 +388,25 @@ async def lifespan(app: FastAPI):
                 except BaseException:
                     pass
 
+        # --- Start Filesystem MCP Manager Task ---
+        # The Filesystem MCP is managed by a dedicated asyncio task so that its
+        # AsyncExitStack is always opened and closed by the SAME task.  anyio
+        # cancel scopes are task-local; calling aclose() from an HTTP request
+        # handler (a different task) caused a cancel-scope violation that
+        # propagated a CancelledError to the lifespan and tore down ALL sessions.
+        global _filesystem_restart_queue, _filesystem_manager_task, _filesystem_ready
+        _filesystem_restart_queue = asyncio.Queue()
+        _filesystem_ready = asyncio.Event()
+        _filesystem_manager_task = asyncio.create_task(_filesystem_mcp_manager())
+        await _filesystem_ready.wait()  # wait for initial connection attempt before continuing
+
         # --- Initialize Native MCP Servers ---
         for mcp_cfg in _build_native_mcp_servers():
             mcp_name = mcp_cfg["name"]
+
+            if mcp_name == "Filesystem":
+                continue  # already handled by _filesystem_mcp_manager task above
+
             cmd = mcp_cfg["command"]
 
             # Check that the command binary is available
@@ -354,20 +425,10 @@ async def lifespan(app: FastAPI):
                     args=mcp_cfg["args"],
                     env=env,
                 )
-                # Filesystem MCP uses its own stack so it can be restarted independently
-                # when repos are added or deleted without tearing down the whole exit_stack.
-                if mcp_name == "Filesystem":
-                    global _filesystem_stack
-                    _filesystem_stack = AsyncExitStack()
-                    read, write = await _filesystem_stack.enter_async_context(stdio_client(server_params))
-                    session = await _filesystem_stack.enter_async_context(
-                        ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
-                    )
-                else:
-                    read, write = await exit_stack.enter_async_context(stdio_client(server_params))
-                    session = await exit_stack.enter_async_context(
-                        ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
-                    )
+                read, write = await exit_stack.enter_async_context(stdio_client(server_params))
+                session = await exit_stack.enter_async_context(
+                    ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
+                )
                 await session.initialize()
 
                 agent_sessions[mcp_name] = session
@@ -466,11 +527,12 @@ async def lifespan(app: FastAPI):
                 await schedule_manager.stop()
             except Exception as e:
                 print(f"Warning: Schedule manager shutdown error: {e}")
-        if _filesystem_stack:
+        if _filesystem_manager_task and not _filesystem_manager_task.done():
+            _filesystem_manager_task.cancel()
             try:
-                await _filesystem_stack.aclose()
-            except BaseException as e:
-                print(f"Warning: Error closing filesystem MCP stack during shutdown: {e}")
+                await _filesystem_manager_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if exit_stack:
             try:
                 await exit_stack.aclose()

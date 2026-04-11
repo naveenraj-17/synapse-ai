@@ -47,6 +47,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
     const [excludedText, setExcludedText] = useState('');
     const [includedText, setIncludedText] = useState('');
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'warning' | 'error' } | null>(null);
 
     const showToast = (message: string, type: 'success' | 'warning' | 'error' = 'success') => {
@@ -110,6 +111,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             showToast('Name and Path are required', 'warning');
             return;
         }
+        setIsSaving(true);
         const parseLines = (text: string) =>
             text.split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -146,6 +148,8 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             }
         } catch {
             showToast('Failed to save repo', 'error');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -347,9 +351,11 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                         </button>
                         <button
                             onClick={handleSaveRepo}
-                            className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                            disabled={isSaving}
+                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Save Repository
+                            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {isSaving ? 'Saving…' : 'Save Repository'}
                         </button>
                     </div>
                 </div>
@@ -410,7 +416,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                             {repo.name}
                                             <span className={`text-[10px] font-bold px-2 py-0.5 border uppercase tracking-wide inline-flex items-center gap-1 ${getStatusColor(repo.status)}`}>
                                                 {(isIndexing || isStopping) && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                                {repo.status}
+                                                {!embedCode && repo.status === 'pending' ? 'not indexed' : repo.status}
                                             </span>
                                         </h4>
                                         <p className="text-xs text-zinc-500 font-mono truncate max-w-lg mt-1">{repo.path}</p>

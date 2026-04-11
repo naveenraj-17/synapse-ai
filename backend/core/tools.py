@@ -259,9 +259,9 @@ You have **{turns_remaining} turn(s) remaining** out of {max_turns} total.
 **Current Time:** {current_time}
 **Timezone:** {timezone}
 
-**IMPORTANT:** 
-Before using any tools, you must write a <plan> detailing the exact steps you will take to answer the query. After writing the plan, execute it step-by-step. Before making a new tool call, write a <thought> explaining why the previous data was insufficient and why this new call is necessary.
-After every tool call, evaluate the information gathered. If you have enough information to provide a comprehensive answer to the user's original query, you MUST immediately stop using tools and generate your final response.
+**IMPORTANT:**
+Before using any tools, write a brief `plan:` line detailing the exact steps you will take. Execute the plan step-by-step. Before each subsequent tool call, write a `thought:` line explaining why the previous data was insufficient and why this new call is necessary.
+After every tool call, evaluate the information gathered. If you have enough information, STOP using tools and write your final response in markdown — do NOT include any `plan:` or `thought:` lines in the final response.
 
 ### TOOLS
 You have access to the following tools:
