@@ -7,6 +7,16 @@
 
 ---
 
+## Prerequisites
+
+- **Python 3.11+**
+- **Node.js 22+**
+- **uvx** — `pip install uv` (used to run MCP servers)
+
+> Don't have these? The setup script will attempt to install any missing prerequisites automatically.
+
+---
+
 ## Install
 
 ### Quick Setup Script (recommended)
