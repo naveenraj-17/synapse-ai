@@ -3,7 +3,7 @@
 *A tool becomes an agent. An agent becomes a pipeline.*
 *A pipeline becomes whatever you were too busy to build.*
 
-**Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can wrap in an MCP server or n8n workflow.
+**Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can expose through an MCP server, a webhook, or a Python script — if you can write it, agents can use it.
 
 ---
 
@@ -32,7 +32,7 @@ Once installed, use the `synapse` command to manage the server:
 synapse start     # start backend + frontend, open browser
 synapse stop      # stop background processes
 synapse upgrade   # upgrade to the latest version
-synapse setup     # interactive setup wizard (API keys, ports)
+synapse uninstall # remove Synapse and clean up installed files
 ```
 
 ---
