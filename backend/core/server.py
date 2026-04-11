@@ -77,8 +77,8 @@ TOOLS_LIST = {
     "collect_data": str(TOOLS_DIR / "collect_data.py"),
     "pdf_parser": str(TOOLS_DIR / "pdf_parser.py"),
     "xlsx_parser": str(TOOLS_DIR / "xlsx_parser.py"),
-    "sandbox": str(TOOLS_DIR / "sandbox.py"),
-    "code_search": str(TOOLS_DIR / "code_search.py"),
+    "vault_sandbox": str(TOOLS_DIR / "sandbox.py"),
+    "code_vault_search": str(TOOLS_DIR / "code_search.py"),
     "web_scraper": str(TOOLS_DIR / "web_scraper.py"),
 }
 
