@@ -1,5 +1,6 @@
 """
 Vault: Automatically saves large tool outputs to files and provides tools to query them.
+Also resolves @[path] vault file mentions in user messages before they reach the LLM.
 
 When any tool returns more than VAULT_THRESHOLD characters, the output is saved to
 backend/data/vault/ and the LLM receives only the file path + metadata. The LLM can
@@ -13,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.config import DATA_DIR
-VAULT_DIR = Path(DATA_DIR) / "vault"
+VAULT_DIR = Path(DATA_DIR) / "vault" / "tool_outputs"
 VAULT_THRESHOLD = 100000  # characters (fallback default)
 
 
@@ -67,6 +68,42 @@ def maybe_vault(tool_name: str, raw_output: str) -> str:
 # ---------------------------------------------------------------------------
 # Vault tool implementations — called directly by react_engine.py
 # ---------------------------------------------------------------------------
+
+_VAULT_USER_DIR = Path(DATA_DIR) / "vault"
+
+
+def expand_vault_mentions(message: str) -> str:
+    """
+    Replace every @[relative/path] vault mention in the user message with the
+    file's actual content, so the LLM receives the data inline.
+
+    Example:
+        "Log a job. Config: @[jobs-filepath.json]"
+        →
+        "Log a job. Config: @[jobs-filepath.json]\n<file content here>"
+    """
+    def _replace(match: re.Match) -> str:
+        rel = match.group(1).strip()
+        # Prevent path traversal
+        try:
+            resolved = (_VAULT_USER_DIR / rel).resolve()
+            if not str(resolved).startswith(str(_VAULT_USER_DIR.resolve())):
+                return match.group(0)  # leave as-is if traversal attempt
+        except Exception:
+            return match.group(0)
+
+        if not resolved.exists() or not resolved.is_file():
+            return match.group(0)  # leave as-is if file not found
+
+        try:
+            content = resolved.read_text(encoding="utf-8")
+        except Exception:
+            return match.group(0)
+
+        return f"@[{rel}]\n```\n{content}\n```"
+
+    return re.sub(r"@\[([^\]]+)\]", _replace, message)
+
 
 def _safe_path(path: str) -> Path:
     """Return Path, rejecting obvious traversal attempts."""

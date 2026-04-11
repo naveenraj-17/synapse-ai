@@ -45,6 +45,7 @@ from core.routes.usage import router as usage_router
 from core.routes.profiling import router as profiling_router
 from core.routes.schedules import router as schedules_router
 from core.routes.import_export import router as import_export_router
+from core.routes.vault import router as vault_router
 from core.profiling import TimingMiddleware
 
 # Configuration
@@ -550,6 +551,7 @@ app.include_router(usage_router)
 app.include_router(schedules_router)
 app.include_router(profiling_router)
 app.include_router(import_export_router)
+app.include_router(vault_router)
 
 if __name__ == "__main__":
     import uvicorn

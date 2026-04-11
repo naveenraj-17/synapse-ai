@@ -873,7 +873,7 @@ export function UsageTab() {
                                 </span>
                             </div>
 
-                            {pagedSessions.map(s => <SessionRow key={s.session_id} s={s} />)}
+                            {pagedSessions.map((s, i) => <SessionRow key={`${s.session_id}-${s.run_id || ''}-${i}`} s={s} />)}
 
                             {pagedSessions.length === 0 && (
                                 <div className="flex flex-col items-center justify-center py-10 gap-2 text-zinc-700">

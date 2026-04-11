@@ -109,9 +109,11 @@ function applyDefaultModels(bundle: ImportBundle): ImportBundle {
 }
 
 
-export function ImportView({ preloadedBundle, onReset }: {
+export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNavigate }: {
   preloadedBundle?: any;
   onReset?: () => void;
+  onImportSuccess?: () => void;
+  onNavigate?: (tab: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -290,7 +292,7 @@ export function ImportView({ preloadedBundle, onReset }: {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Import failed");
-      setResults(data.results || {}); setStep("results");
+      setResults(data.results || {}); setStep("results"); onImportSuccess?.();
     } catch (e: any) { setParseError(e.message); }
     finally { setImporting(false); }
   };
@@ -355,7 +357,14 @@ export function ImportView({ preloadedBundle, onReset }: {
                 ))}
               </ul>
               <p className="text-orange-600 text-xs pt-0.5">
-                Go to <span className="text-orange-400 font-bold">Settings → Integrations</span> and connect your Google account, then come back and try importing again.
+                Connect your Google account in{" "}
+                <button
+                  onClick={() => onNavigate?.("workspace")}
+                  className="text-orange-400 font-bold underline underline-offset-2 hover:text-orange-300 transition-colors"
+                >
+                  Integrations
+                </button>
+                , then come back and try importing again.
               </p>
             </div>
           </div>

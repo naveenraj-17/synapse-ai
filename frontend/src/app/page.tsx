@@ -10,41 +10,54 @@ import { renderTextContent, cn } from '@/lib/utils';
 import { Message, OrchMsgType, SystemStatus } from '@/types';
 
 // ─── LLM Thought Collapsible ────────────────────────────────────────────────
+type ThoughtEntry =
+  | { type: 'prose'; text: string }
+  | { type: 'tool_call'; toolName: string };
+
 function ThoughtCollapsible({ thoughts, stepName }: { thoughts: string[]; stepName?: string }) {
   const [open, setOpen] = useState(false);
 
-  // Filter out pure JSON tool calls — only show natural-language reasoning
-  const naturalThoughts = thoughts.filter(t => {
-    const trimmed = t.trim();
-    if (!trimmed) return false;
-    // If it starts with { and looks like JSON, it's a tool call — skip unless short enough to be partly text
-    if (trimmed.startsWith('{')) {
-      try { JSON.parse(trimmed); return false; } catch { /* not pure JSON */ }
-    }
-    return true;
-  });
+  // Map every thought — prose stays as-is, pure JSON tool calls become a readable summary
+  const parsedThoughts: ThoughtEntry[] = thoughts
+    .map(t => {
+      const trimmed = t.trim();
+      if (!trimmed) return null;
+      if (trimmed.startsWith('{')) {
+        try {
+          const obj = JSON.parse(trimmed);
+          const toolName = (obj.tool || obj.name || 'tool') as string;
+          return { type: 'tool_call' as const, toolName };
+        } catch { /* not pure JSON — fall through */ }
+      }
+      return { type: 'prose' as const, text: trimmed };
+    })
+    .filter(Boolean) as ThoughtEntry[];
 
-  if (naturalThoughts.length === 0) return null;
+  if (parsedThoughts.length === 0) return null;
 
   return (
-    <div className="mt-2 border border-zinc-800 rounded-sm overflow-hidden">
+    <div className="mt-2 border border-zinc-700 rounded-sm overflow-hidden w-0 min-w-full">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono text-zinc-300 hover:text-zinc-100 hover:bg-zinc-900/60 bg-zinc-900/30 transition-colors"
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <span className="uppercase tracking-wider">
-          💭 Reasoning {stepName ? `· ${stepName}` : ''} ({naturalThoughts.length} turn{naturalThoughts.length > 1 ? 's' : ''})
+          💭 Reasoning {stepName ? `· ${stepName}` : ''} ({parsedThoughts.length} turn{parsedThoughts.length > 1 ? 's' : ''})
         </span>
       </button>
       {open && (
         <div className="border-t border-zinc-800 bg-zinc-950/60 divide-y divide-zinc-900">
-          {naturalThoughts.map((t, i) => (
-            <div key={i} className="px-3 py-2 text-[12px] text-zinc-400 font-mono whitespace-pre-wrap leading-5">
-              {naturalThoughts.length > 1 && (
+          {parsedThoughts.map((entry, i) => (
+            <div key={i} className="px-3 py-2 text-[12px] font-mono leading-5">
+              {parsedThoughts.length > 1 && (
                 <span className="text-zinc-600 text-[10px] mr-2">Turn {i + 1}</span>
               )}
-              {t}
+              {entry.type === 'tool_call' ? (
+                <span className="text-zinc-600">→ Called: {entry.toolName}</span>
+              ) : (
+                <span className="text-zinc-400 whitespace-pre-wrap break-words">{entry.text}</span>
+              )}
             </div>
           ))}
         </div>
@@ -700,18 +713,20 @@ export default function Home() {
                       setIsThinking(true);
                       break;
 
-                    case 'response':
-                      // Final response — clear pending thoughts (they'll be shown in the message)
+                    case 'response': {
+                      // Final response — capture thoughts snapshot then clear
+                      const capturedThoughts = [...pendingThoughtsRef.current];
                       setMessages(prev => [...prev, {
                         role: 'assistant',
                         content: data.content,
                         intent: data.intent,
                         data: data.data,
                         tool: data.tool_name,
-                        thoughts: [...pendingThoughtsRef.current],
+                        thoughts: capturedThoughts,
                       }]);
                       pendingThoughtsRef.current = [];
                       break;
+                    }
 
                     // ── Orchestration lifecycle ──────────────────────────────────
                     case 'orchestration_start':
@@ -953,45 +968,70 @@ export default function Home() {
           {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
         </div>
 
-        <div className="flex flex-col flex-1 min-w-0 gap-2">
-          <div className={cn(
-            "p-4 text-[15px] leading-7 border relative font-sans",
-            msg.role === 'user'
-              ? "bg-zinc-900 border-zinc-800 text-zinc-100 self-end max-w-[80%]"
-              : "bg-zinc-900/50 border-zinc-800 text-zinc-100 self-start max-w-full"
-          )}>
-            {/* Intent Indicator for Assistant */}
-            {msg.role === 'assistant' && msg.intent && (
-              <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
-                {msg.intent.replaceAll('_', ' ')} Operation
+        <div className={cn(
+          "flex flex-col flex-1 min-w-0 gap-2",
+          msg.role === 'assistant' && msg.intent ? "mt-2" : ""
+        )}>
+          {msg.role === 'user' ? (
+            /* ── User bubble ── */
+            <div className="p-4 bg-zinc-900 border border-zinc-800 text-zinc-100 text-[15px] leading-7 relative font-sans self-end max-w-[80%]">
+              <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
+                {renderTextContent(msg.content)}
               </div>
-            )}
-
-            {/* Content */}
-            <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
-              {renderTextContent(msg.content)}
+              {msg.images && msg.images.length > 0 && (
+                <div className="flex flex-wrap gap-3 mt-4">
+                  {msg.images.map((img, imgIdx) => (
+                    <div key={imgIdx} className="relative group">
+                      <img
+                        src={img}
+                        alt={`Attached ${imgIdx + 1}`}
+                        className="h-[4.5rem] w-[4.5rem] object-cover border border-zinc-700/60 rounded-xl cursor-pointer hover:border-zinc-400 hover:scale-[1.03] hover:shadow-lg transition-all"
+                        onClick={() => window.open(img, '_blank')}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {/* Attached Images */}
-            {msg.images && msg.images.length > 0 && (
-              <div className="flex flex-wrap gap-3 mt-4">
-                {msg.images.map((img, imgIdx) => (
-                  <div key={imgIdx} className="relative group">
-                    <img
-                      src={img}
-                      alt={`Attached ${imgIdx + 1}`}
-                      className="h-[4.5rem] w-[4.5rem] object-cover border border-zinc-700/60 rounded-xl cursor-pointer hover:border-zinc-400 hover:scale-[1.03] hover:shadow-lg transition-all"
-                      onClick={() => window.open(img, '_blank')}
-                    />
+          ) : (
+            /* ── Assistant bubble + reasoning — shared width via self-start wrapper ── */
+            <div className="flex flex-col self-start min-w-72 max-w-full gap-2">
+              <div className={cn(
+                "text-[15px] leading-7 border relative font-sans px-4 pb-4 bg-zinc-900/50 border-zinc-800 text-zinc-100 w-full",
+                msg.intent ? "pt-6" : "pt-4"
+              )}>
+                {/* Agent Name Badge */}
+                {msg.intent && (
+                  <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
+                    {agentName}
                   </div>
-                ))}
+                )}
+                {/* Content */}
+                <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
+                  {renderTextContent(msg.content)}
+                </div>
+                {/* Attached Images */}
+                {msg.images && msg.images.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    {msg.images.map((img, imgIdx) => (
+                      <div key={imgIdx} className="relative group">
+                        <img
+                          src={img}
+                          alt={`Attached ${imgIdx + 1}`}
+                          className="h-[4.5rem] w-[4.5rem] object-cover border border-zinc-700/60 rounded-xl cursor-pointer hover:border-zinc-400 hover:scale-[1.03] hover:shadow-lg transition-all"
+                          onClick={() => window.open(img, '_blank')}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* LLM Thoughts for regular responses */}
-          {msg.role === 'assistant' && msg.thoughts && msg.thoughts.length > 0 && (
-            <ThoughtCollapsible thoughts={msg.thoughts} />
+              {/* LLM Thoughts — same width as bubble via shared wrapper */}
+              {msg.thoughts && msg.thoughts.length > 0 && (
+                <ThoughtCollapsible thoughts={msg.thoughts} />
+              )}
+            </div>
           )}
 
           {/* Dynamic UI based on Intent - Rendered Outside Bubble */}

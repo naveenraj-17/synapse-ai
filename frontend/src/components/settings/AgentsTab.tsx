@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Bot, Plus, Save, Trash, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2, MessageSquare, ExternalLink, CheckCircle, XCircle, Square } from 'lucide-react';
+import { VaultTextarea } from '@/components/VaultMention';
 import { CAPABILITIES, AUTO_TOOLS_BY_TYPE } from './types';
 import { renderTextContent } from '@/lib/utils';
 import { useDispatch } from 'react-redux';
@@ -19,6 +20,7 @@ interface AgentsTabProps {
     onDeleteAgent: (id: string) => void;
     providers?: Record<string, { available: boolean; models: string[] }>;
     defaultModel?: string;
+    loadingAgents?: boolean;
 }
 
 import React, { useState, useEffect } from 'react';
@@ -26,7 +28,7 @@ import React, { useState, useEffect } from 'react';
 export const AgentsTab = ({
     agents, selectedAgentId, setSelectedAgentId,
     draftAgent, setDraftAgent, availableCapabilities, loadingCapabilities = false, customTools,
-    onDeleteAgent, providers, defaultModel
+    onDeleteAgent, providers, defaultModel, loadingAgents = false
 }: AgentsTabProps) => {
     const dispatch = useDispatch<AppDispatch>();
     const [repos, setRepos] = useState<any[]>([]);
@@ -220,6 +222,12 @@ export const AgentsTab = ({
                 </div>
 
                 <div className="space-y-2 flex-1 overflow-y-auto modern-scrollbar">
+                    {loadingAgents && agents.length === 0 && (
+                        <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading agents…
+                        </div>
+                    )}
                     {Array.isArray(agents) && agents.map((a: any) => (
                         <div
                             key={a.id}
@@ -667,10 +675,11 @@ export const AgentsTab = ({
                                                 {renderTextContent(draftAgent.system_prompt || '*No system prompt yet.*')}
                                             </div>
                                         ) : (
-                                            <textarea
+                                            <VaultTextarea
                                                 value={draftAgent.system_prompt}
                                                 onChange={e => setDraftAgent({ ...draftAgent, system_prompt: e.target.value })}
                                                 className="w-full flex-1 min-h-[200px] bg-zinc-950 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none leading-relaxed"
+                                                placeholder="You are a helpful assistant. Type @ to reference a vault file..."
                                             />
                                         )}
                                     </div>
