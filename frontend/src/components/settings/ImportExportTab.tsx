@@ -9,7 +9,7 @@ import { ExamplesView } from "./import-export/ExamplesView";
 
 type TabView = "export" | "import" | "examples";
 
-export function ImportExportTab({ defaultView }: { defaultView?: TabView }) {
+export function ImportExportTab({ defaultView, onImportSuccess, onNavigate }: { defaultView?: TabView; onImportSuccess?: () => void; onNavigate?: (tab: string) => void }) {
   const [view, setView] = useState<TabView>(defaultView ?? "export");
   // When a bundle is loaded from ExamplesView, store it so ImportView can consume it
   const [preloadedBundle, setPreloadedBundle] = useState<any>(null);
@@ -59,6 +59,8 @@ export function ImportExportTab({ defaultView }: { defaultView?: TabView }) {
         <ImportView
           preloadedBundle={preloadedBundle}
           onReset={handleImportReset}
+          onImportSuccess={onImportSuccess}
+          onNavigate={onNavigate}
         />
       )}
     </div>

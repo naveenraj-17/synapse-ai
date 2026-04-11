@@ -10,7 +10,7 @@ import time
 import httpx
 
 from core.config import load_settings
-from core.vault import maybe_vault
+from core.vault import maybe_vault, expand_vault_mentions
 from core.session import (
     _get_session_id, _get_session_state,
     _apply_sticky_args, _clear_session_embeddings,
@@ -776,7 +776,7 @@ async def run_react_loop(request, server_module):
         return
 
     session_id = _get_session_id(request)
-    user_message = request.message
+    user_message = expand_vault_mentions(request.message)
 
     # Merge client state
     ss = _get_session_state(session_id)

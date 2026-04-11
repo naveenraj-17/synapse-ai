@@ -1,5 +1,5 @@
 "use client";
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, DollarSign, Clock, ArrowLeftRight } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, DollarSign, Clock, ArrowLeftRight, Vault } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -16,10 +16,11 @@ const tabs = [
     { id: 'messaging', label: 'Messaging', icon: MessageSquare },
     { id: 'workspace', label: 'Integrations', icon: Cloud },
     { id: 'schedules', label: 'Schedules', icon: Clock },
+    { id: 'vault', label: 'Vault', icon: Vault },
     { id: 'usage', label: 'Usage', icon: DollarSign },
+    { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
     { id: 'logs', label: 'Logs', icon: ScrollText },
     { id: 'memory', label: 'Memory', icon: Trash },
-    { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
 ];
 
 export default function SettingsLayout({

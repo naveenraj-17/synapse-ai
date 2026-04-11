@@ -13,6 +13,46 @@ import { SectionTable } from "./SectionTable";
 
 const inputCls = "w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700";
 
+const GOOGLE_WORKSPACE_TOOLS = new Set([
+  "start_google_auth",
+  // Gmail
+  "search_gmail_messages", "get_gmail_message_content", "get_gmail_messages_content_batch",
+  "get_gmail_attachment_content", "send_gmail_message", "draft_gmail_message",
+  "get_gmail_thread_content", "get_gmail_threads_content_batch", "list_gmail_labels",
+  "manage_gmail_label", "list_gmail_filters", "manage_gmail_filter",
+  "modify_gmail_message_labels", "batch_modify_gmail_message_labels",
+  // Drive
+  "search_drive_files", "get_drive_file_content", "get_drive_file_download_url",
+  "list_drive_items", "create_drive_folder", "create_drive_file", "import_to_google_doc",
+  "get_drive_file_permissions", "check_drive_file_public_access", "update_drive_file",
+  "get_drive_shareable_link", "manage_drive_access", "copy_drive_file", "set_drive_file_permissions",
+  // Calendar
+  "list_calendars", "get_events", "manage_event", "manage_out_of_office",
+  "manage_focus_time", "query_freebusy", "create_calendar",
+  // Docs
+  "search_docs", "get_doc_content", "list_docs_in_folder", "create_doc", "modify_doc_text",
+  "find_and_replace_doc", "insert_doc_elements", "insert_doc_image", "update_doc_headers_footers",
+  "batch_update_doc", "inspect_doc_structure", "debug_docs_runtime_info", "create_table_with_data",
+  "debug_table_structure", "export_doc_to_pdf", "update_paragraph_style", "get_doc_as_markdown",
+  "insert_doc_tab", "delete_doc_tab", "update_doc_tab", "list_document_comments", "manage_document_comment",
+  // Sheets
+  "list_spreadsheets", "get_spreadsheet_info", "read_sheet_values", "modify_sheet_values",
+  "format_sheet_range", "manage_conditional_formatting", "create_spreadsheet", "create_sheet",
+  "list_sheet_tables", "append_table_rows", "resize_sheet_dimensions",
+  "list_spreadsheet_comments", "manage_spreadsheet_comment",
+  // Slides
+  "create_presentation", "get_presentation", "batch_update_presentation",
+  "get_page", "get_page_thumbnail", "list_presentation_comments", "manage_presentation_comment",
+  // Forms
+  "create_form", "get_form", "set_publish_settings",
+  "get_form_response", "list_form_responses", "batch_update_form",
+  // Tasks
+  "list_task_lists", "get_task_list", "manage_task_list", "list_tasks", "get_task", "manage_task",
+  // Contacts
+  "list_contacts", "get_contact", "search_contacts", "manage_contact",
+  "list_contact_groups", "get_contact_group", "manage_contacts_batch", "manage_contact_group",
+]);
+
 type ImportStep = "upload" | "preview" | "secrets" | "results";
 
 // ── Utility: collect all non-null/default models from a bundle ────────────────
@@ -69,9 +109,11 @@ function applyDefaultModels(bundle: ImportBundle): ImportBundle {
 }
 
 
-export function ImportView({ preloadedBundle, onReset }: {
+export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNavigate }: {
   preloadedBundle?: any;
   onReset?: () => void;
+  onImportSuccess?: () => void;
+  onNavigate?: (tab: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -250,7 +292,7 @@ export function ImportView({ preloadedBundle, onReset }: {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Import failed");
-      setResults(data.results || {}); setStep("results");
+      setResults(data.results || {}); setStep("results"); onImportSuccess?.();
     } catch (e: any) { setParseError(e.message); }
     finally { setImporting(false); }
   };
@@ -284,7 +326,7 @@ export function ImportView({ preloadedBundle, onReset }: {
     const allModels = collectModels(bundle);
     const hasModels = allModels.length > 0;
     const googleDependentAgents = (bundle.agents || [])
-      .filter(a => selAgent.has(a.id) && (a.tools || []).some(t => t.startsWith("Google Workspace__")))
+      .filter(a => selAgent.has(a.id) && (a.tools || []).some(t => GOOGLE_WORKSPACE_TOOLS.has(t)))
       .map(a => a.name);
 
     return (
@@ -315,7 +357,14 @@ export function ImportView({ preloadedBundle, onReset }: {
                 ))}
               </ul>
               <p className="text-orange-600 text-xs pt-0.5">
-                Go to <span className="text-orange-400 font-bold">Settings → Integrations</span> and connect your Google account, then come back and try importing again.
+                Connect your Google account in{" "}
+                <button
+                  onClick={() => onNavigate?.("workspace")}
+                  className="text-orange-400 font-bold underline underline-offset-2 hover:text-orange-300 transition-colors"
+                >
+                  Integrations
+                </button>
+                , then come back and try importing again.
               </p>
             </div>
           </div>

@@ -28,6 +28,7 @@ interface GeneralTabProps {
     embedCode: boolean;
     setEmbedCode: (v: boolean) => void;
     onSave: () => void;
+    isSaving?: boolean;
 }
 
 export function GeneralTab({
@@ -36,7 +37,7 @@ export function GeneralTab({
     vaultThreshold, setVaultThreshold,
     allowDbWrite, setAllowDbWrite,
     embedCode, setEmbedCode,
-    onSave,
+    onSave, isSaving,
 }: GeneralTabProps) {
     const [embedChecking, setEmbedChecking] = useState(false);
     const [embedCheckState, setEmbedCheckState] = useState<EmbedCheckState | null>(null);
@@ -383,9 +384,11 @@ export function GeneralTab({
             <div className="pt-4 flex justify-end">
                 <button
                     onClick={onSave}
-                    className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                    disabled={isSaving}
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Save Changes
+                    {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isSaving ? 'Saving…' : 'Save Changes'}
                 </button>
             </div>
         </div>
