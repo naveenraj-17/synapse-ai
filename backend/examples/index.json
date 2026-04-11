@@ -1,5 +1,19 @@
 [
   {
+    "id": "simple_orch_pack",
+    "name": "Simple Orchestration Pack",
+    "description": "Simple orchestration that includes a minimal job searching and creating sheets agents",
+    "tags": [
+      "agents",
+      "orchestrations"
+    ],
+    "agent_count": 2,
+    "orchestration_count": 1,
+    "mcp_count": 0,
+    "tool_count": 0,
+    "file": "starter_pack.bundle.json"
+  },
+  {
     "id": "starter_pack",
     "name": "Starter Pack",
     "description": "Get up and running fast \u2014 includes a Personal Assistant with full tool access and a Web Research Agent, plus a ready-to-use Content Research & Writing Pipeline.",

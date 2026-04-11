@@ -3,7 +3,7 @@
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
@@ -30,11 +30,12 @@ import { MessagingTab } from './settings/MessagingTab';
 import { UsageTab } from './settings/UsageTab';
 import { SchedulesTab } from './settings/SchedulesTab';
 import { ImportExportTab } from './settings/ImportExportTab';
+import { VaultTab } from './settings/VaultTab';
 
 
 export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
     const dispatch = useDispatch<AppDispatch>();
-    const { agents, mcpServers, customTools, models: rModels, initialized } = useSelector((state: RootState) => state.settings);
+    const { agents, mcpServers, customTools, models: rModels, initialized, loading: loadingAgents } = useSelector((state: RootState) => state.settings);
 
     const [activeTab, setActiveTab] = useState<Tab>(initialTab as Tab);
     const [agentName, setAgentName] = useState('');
@@ -45,6 +46,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [cloudModels, setCloudModels] = useState<string[]>([]);
     const [providers, setProviders] = useState<Record<string, { available: boolean; models: string[] }>>({});
     const [loadingModels, setLoadingModels] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     const router = useRouter();
 
@@ -192,6 +194,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     };
 
     const handleSaveSection = async () => {
+        setIsSaving(true);
         const payload = {
             agent_name: agentName,
             model: selectedModel,
@@ -221,19 +224,20 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 body: JSON.stringify(payload),
             });
             if (!response.ok) throw new Error('Failed to update settings');
+
+            if (mode === 'bedrock' || bedrockApiKey) {
+                await refreshBedrockModels();
+                await refreshBedrockInferenceProfiles();
+            } else if (activeTab === 'models' || mode === 'cloud') {
+                await refreshModels();
+            }
+            showToast('Configuration saved', 'success');
         } catch (error) {
             console.error(error);
             showToast('Failed to save settings', 'error');
-            return;
+        } finally {
+            setIsSaving(false);
         }
-
-        if (mode === 'bedrock' || bedrockApiKey) {
-            await refreshBedrockModels();
-            await refreshBedrockInferenceProfiles();
-        } else if (activeTab === 'models' || mode === 'cloud') {
-            await refreshModels();
-        }
-        showToast('Configuration saved', 'success');
     };
 
     const handleSavePersonalDetails = async () => {
@@ -774,6 +778,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         { id: 'memory', label: 'Memory', icon: Trash },
         { id: 'logs', label: 'Logs', icon: ScrollText },
         { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
+        { id: 'vault', label: 'Vault', icon: Vault },
     ];
 
     return (
@@ -828,12 +833,25 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             <h1 className="text-3xl font-bold mb-2 text-zinc-50">Import / Export</h1>
                             <p className="text-zinc-500 text-sm">Export your orchestrations, agents, MCP servers, and tools as a portable bundle, or import one from another Synapse instance.</p>
                         </div>
-                        <ImportExportTab defaultView={initialSubTab === 'examples' ? 'examples' : undefined} />
+                        <ImportExportTab defaultView={initialSubTab === 'examples' ? 'examples' : undefined} onImportSuccess={() => dispatch(fetchAllSettingsData())} onNavigate={(tab) => setActiveTab(tab as Tab)} />
                     </div>
                 </div>
             )}
 
-            <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' || activeTab === 'usage' || activeTab === 'schedules' || activeTab === 'import_export' ? 'hidden' : ''}`}>
+            {/* Vault tab: full-bleed file explorer */}
+            {activeTab === 'vault' && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex-shrink-0 px-6 py-4 border-b border-zinc-800">
+                        <h1 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
+                            <Vault className="h-5 w-5 text-zinc-400" /> Vault
+                        </h1>
+                        <p className="text-zinc-500 text-xs mt-1">Manage knowledge files, skills, and other files (.md, .json, .txt) that agents can reference in their prompts using @[path] syntax.</p>
+                    </div>
+                    <VaultTab />
+                </div>
+            )}
+
+            <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' || activeTab === 'usage' || activeTab === 'schedules' || activeTab === 'import_export' || activeTab === 'vault' ? 'hidden' : ''}`}>
                 <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
 
                     <div className="mb-8">
@@ -855,6 +873,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             embedCode={embedCode}
                             setEmbedCode={setEmbedCode}
                             onSave={handleSaveSection}
+                            isSaving={isSaving}
                         />
                     )}
 
@@ -888,6 +907,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             onDeleteAgent={handleDeleteAgent}
                             providers={providers}
                             defaultModel={selectedModel}
+                            loadingAgents={loadingAgents}
                         />
                     )}
 
@@ -952,6 +972,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             inferenceProfilesError={inferenceProfilesError}
                             onExpandBedrock={refreshBedrockInferenceProfiles}
                             onSave={handleSaveSection}
+                            isSaving={isSaving}
                         />
                     )}
 

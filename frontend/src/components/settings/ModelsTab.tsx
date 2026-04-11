@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info } from 'lucide-react';
+import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2 } from 'lucide-react';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -58,6 +58,7 @@ interface ModelsTabProps {
     loadingModels: boolean;
     onExpandBedrock?: () => void;
     onSave: () => void;
+    isSaving?: boolean;
     // Backward compat
     mode: string; setMode: (v: string) => void;
     localModels: string[]; cloudModels: string[];
@@ -148,7 +149,7 @@ export const ModelsTab = ({
     bedrockApiKey, setBedrockApiKey,
     awsRegion, setAwsRegion, bedrockInferenceProfile, setBedrockInferenceProfile,
     bedrockInferenceProfiles, loadingInferenceProfiles, inferenceProfilesError, loadingModels,
-    onExpandBedrock, onSave, mode, setMode, localModels, cloudModels, filteredModels
+    onExpandBedrock, onSave, isSaving, mode, setMode, localModels, cloudModels, filteredModels
 }: ModelsTabProps) => {
     const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
@@ -439,9 +440,11 @@ export const ModelsTab = ({
             <div className="pt-4 flex justify-end">
                 <button
                     onClick={onSave}
-                    className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                    disabled={isSaving}
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Save Changes
+                    {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isSaving ? 'Saving…' : 'Save Changes'}
                 </button>
             </div>
         </div>

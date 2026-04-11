@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { VaultTextarea } from '@/components/VaultMention';
 import { EditorView } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { python } from '@codemirror/lang-python';
@@ -80,7 +81,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                         </div>
                         <div>
                             <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
-                            <textarea className={textareaCls} rows={4} value={step.prompt_template || ''} onChange={(e) => update({ prompt_template: e.target.value })} placeholder="Use {state.key} to reference shared state..." />
+                            <VaultTextarea className={textareaCls} rows={4} value={step.prompt_template || ''} onChange={(e) => update({ prompt_template: e.target.value })} placeholder="Use {state.key} to reference shared state, @ to reference vault files..." />
                         </div>
                     </>
                 )}
@@ -98,14 +99,14 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                         </div>
                         <div>
                             <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
-                            <textarea
+                            <VaultTextarea
                                 className={textareaCls}
                                 rows={5}
                                 value={step.prompt_template || ''}
                                 onChange={(e) => update({ prompt_template: e.target.value })}
-                                placeholder={`Summarize the following in 3 bullet points:\n\n{state.analysis_result}`}
+                                placeholder={`Summarize the following in 3 bullet points:\n\n{state.analysis_result}\n\nType @ to reference a vault file`}
                             />
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values.</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values. Type <span className="text-emerald-400 font-mono">@</span> to reference a vault file.</p>
                         </div>
                         <div>
                             <label className="text-xs text-zinc-400 block mb-1">Model <span className="text-zinc-600 normal-case">(override)</span></label>
@@ -547,14 +548,14 @@ function ToolStepConfig({ step, update, textareaCls, selectCls, availableModels 
             </div>
             <div>
                 <label className="text-xs text-zinc-400 block mb-1">Prompt Template</label>
-                <textarea
+                <VaultTextarea
                     className={textareaCls}
                     rows={4}
                     value={step.prompt_template || ''}
                     onChange={(e) => update({ prompt_template: e.target.value })}
-                    placeholder={`Search for relevant data about {state.user_input}`}
+                    placeholder={`Search for relevant data about {state.user_input}\n\nType @ to reference a vault file`}
                 />
-                <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state values.</p>
+                <p className="text-[10px] text-zinc-600 mt-0.5">Use {'{'+'state.key}'+'}'} to embed shared state. Type <span className="text-emerald-400 font-mono">@</span> to reference a vault file.</p>
             </div>
             <div>
                 <label className="text-xs text-zinc-400 block mb-1">Model <span className="text-zinc-600 normal-case">(override)</span></label>
