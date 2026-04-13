@@ -61,7 +61,7 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 - **Build custom tools with Webhooks and Python** — instantly convert any webhook (zero-code) or Python script into an agent tool.
 - **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
 - **Persistent vault** — agents save and share files across sessions and runs
-- **Local-first** — runs entirely on your machine with Ollama, or connect any cloud LLM
+- **Local-first** — runs entirely on your machine with Ollama or CLI providers (Claude, Gemini, Codex), or connect any cloud LLM
 
 ---
 
@@ -363,6 +363,9 @@ The **Vault** is a persistent file directory (`data/vault/`) that acts as shared
 | **Gemini** | Cloud | Gemini 1.5 Pro, Gemini 2.0 Flash, etc. |
 | **xAI (Grok)** | Cloud | Grok-2, Grok-3, Grok-3 Mini. Base URL: `https://api.x.ai/v1`. Set `XAI_API_KEY`. |
 | **DeepSeek** | Cloud | DeepSeek-V3, DeepSeek-R1 (reasoning model). Base URL: `https://api.deepseek.com`. Set `DEEPSEEK_API_KEY`. |
+| **Claude CLI** | CLI | Requires the [Claude Code](https://claude.ai/code) CLI (`claude`) installed and authenticated. No API key needed — uses your existing Claude subscription. |
+| **Gemini CLI** | CLI | Requires the [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`) installed and authenticated. Supports `pro` and `flash` variants. |
+| **Codex CLI** | CLI | Requires the [Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated. No API key needed — uses your existing OpenAI subscription. |
 
 Switch providers per-agent or globally in **Settings → Model**.
 

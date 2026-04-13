@@ -1080,6 +1080,34 @@ def _fetch_ollama_models(base_url="http://127.0.0.1:11434"):
     except Exception:
         return []
 
+def _detect_claude_cli():
+    """Returns Claude CLI model list if 'claude' binary is found, else []."""
+    if not shutil.which("claude"):
+        return []
+    return [
+        "cli.claude.claude-sonnet-4-6",
+        "cli.claude.claude-sonnet-4-6-thinking",
+        "cli.claude.claude-opus-4-6",
+        "cli.claude.claude-opus-4-6-thinking",
+        "cli.claude.claude-haiku-4-5-20251001",
+        "cli.claude.claude-sonnet-4-5-20250929",
+        "cli.claude.claude-opus-4-5-20251101",
+        "cli.claude.claude-opus-4-5-20251101-thinking",
+        "cli.claude",
+    ]
+
+def _detect_gemini_cli():
+    """Returns Gemini CLI model list if 'gemini' binary is found, else []."""
+    if not shutil.which("gemini"):
+        return []
+    return ["cli.gemini.pro", "cli.gemini.flash", "cli.gemini"]
+
+def _detect_codex_cli():
+    """Returns Codex CLI model list if 'codex' binary is found, else []."""
+    if not shutil.which("codex"):
+        return []
+    return ["cli.codex"]
+
 def _fetch_gemini_models(api_key):
     try:
         data = _fetch_json(
@@ -1186,34 +1214,76 @@ def _fetch_bedrock_models(api_key, region):
 def ask_llm(cfg):
     step("LLM Provider & Model")
 
-    # Try Ollama first
-    info("Checking for Ollama...")
-    ollama_models = _fetch_ollama_models()
-    if ollama_models:
-        ok(f"Ollama detected with {len(ollama_models)} model(s).")
-        model = ask_choice("Select model", ollama_models)
-        cfg["model"] = model
-        cfg["mode"] = "local"
-        ok(f"Model set to: {model}  (can be updated later in Settings)")
-        return
+    # Detect all local / CLI providers
+    info("Checking for local and CLI providers...")
+    ollama_models     = _fetch_ollama_models()
+    claude_cli_models = _detect_claude_cli()
+    gemini_cli_models = _detect_gemini_cli()
+    codex_cli_models  = _detect_codex_cli()
 
-    # Ollama not detected -- ask if user has it on a custom URL
-    if ask_yn("Ollama not detected on default port. Do you have Ollama running?"):
-        base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
-        cfg["ollama_base_url"] = base_url
-        _update_env_file("OLLAMA_BASE_URL", base_url)
-        info("Checking for models at that URL...")
-        ollama_models = _fetch_ollama_models(base_url)
-        if ollama_models:
-            ok(f"Found {len(ollama_models)} model(s).")
+    # Build the list of detected local/CLI options
+    local_choices = []
+    if ollama_models:
+        local_choices.append(f"Ollama  ({len(ollama_models)} model(s) detected)")
+    if claude_cli_models:
+        local_choices.append("Claude CLI  (claude)")
+    if gemini_cli_models:
+        local_choices.append("Gemini CLI  (gemini)")
+    if codex_cli_models:
+        local_choices.append("Codex CLI  (codex)")
+
+    if local_choices:
+        ok(f"Detected: {', '.join(c.split('  ')[0] for c in local_choices)}")
+        choice = ask_choice("Select provider", local_choices + ["Cloud Provider"])
+
+        if choice.startswith("Ollama"):
             model = ask_choice("Select model", ollama_models)
-        else:
-            warn("No models found. Enter a model name manually.")
-            model = ask("Ollama model name", default="llama3")
-        cfg["model"] = model
-        cfg["mode"] = "local"
-        ok(f"Model set to: {model}  (can be updated later in Settings)")
-        return
+            cfg["model"] = model
+            cfg["mode"]  = "local"
+            ok(f"Model set to: {model}  (can be updated later in Settings)")
+            return
+
+        elif choice.startswith("Claude CLI"):
+            model = ask_choice("Select model", claude_cli_models)
+            cfg["model"] = model
+            cfg["mode"]  = "cli"
+            ok(f"Model set to: {model}  (can be updated later in Settings)")
+            return
+
+        elif choice.startswith("Gemini CLI"):
+            model = ask_choice("Select model", gemini_cli_models)
+            cfg["model"] = model
+            cfg["mode"]  = "cli"
+            ok(f"Model set to: {model}  (can be updated later in Settings)")
+            return
+
+        elif choice.startswith("Codex CLI"):
+            model = ask_choice("Select model", codex_cli_models)
+            cfg["model"] = model
+            cfg["mode"]  = "cli"
+            ok(f"Model set to: {model}  (can be updated later in Settings)")
+            return
+
+        # "Cloud Provider" selected — fall through to cloud section below
+
+    else:
+        # Nothing detected locally — ask if user has Ollama on a custom URL
+        if ask_yn("No local/CLI providers detected. Do you have Ollama running?"):
+            base_url = ask("Ollama base URL", default="http://127.0.0.1:11434").rstrip("/")
+            cfg["ollama_base_url"] = base_url
+            _update_env_file("OLLAMA_BASE_URL", base_url)
+            info("Checking for models at that URL...")
+            ollama_models = _fetch_ollama_models(base_url)
+            if ollama_models:
+                ok(f"Found {len(ollama_models)} model(s).")
+                model = ask_choice("Select model", ollama_models)
+            else:
+                warn("No models found. Enter a model name manually.")
+                model = ask("Ollama model name", default="llama3")
+            cfg["model"] = model
+            cfg["mode"]  = "local"
+            ok(f"Model set to: {model}  (can be updated later in Settings)")
+            return
 
     info("Select a cloud LLM provider:")
     providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "DeepSeek", "Grok (xAI)", "Bedrock (AWS)"]

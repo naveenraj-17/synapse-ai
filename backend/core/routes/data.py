@@ -234,6 +234,35 @@ async def get_models():
         except Exception:
             return True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]
 
+    async def fetch_claude_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = [
+            "cli.claude.claude-sonnet-4-6",
+            "cli.claude.claude-sonnet-4-6-thinking",
+            "cli.claude.claude-opus-4-6",
+            "cli.claude.claude-opus-4-6-thinking",
+            "cli.claude.claude-haiku-4-5-20251001",
+            "cli.claude.claude-sonnet-4-5-20250929",
+            "cli.claude.claude-opus-4-5-20251101",
+            "cli.claude.claude-opus-4-5-20251101-thinking",
+            "cli.claude"
+        ] if shutil.which("claude") else []
+        return bool(models), models, []
+
+    async def fetch_gemini_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = [
+            "cli.gemini.pro",
+            "cli.gemini.flash",
+            "cli.gemini"
+        ] if shutil.which("gemini") else []
+        return bool(models), models, []
+
+    async def fetch_codex_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = ["cli.codex"] if shutil.which("codex") else []
+        return bool(models), models, []
+
     # Run all fetches concurrently; return_exceptions=True ensures one provider failure
     # doesn't cancel the others.
     _PROVIDER_FALLBACKS = [
@@ -244,12 +273,16 @@ async def get_models():
         (True, GROK_FALLBACK, []),                                                       # grok
         (True, DEEPSEEK_FALLBACK, []),                                                   # deepseek
         (True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]),                # bedrock
+        (False, [], []),                                                                 # anthropic_cli
+        (False, [], []),                                                                 # gemini_cli
+        (False, [], []),                                                                 # codex_cli
     ]
-    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock"]
+    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "anthropic_cli", "gemini_cli", "codex_cli"]
 
     raw = await asyncio.gather(
         fetch_ollama(), fetch_openai(), fetch_anthropic(),
         fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock(),
+        fetch_claude_cli(), fetch_gemini_cli(), fetch_codex_cli(),
         return_exceptions=True,
     )
 
@@ -268,6 +301,9 @@ async def get_models():
     grok_avail, grok_chat, grok_embed = results[4]
     deepseek_avail, deepseek_chat, deepseek_embed = results[5]
     bedrock_avail, bedrock_chat, bedrock_embed = results[6]
+    c_claude_avail, c_claude_chat, _ = results[7]
+    c_gemini_avail, c_gemini_chat, _ = results[8]
+    c_codex_avail, c_codex_chat, _ = results[9]
 
     # --- Build provider map ---
     providers = {
@@ -278,6 +314,9 @@ async def get_models():
         "grok": {"available": grok_avail, "models": grok_chat, "embedding_models": grok_embed},
         "deepseek": {"available": deepseek_avail, "models": deepseek_chat, "embedding_models": deepseek_embed},
         "bedrock": {"available": bedrock_avail, "models": bedrock_chat, "embedding_models": bedrock_embed},
+        "anthropic_cli": {"available": c_claude_avail, "models": c_claude_chat, "embedding_models": []},
+        "gemini_cli": {"available": c_gemini_avail, "models": c_gemini_chat, "embedding_models": []},
+        "codex_cli": {"available": c_codex_avail, "models": c_codex_chat, "embedding_models": []},
     }
 
     # --- Flat list of all available models ---
@@ -287,7 +326,7 @@ async def get_models():
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK
+    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + c_claude_chat + c_gemini_chat + c_codex_chat
 
     return {
         "providers": providers,

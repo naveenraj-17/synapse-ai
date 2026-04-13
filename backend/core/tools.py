@@ -172,7 +172,7 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     return all_tools, tool_schema_map, ollama_tools, tools_json
 
 
-def build_system_prompt(agent_system_template, tools_json, session_id, session_state_getter, memory_store, agent_id=None, turns_remaining=None, max_turns=None):
+def build_system_prompt(agent_system_template, tools_json, session_id, session_state_getter, memory_store, agent_id=None, turns_remaining=None, max_turns=None, inject_tools=True):
     """
     Construct the final system prompt with tool info, date/time, session context, 
     and recent tool outputs injected.
@@ -251,18 +251,12 @@ You have **{turns_remaining} turn(s) remaining** out of {max_turns} total.
 - On the last turn you MUST answer in plain text (no tool calls), even if the task is not fully complete.
 """
 
-    # Append tools, date/time, and instructions at the end
-    system_prompt_text += f"""
-
-### CURRENT DATE & TIME CONTEXT
-**Current Date:** {current_date}
-**Current Time:** {current_time}
-**Timezone:** {timezone}
-
-**IMPORTANT:**
-Before using any tools, write a brief `plan:` line detailing the exact steps you will take. Execute the plan step-by-step. Before each subsequent tool call, write a `thought:` line explaining why the previous data was insufficient and why this new call is necessary.
-After every tool call, evaluate the information gathered. If you have enough information, STOP using tools and write your final response in markdown — do NOT include any `plan:` or `thought:` lines in the final response.
-
+    # Build tools section — only injected for providers without native tool calling
+    # (cli and bedrock). Cloud providers (Anthropic, OpenAI, Gemini, Grok, DeepSeek)
+    # and Ollama receive tools via the API's tools= param, so injecting here is
+    # redundant and adds thousands of tokens to every request.
+    if inject_tools:
+        tools_section = f"""
 ### TOOLS
 You have access to the following tools:
 {tools_json}
@@ -276,6 +270,28 @@ You have access to the following tools:
 
 If you already know the file path, read it directly — no need to search first. Prefer `grep` or `read_file_by_lines` over reading entire files when you only need a specific section.
 
+### RESPONSE FORMAT INSTRUCTIONS
+If you need to use a specific tool from the list above, you MUST respond with **ONLY** a valid JSON object in the following format:
+{{ "tool": "tool_name", "arguments": {{ "key": "value" }} }}
+
+Do NOT output any other text or markdown when calling a tool.
+If you do not need to use a tool, reply in plain text.
+"""
+    else:
+        tools_section = ""
+
+    # Append date/time, tools (if applicable), and runtime instructions
+    system_prompt_text += f"""
+
+### CURRENT DATE & TIME CONTEXT
+**Current Date:** {current_date}
+**Current Time:** {current_time}
+**Timezone:** {timezone}
+
+**IMPORTANT:**
+Before using any tools, write a brief `plan:` line detailing the exact steps you will take. Execute the plan step-by-step. Before each subsequent tool call, write a `thought:` line explaining why the previous data was insufficient and why this new call is necessary.
+After every tool call, evaluate the information gathered. If you have enough information, STOP using tools and write your final response in markdown — do NOT include any `plan:` or `thought:` lines in the final response.
+{tools_section}
 **VAULT (LARGE OUTPUT HANDLING):**
 When a tool's output exceeds the character limit, it is automatically saved to a vault file. You will receive a JSON reference containing the vault file path, file type, size, and total line count — instead of the raw output. To access the data: use `grep` to search for specific values within the vault file, or use `read_file_by_lines` with `start_line`/`end_line` to read a slice. Do NOT use `read_file` on vault files — they are too large and will be re-vaulted.
 
@@ -284,13 +300,6 @@ When a tool's output exceeds the character limit, it is automatically saved to a
 
 ### LINKS & REFERENCES
 Whenever a tool returns URLs, source links, documentation references, or any other hyperlinks — **always include them in your response**. Present them clearly so the user can visit them directly. If you know of relevant official documentation, articles, or resources that would help the user, proactively include those links even if not explicitly returned by a tool.
-
-### RESPONSE FORMAT INSTRUCTIONS
-If you need to use a specific tool from the list above, you MUST respond with **ONLY** a valid JSON object in the following format:
-{{ "tool": "tool_name", "arguments": {{ "key": "value" }} }}
-
-Do NOT output any other text or markdown when calling a tool.
-If you do not need to use a tool, reply in plain text.
 """
 
     system_prompt_text += turns_block

@@ -1,14 +1,18 @@
 """
-LLM provider API callers (OpenAI, Anthropic, Gemini, Bedrock, Ollama, Grok, DeepSeek).
+LLM provider API callers (OpenAI, Anthropic, Gemini, Bedrock, Ollama, Grok, DeepSeek, CLI).
 Extracted from server.py to eliminate duplication between chat() and chat_stream().
 
 All cloud providers follow the same failsafe pattern:
   - 5 attempts max
   - Exponential backoff: [5, 10, 20, 40, 80] seconds
   - Raises LLMError on final failure (never returns error strings silently)
+
+CLI providers (cli.claude, cli.gemini, cli.codex) use locally authenticated CLI sessions.
+No API key needed — tool calling is emulated via system prompt injection + <tool_call> parsing.
 """
 import os
 import json
+import tempfile
 import asyncio
 import base64
 import httpx
@@ -88,11 +92,14 @@ def detect_mode_from_model(model_name: str) -> str:
     """Detect the provider mode from a model name prefix.
 
     Returns 'cloud' for OpenAI/Anthropic/Gemini/Grok/DeepSeek models,
-    'bedrock' for Bedrock, and 'local' for anything else (assumed to be Ollama).
+    'bedrock' for Bedrock, 'cli' for local CLI session models (cli.*),
+    and 'local' for anything else (assumed to be Ollama).
     """
     if not model_name:
         return "local"
     m = model_name.lower()
+    if m.startswith("cli."):
+        return "cli"
     if m.startswith("gpt"):
         return "cloud"
     if m.startswith("claude"):
@@ -113,6 +120,15 @@ def detect_provider_from_model(model_name: str) -> str:
     if not model_name:
         return "ollama"
     m = model_name.lower()
+    # CLI session providers
+    if m.startswith("cli.claude"):
+        return "anthropic_cli"
+    if m.startswith("cli.gemini"):
+        return "gemini_cli"
+    if m.startswith("cli.codex"):
+        return "codex_cli"
+    if m.startswith("cli."):
+        return "cli"
     if m.startswith("gpt"):
         return "openai"
     if m.startswith("claude"):
@@ -201,6 +217,284 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
 
     return boto3.client(**kwargs)
 
+
+# ─── CLI Session Providers ──────────────────────────────────────────────────────
+
+# Maps cli.* model names to their CLI binary + flags
+_CLI_COMMANDS: dict[str, list[str]] = {
+    "cli.claude": ["claude", "-p", "--verbose"],
+    "cli.gemini": ["gemini", "--prompt", ""],
+    "cli.codex":  ["codex", "exec", "--full-auto"],
+}
+
+# Seconds to wait for a CLI process before giving up
+_CLI_TIMEOUT = 300.0
+
+
+def _build_cli_prompt(
+    sys_prompt: str,
+    messages: list[dict],
+    tools: list[dict] | None = None,
+) -> str:
+    """Build a single flat text prompt for CLI providers.
+
+    Combines system prompt (with optional tool schema injection) + conversation
+    transcript into one string that can be piped into a CLI via stdin.
+    """
+    parts: list[str] = []
+
+    # 1. System prompt
+    if sys_prompt and sys_prompt.strip():
+        parts.append(sys_prompt.strip())
+
+    # 2. Tool schema injection — emulates native tool calling
+    if tools:
+        import json as _json
+        tool_block = (
+            "\n\n===== AVAILABLE TOOLS =====\n"
+            "You have access to the following tools. "
+            "To call a tool, output EXACTLY the following XML block (nothing before or after it on that response):\n"
+            "<tool_call>{\"tool\": \"<tool_name>\", \"arguments\": {<args>}}</tool_call>\n\n"
+            "Tools:\n"
+        )
+        for t in tools:
+            func = t.get("function", {})
+            name = func.get("name", "")
+            if not name:
+                continue
+            desc = func.get("description", "")
+            params = func.get("parameters", {})
+            tool_block += f"- {name}: {desc}\n"
+            if params.get("properties"):
+                tool_block += f"  Parameters: {_json.dumps(params['properties'])}\n"
+        tool_block += "===========================\n"
+        parts.append(tool_block)
+
+    # 3. Conversation history transcript
+    transcript = _messages_to_transcript(messages)
+    if transcript:
+        parts.append(transcript)
+
+    return "\n\n".join(parts)
+
+
+async def call_cli_provider(
+    cli_model: str,
+    full_prompt: str,
+    sys_prompt: str | None = None,
+    messages: list[dict] | None = None,
+    timeout: float = _CLI_TIMEOUT,
+) -> tuple[str, int, int]:
+    """Spawn a local CLI binary, feed it the full context, and return the response.
+
+    Args:
+        cli_model: One of 'cli.claude', 'cli.gemini', 'cli.codex'
+        full_prompt: Complete flat-text prompt (system + tools + transcript)
+        timeout: Seconds before we kill the process and raise LLMError
+
+    Returns:
+        (response_text, estimated_input_tokens, estimated_output_tokens)
+
+    Raises:
+        LLMError: on timeout, auth failure, binary not found, or empty output
+    """
+    import re
+    from core import usage_tracker
+
+    ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    AUTH_PATTERNS = ["login", "authenticate", "auth", "expired", "sign in", "api key", "unauthorized"]
+
+    parts = cli_model.lower().split(".")
+    if len(parts) >= 2:
+        base_cli = f"{parts[0]}.{parts[1]}"
+    else:
+        base_cli = cli_model.lower()
+
+    base_cmd = _CLI_COMMANDS.get(base_cli)
+    if not base_cmd:
+        raise LLMError(f"Unknown CLI base '{base_cli}'. Supported: {list(_CLI_COMMANDS.keys())}")
+
+    cmd = base_cmd.copy()
+
+    # ── Dynamic Model & Options Parsing ──
+    if len(parts) > 2:
+        variant = parts[2]
+        if base_cli == "cli.claude":
+            # Extract base model by removing any thinking suffixes
+            clean_variant = variant.replace('-thinking', '').replace('-max', '').replace('-high', '')
+            cmd.extend(["--model", clean_variant])
+            
+            # Thinking / Effort overrides
+            if "-thinking" in variant or "-max" in variant:
+                cmd.extend(["--effort", "medium"])
+            elif "-high" in variant:
+                cmd.extend(["--effort", "high"])
+            else:
+                cmd.extend(["--effort", "low"])
+
+        elif base_cli == "cli.gemini":
+            if "pro" in variant:
+                cmd.extend(["--model", "pro"])
+            elif "flash" in variant:
+                cmd.extend(["--model", "flash"])
+
+        elif base_cli == "cli.codex":
+            # Pass the variant directly as the model name (e.g. o3, o4-mini, gpt-4o)
+            cmd.extend(["-m", variant])
+
+    # codex exec requires "-" as the positional PROMPT arg to signal stdin input.
+    # Append it after all option flags are resolved so it stays last.
+    if base_cli == "cli.codex":
+        cmd.append("-")
+
+    import shutil
+    executable = shutil.which(cmd[0])
+    if not executable:
+        raise LLMError(f"CLI binary '{cmd[0]}' exactly resolved by shutil.which not found. Check your PATH.")
+
+    env = os.environ.copy()
+    temp_sys_prompt_file = None
+    temp_input_file = None
+    temp_output_file = None
+
+    # Use backend/data/tmp for temp files — avoids cross-OS permission issues
+    # with the system temp dir and keeps all runtime files under the project root.
+    _tmp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tmp")
+    os.makedirs(_tmp_dir, exist_ok=True)
+
+    try:
+        if base_cli == "cli.claude" and sys_prompt:
+            # Write sys_prompt to a temp file and pass via --system-prompt-file.
+            temp_sys_prompt_file = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", prefix="claude_sys_prompt_", delete=False,
+                encoding="utf-8", dir=_tmp_dir
+            )
+            temp_sys_prompt_file.write(sys_prompt)
+            temp_sys_prompt_file.flush()
+            temp_sys_prompt_file.close()
+            cmd.extend(["--system-prompt-file", temp_sys_prompt_file.name])
+
+            # stdin carries only the content after the sys_prompt (tools + messages).
+            # full_prompt = sys_prompt.strip() + "\n\n" + rest, so strip the prefix.
+            prefix = sys_prompt.strip()
+            stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
+        else:
+            stdin_payload = full_prompt
+
+        # Write stdin payload to a temp file and feed it as stdin (like `< file`),
+        # avoiding large string pipes and keeping content out of the process list.
+        temp_input_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", prefix="claude_input_", delete=False,
+            encoding="utf-8", dir=_tmp_dir
+        )
+        temp_input_file.write(stdin_payload)
+        temp_input_file.flush()
+        temp_input_file.close()
+
+        # codex exec: use -o to capture only the final agent message, avoiding TUI noise
+        if base_cli == "cli.codex":
+            temp_output_file = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", prefix="codex_output_", delete=False,
+                encoding="utf-8", dir=_tmp_dir
+            )
+            temp_output_file.close()
+            cmd.extend(["-o", temp_output_file.name])
+
+        print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(cmd)}", flush=True)
+
+        stdin_source = open(temp_input_file.name, "rb") if temp_input_file else asyncio.subprocess.PIPE
+
+        process = await asyncio.create_subprocess_exec(
+            executable,
+            *cmd[1:],
+            stdin=stdin_source,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+
+        if temp_input_file:
+            stdin_source.close()
+
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+                await process.wait()
+            except Exception:
+                pass
+            raise LLMError(
+                f"CLI provider '{cli_model}' timed out after {timeout}s. "
+                "Is the CLI authenticated and responsive?"
+            )
+
+        stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
+        if stderr_text:
+            lower_err = stderr_text.lower()
+            if any(p in lower_err for p in AUTH_PATTERNS):
+                raise LLMError(
+                    f"CLI provider '{cli_model}' authentication failure detected.\n"
+                    f"Run the CLI in your terminal to re-authenticate.\n"
+                    f"Details: {stderr_text[:400]}"
+                )
+            print(f"DEBUG: 🖥️  CLI stderr: {stderr_text[:300]}", flush=True)
+
+        # codex exec writes just the final agent message to the -o file; use that
+        # to avoid parsing the TUI header/footer noise from stdout.
+        if base_cli == "cli.codex" and temp_output_file:
+            try:
+                with open(temp_output_file.name, "r", encoding="utf-8", errors="replace") as f:
+                    raw = f.read()
+            except Exception:
+                raw = stdout_b.decode("utf-8", errors="replace")
+        else:
+            raw = stdout_b.decode("utf-8", errors="replace")
+        clean = ANSI_ESCAPE.sub("", raw).strip()
+
+        # claude CLI writes "Not logged in" to stdout (not stderr) — catch it here
+        if any(p in clean.lower() for p in AUTH_PATTERNS):
+            raise LLMError(
+                f"CLI provider '{cli_model}' is not authenticated.\n"
+                f"Run 'claude' in your terminal and complete the login flow, then retry.\n"
+                f"Details: {clean[:300]}"
+            )
+
+        if not clean:
+            raise LLMError(
+                f"CLI provider '{cli_model}' returned empty output. "
+                f"Return code: {process.returncode}. "
+                f"stderr: {stderr_text[:200]}"
+            )
+
+        print(f"DEBUG: ✅ CLI '{cli_model}' response ({len(clean)} chars)", flush=True)
+
+        input_est = usage_tracker.estimate_tokens_from_text(full_prompt)
+        output_est = usage_tracker.estimate_tokens_from_text(clean)
+        return clean, input_est, output_est
+
+    except LLMError:
+        raise
+    except FileNotFoundError:
+        raise LLMError(
+            f"CLI binary for '{cli_model}' not found in PATH. "
+            f"Install and authenticate the CLI first: {cmd[0]}"
+        )
+    except Exception as e:
+        raise LLMError(f"CLI provider '{cli_model}' unexpected error: {e}")
+    finally:
+        for f in [temp_sys_prompt_file, temp_input_file, temp_output_file]:
+            if f:
+                try:
+                    os.unlink(f.name)
+                except Exception:
+                    pass
+
+
+# ────────────────────────────────────────────────────────────────────────────────
 
 async def call_openai(model, messages, api_key, tools=None, images=None):
     """Call OpenAI with 5-attempt exponential backoff retry loop.
@@ -1154,6 +1448,32 @@ async def generate_response(
             raise
         except Exception as e:
             return f"Cloud API Error: {str(e)}"
+
+    elif mode == "cli":
+        # CLI session providers: build a flat prompt and spawn the local binary.
+        # No API key required — uses the user's existing CLI authentication.
+        try:
+            messages_for_cli = []
+            if history_messages:
+                messages_for_cli.extend(history_messages)
+            messages_for_cli.append({"role": "user", "content": prompt_msg})
+
+            cli_full_prompt = _build_cli_prompt(
+                sys_prompt=augmented_system,
+                messages=messages_for_cli,
+                tools=tools,
+            )
+            result_text, input_tokens, output_tokens = await call_cli_provider(
+                cli_model=current_model,
+                full_prompt=cli_full_prompt,
+                sys_prompt=augmented_system,
+                messages=messages_for_cli
+            )
+        except LLMError:
+            raise
+        except Exception as e:
+            return f"CLI Provider Error: {str(e)}"
+
     
     else:
         # Local Ollama
