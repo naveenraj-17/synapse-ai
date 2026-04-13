@@ -329,9 +329,9 @@ async def call_cli_provider(
 
         elif base_cli == "cli.gemini":
             if "pro" in variant:
-                cmd.extend(["--model", "gemini-1.5-pro"])
+                cmd.extend(["--model", "pro"])
             elif "flash" in variant:
-                cmd.extend(["--model", "gemini-2.0-flash"])
+                cmd.extend(["--model", "flash"])
 
     import shutil
     executable = shutil.which(cmd[0])
