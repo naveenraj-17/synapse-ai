@@ -333,11 +333,17 @@ async def call_cli_provider(
             elif "flash" in variant:
                 cmd.extend(["--model", "gemini-2.0-flash"])
 
+    import shutil
+    executable = shutil.which(cmd[0])
+    if not executable:
+        raise LLMError(f"CLI binary '{cmd[0]}' exactly resolved by shutil.which not found. Check your PATH.")
+        
     print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(cmd)}", flush=True)
 
     try:
         process = await asyncio.create_subprocess_exec(
-            *cmd,
+            executable,
+            *cmd[1:],
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
