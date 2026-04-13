@@ -111,8 +111,10 @@ async def get_models():
                         m["id"] for m in data if "embedding" in m.get("id", "")
                     ))
                     return True, chat_models if chat_models else OPENAI_FALLBACK, embed_models if embed_models else ["text-embedding-3-small", "text-embedding-3-large"]
+                else:
+                    print(f"Error fetching OpenAI models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching OpenAI models: {e}")
+            print(f"Error fetching OpenAI models: {type(e).__name__}: {e}")
         return True, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large"]
 
     async def fetch_anthropic() -> tuple[bool, list[str], list[str]]:
@@ -132,8 +134,10 @@ async def get_models():
                     data = r.json().get("data", [])
                     models = sorted(set(m["id"] for m in data if m.get("id")), reverse=True)
                     return True, models if models else ANTHROPIC_FALLBACK, []
+                else:
+                    print(f"Error fetching Anthropic models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Anthropic models: {e}")
+            print(f"Error fetching Anthropic models: {type(e).__name__}: {e}")
         return True, ANTHROPIC_FALLBACK, []
 
     async def fetch_gemini() -> tuple[bool, list[str], list[str]]:
@@ -157,8 +161,10 @@ async def get_models():
                         if "embedContent" in methods:
                             embed_models.append(name)
                     return True, sorted(set(chat_models)) if chat_models else GEMINI_FALLBACK, sorted(set(embed_models)) if embed_models else ["text-embedding-004"]
+                else:
+                    print(f"Error fetching Gemini models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Gemini models: {e}")
+            print(f"Error fetching Gemini models: {type(e).__name__}: {e}")
         return True, GEMINI_FALLBACK, ["text-embedding-004"]
 
     async def fetch_grok() -> tuple[bool, list[str], list[str]]:
@@ -177,8 +183,10 @@ async def get_models():
                         m["id"] for m in data if m.get("id", "").startswith("grok")
                     ), reverse=True)
                     return True, models if models else GROK_FALLBACK, []
+                else:
+                    print(f"Error fetching Grok models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Grok models: {e}")
+            print(f"Error fetching Grok models: {type(e).__name__}: {e}")
         return True, GROK_FALLBACK, []
 
     async def fetch_deepseek() -> tuple[bool, list[str], list[str]]:
@@ -197,8 +205,10 @@ async def get_models():
                         m["id"] for m in data if m.get("id", "").startswith("deepseek")
                     ), reverse=True)
                     return True, models if models else DEEPSEEK_FALLBACK, []
+                else:
+                    print(f"Error fetching DeepSeek models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching DeepSeek models: {e}")
+            print(f"Error fetching DeepSeek models: {type(e).__name__}: {e}")
         return True, DEEPSEEK_FALLBACK, []
 
     async def fetch_bedrock() -> tuple[bool, list[str], list[str]]:
@@ -224,11 +234,32 @@ async def get_models():
         except Exception:
             return True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]
 
-    # Run all fetches concurrently
-    results = await asyncio.gather(
-        fetch_ollama(), fetch_openai(), fetch_anthropic(), 
-        fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock()
+    # Run all fetches concurrently; return_exceptions=True ensures one provider failure
+    # doesn't cancel the others.
+    _PROVIDER_FALLBACKS = [
+        (False, [], []),                                                                 # ollama
+        (True, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large"]),  # openai
+        (True, ANTHROPIC_FALLBACK, []),                                                  # anthropic
+        (True, GEMINI_FALLBACK, ["text-embedding-004"]),                                 # gemini
+        (True, GROK_FALLBACK, []),                                                       # grok
+        (True, DEEPSEEK_FALLBACK, []),                                                   # deepseek
+        (True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]),                # bedrock
+    ]
+    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock"]
+
+    raw = await asyncio.gather(
+        fetch_ollama(), fetch_openai(), fetch_anthropic(),
+        fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock(),
+        return_exceptions=True,
     )
+
+    results = []
+    for i, r in enumerate(raw):
+        if isinstance(r, BaseException):
+            print(f"Error fetching {_PROVIDER_NAMES[i]} models: {type(r).__name__}: {r}")
+            results.append(_PROVIDER_FALLBACKS[i])
+        else:
+            results.append(r)
 
     ollama_avail, ollama_chat, ollama_embed = results[0]
     openai_avail, openai_chat, openai_embed = results[1]
