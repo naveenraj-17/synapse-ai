@@ -1203,7 +1203,10 @@ export default function Home() {
                       systemStatus?.provider === 'gemini' ? "text-blue-400" :
                         systemStatus?.provider === 'anthropic' ? "text-amber-400" :
                           systemStatus?.provider === 'openai' ? "text-emerald-400" :
-                            "text-purple-400"
+                            systemStatus?.provider === 'anthropic_cli' ? "text-amber-300" :
+                              systemStatus?.provider === 'gemini_cli' ? "text-blue-300" :
+                                systemStatus?.provider === 'codex_cli' ? "text-zinc-300" :
+                                  "text-purple-400"
                   )}>
                     {systemStatus?.provider ? systemStatus.provider.charAt(0).toUpperCase() + systemStatus.provider.slice(1) : 'Loading...'}
                   </span>

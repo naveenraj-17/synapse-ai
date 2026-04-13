@@ -111,8 +111,10 @@ async def get_models():
                         m["id"] for m in data if "embedding" in m.get("id", "")
                     ))
                     return True, chat_models if chat_models else OPENAI_FALLBACK, embed_models if embed_models else ["text-embedding-3-small", "text-embedding-3-large"]
+                else:
+                    print(f"Error fetching OpenAI models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching OpenAI models: {e}")
+            print(f"Error fetching OpenAI models: {type(e).__name__}: {e}")
         return True, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large"]
 
     async def fetch_anthropic() -> tuple[bool, list[str], list[str]]:
@@ -132,8 +134,10 @@ async def get_models():
                     data = r.json().get("data", [])
                     models = sorted(set(m["id"] for m in data if m.get("id")), reverse=True)
                     return True, models if models else ANTHROPIC_FALLBACK, []
+                else:
+                    print(f"Error fetching Anthropic models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Anthropic models: {e}")
+            print(f"Error fetching Anthropic models: {type(e).__name__}: {e}")
         return True, ANTHROPIC_FALLBACK, []
 
     async def fetch_gemini() -> tuple[bool, list[str], list[str]]:
@@ -157,8 +161,10 @@ async def get_models():
                         if "embedContent" in methods:
                             embed_models.append(name)
                     return True, sorted(set(chat_models)) if chat_models else GEMINI_FALLBACK, sorted(set(embed_models)) if embed_models else ["text-embedding-004"]
+                else:
+                    print(f"Error fetching Gemini models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Gemini models: {e}")
+            print(f"Error fetching Gemini models: {type(e).__name__}: {e}")
         return True, GEMINI_FALLBACK, ["text-embedding-004"]
 
     async def fetch_grok() -> tuple[bool, list[str], list[str]]:
@@ -177,8 +183,10 @@ async def get_models():
                         m["id"] for m in data if m.get("id", "").startswith("grok")
                     ), reverse=True)
                     return True, models if models else GROK_FALLBACK, []
+                else:
+                    print(f"Error fetching Grok models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching Grok models: {e}")
+            print(f"Error fetching Grok models: {type(e).__name__}: {e}")
         return True, GROK_FALLBACK, []
 
     async def fetch_deepseek() -> tuple[bool, list[str], list[str]]:
@@ -197,8 +205,10 @@ async def get_models():
                         m["id"] for m in data if m.get("id", "").startswith("deepseek")
                     ), reverse=True)
                     return True, models if models else DEEPSEEK_FALLBACK, []
+                else:
+                    print(f"Error fetching DeepSeek models: HTTP {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"Error fetching DeepSeek models: {e}")
+            print(f"Error fetching DeepSeek models: {type(e).__name__}: {e}")
         return True, DEEPSEEK_FALLBACK, []
 
     async def fetch_bedrock() -> tuple[bool, list[str], list[str]]:
@@ -224,11 +234,65 @@ async def get_models():
         except Exception:
             return True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]
 
-    # Run all fetches concurrently
-    results = await asyncio.gather(
-        fetch_ollama(), fetch_openai(), fetch_anthropic(), 
-        fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock()
+    async def fetch_claude_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = [
+            "cli.claude.claude-sonnet-4-6",
+            "cli.claude.claude-sonnet-4-6-thinking",
+            "cli.claude.claude-opus-4-6",
+            "cli.claude.claude-opus-4-6-thinking",
+            "cli.claude.claude-haiku-4-5-20251001",
+            "cli.claude.claude-sonnet-4-5-20250929",
+            "cli.claude.claude-opus-4-5-20251101",
+            "cli.claude.claude-opus-4-5-20251101-thinking",
+            "cli.claude"
+        ] if shutil.which("claude") else []
+        return bool(models), models, []
+
+    async def fetch_gemini_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = [
+            "cli.gemini.pro",
+            "cli.gemini.flash",
+            "cli.gemini"
+        ] if shutil.which("gemini") else []
+        return bool(models), models, []
+
+    async def fetch_codex_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        models = ["cli.codex"] if shutil.which("codex") else []
+        return bool(models), models, []
+
+    # Run all fetches concurrently; return_exceptions=True ensures one provider failure
+    # doesn't cancel the others.
+    _PROVIDER_FALLBACKS = [
+        (False, [], []),                                                                 # ollama
+        (True, OPENAI_FALLBACK, ["text-embedding-3-small", "text-embedding-3-large"]),  # openai
+        (True, ANTHROPIC_FALLBACK, []),                                                  # anthropic
+        (True, GEMINI_FALLBACK, ["text-embedding-004"]),                                 # gemini
+        (True, GROK_FALLBACK, []),                                                       # grok
+        (True, DEEPSEEK_FALLBACK, []),                                                   # deepseek
+        (True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]),                # bedrock
+        (False, [], []),                                                                 # anthropic_cli
+        (False, [], []),                                                                 # gemini_cli
+        (False, [], []),                                                                 # codex_cli
+    ]
+    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "anthropic_cli", "gemini_cli", "codex_cli"]
+
+    raw = await asyncio.gather(
+        fetch_ollama(), fetch_openai(), fetch_anthropic(),
+        fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock(),
+        fetch_claude_cli(), fetch_gemini_cli(), fetch_codex_cli(),
+        return_exceptions=True,
     )
+
+    results = []
+    for i, r in enumerate(raw):
+        if isinstance(r, BaseException):
+            print(f"Error fetching {_PROVIDER_NAMES[i]} models: {type(r).__name__}: {r}")
+            results.append(_PROVIDER_FALLBACKS[i])
+        else:
+            results.append(r)
 
     ollama_avail, ollama_chat, ollama_embed = results[0]
     openai_avail, openai_chat, openai_embed = results[1]
@@ -237,6 +301,9 @@ async def get_models():
     grok_avail, grok_chat, grok_embed = results[4]
     deepseek_avail, deepseek_chat, deepseek_embed = results[5]
     bedrock_avail, bedrock_chat, bedrock_embed = results[6]
+    c_claude_avail, c_claude_chat, _ = results[7]
+    c_gemini_avail, c_gemini_chat, _ = results[8]
+    c_codex_avail, c_codex_chat, _ = results[9]
 
     # --- Build provider map ---
     providers = {
@@ -247,6 +314,9 @@ async def get_models():
         "grok": {"available": grok_avail, "models": grok_chat, "embedding_models": grok_embed},
         "deepseek": {"available": deepseek_avail, "models": deepseek_chat, "embedding_models": deepseek_embed},
         "bedrock": {"available": bedrock_avail, "models": bedrock_chat, "embedding_models": bedrock_embed},
+        "anthropic_cli": {"available": c_claude_avail, "models": c_claude_chat, "embedding_models": []},
+        "gemini_cli": {"available": c_gemini_avail, "models": c_gemini_chat, "embedding_models": []},
+        "codex_cli": {"available": c_codex_avail, "models": c_codex_chat, "embedding_models": []},
     }
 
     # --- Flat list of all available models ---
@@ -256,7 +326,7 @@ async def get_models():
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK
+    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + c_claude_chat + c_gemini_chat + c_codex_chat
 
     return {
         "providers": providers,

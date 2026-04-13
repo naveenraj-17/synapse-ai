@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2 } from 'lucide-react';
+import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2, Terminal } from 'lucide-react';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -32,6 +32,11 @@ const GrokIcon = ({ className }: BrandIconProps) => (
 // DeepSeek — inline SVG whale/wave mark
 const DeepSeekIcon = ({ className }: BrandIconProps) => (
     <img src="/deepseek-logo-icon.svg" className={className} alt="DeepSeek" />
+);
+
+// CLI Sessions — terminal icon from lucide
+const CliIcon = ({ className }: BrandIconProps) => (
+    <Terminal className={className} />
 );
 
 interface ProviderInfo {
@@ -138,6 +143,24 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
         keyLink: { label: 'Set up Bedrock API keys in AWS Console →', url: 'https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-console' },
         keyNote: 'Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.',
     },
+    anthropic_cli: {
+        label: 'Claude (CLI)',
+        icon: AnthropicIcon,
+        color: '#d97706',
+        description: 'Use the locally installed Anthropic Claude CLI. No API key needed — uses your existing terminal session.',
+    },
+    gemini_cli: {
+        label: 'Gemini (CLI)',
+        icon: GeminiIcon,
+        color: '#4285f4',
+        description: 'Use the locally installed Google Gemini CLI. No API key needed — uses your existing terminal session.',
+    },
+    codex_cli: {
+        label: 'Codex (CLI)',
+        icon: CliIcon,
+        color: '#a78bfa',
+        description: 'Use the locally installed GitHub Copilot/Codex CLI. No API key needed — uses your existing terminal session.',
+    },
 };
 
 export const ModelsTab = ({
@@ -218,7 +241,7 @@ export const ModelsTab = ({
                                             <span className="text-[10px] text-zinc-500 ml-2">
                                                 {providerData.available
                                                     ? `${modelCount} model${modelCount !== 1 ? 's' : ''}`
-                                                    : key === 'ollama' ? 'Not running' : 'No key configured'
+                                                    : key === 'ollama' ? 'Not running' : key.endsWith('_cli') ? 'Not installed' : 'No key configured'
                                                 }
                                             </span>
                                         </div>
@@ -237,8 +260,8 @@ export const ModelsTab = ({
                                     <div className="px-4 pb-4 space-y-3 border-t border-zinc-800/50 pt-3">
                                         <p className="text-[10px] text-zinc-500">{meta.description}</p>
 
-                                        {/* API Key input (not for Ollama or Bedrock — Bedrock has its own block) */}
-                                        {key !== 'ollama' && key !== 'bedrock' && (
+                                        {/* API Key input (not for Ollama, Bedrock, or CLI — they have their own blocks) */}
+                                        {key !== 'ollama' && key !== 'bedrock' && !key.endsWith('_cli') && (
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
                                                 <input
@@ -346,6 +369,38 @@ export const ModelsTab = ({
                                                     <ExternalLink className="h-2.5 w-2.5" />
                                                     Download Ollama →
                                                 </a>
+                                            </div>
+                                        )}
+
+                                        {/* CLI Sessions info */}
+                                        {key.endsWith('_cli') && (
+                                            <div className="space-y-2">
+                                                <div className="text-[10px] text-zinc-500">
+                                                    {providerData.available
+                                                        ? `Detected ${modelCount} CLI session${modelCount !== 1 ? 's' : ''}: ${providerData.models.join(', ')}`
+                                                        : `No CLI binary found in PATH for ${meta.label}.`
+                                                    }
+                                                </div>
+                                                <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 text-[10px] text-violet-300 leading-relaxed">
+                                                    <strong>No API key needed</strong> — uses your existing CLI session. Run the CLI manually first to authenticate.
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    {key === 'anthropic_cli' && (
+                                                        <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                            <ExternalLink className="h-2.5 w-2.5" /> Install Claude CLI →
+                                                        </a>
+                                                    )}
+                                                    {key === 'gemini_cli' && (
+                                                        <a href="https://ai.google.dev/gemini-api/docs/gemini-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                            <ExternalLink className="h-2.5 w-2.5" /> Install Gemini CLI →
+                                                        </a>
+                                                    )}
+                                                    {key === 'codex_cli' && (
+                                                        <a href="https://docs.github.com/en/copilot/github-copilot-in-the-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                            <ExternalLink className="h-2.5 w-2.5" /> Install GitHub Copilot CLI →
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
 

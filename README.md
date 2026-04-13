@@ -7,6 +7,16 @@
 
 ---
 
+## Prerequisites
+
+- **Python 3.11+**
+- **Node.js 22+**
+- **uvx** — `pip install uv` (used to run MCP servers)
+
+> Don't have these? The setup script will attempt to install any missing prerequisites automatically.
+
+---
+
 ## Install
 
 ### Quick Setup Script (recommended)
@@ -51,14 +61,13 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 - **Build custom tools with Webhooks and Python** — instantly convert any webhook (zero-code) or Python script into an agent tool.
 - **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
 - **Persistent vault** — agents save and share files across sessions and runs
-- **Local-first** — runs entirely on your machine with Ollama, or connect any cloud LLM
+- **Local-first** — runs entirely on your machine with Ollama or CLI providers (Claude, Gemini, Codex), or connect any cloud LLM
 
 ---
 
 ## Synapse UI
 
-https://github.com/user-attachments/assets/78c526d9-c75b-41fa-9353-589d3207e7db
-
+https://github.com/user-attachments/assets/7a5ab42c-5fae-4f13-876c-13aa9b5a0366
 
 ## Synapse Orchestration Demo
 
@@ -354,6 +363,9 @@ The **Vault** is a persistent file directory (`data/vault/`) that acts as shared
 | **Gemini** | Cloud | Gemini 1.5 Pro, Gemini 2.0 Flash, etc. |
 | **xAI (Grok)** | Cloud | Grok-2, Grok-3, Grok-3 Mini. Base URL: `https://api.x.ai/v1`. Set `XAI_API_KEY`. |
 | **DeepSeek** | Cloud | DeepSeek-V3, DeepSeek-R1 (reasoning model). Base URL: `https://api.deepseek.com`. Set `DEEPSEEK_API_KEY`. |
+| **Claude CLI** | CLI | Requires the [Claude Code](https://claude.ai/code) CLI (`claude`) installed and authenticated. No API key needed — uses your existing Claude subscription. |
+| **Gemini CLI** | CLI | Requires the [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`) installed and authenticated. Supports `pro` and `flash` variants. |
+| **Codex CLI** | CLI | Requires the [Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated. No API key needed — uses your existing OpenAI subscription. |
 
 Switch providers per-agent or globally in **Settings → Model**.
 
@@ -396,58 +408,6 @@ npm run dev
 ```
 
 Open `http://localhost:<SYNAPSE_FRONTEND_PORT>` (default: `http://localhost:3000`)
-
-### Prerequisites
-
-- **Python 3.11+**
-- **Node.js 18+**
-- **Ollama** (optional, for local models): [ollama.com](https://ollama.com)
-  ```bash
-  ollama pull mistral-nemo   # or any model you prefer
-  ```
-- **Docker** (optional, for sandbox code execution and Docker deployment)
-
----
-
-## Architecture
-
-```
-frontend/                    Next.js 14 — chat UI, agent builder, orchestration canvas
-  src/components/
-    settings/
-      McpServersTab.tsx      MCP server management UI (Local/Remote tabs, OAuth + PAT)
-backend/
-  core/
-    server.py                FastAPI app — MCP session lifecycle, startup
-    react_engine.py          ReAct agent loop — reasoning + tool execution
-    tools.py                 Tool aggregation (MCP + virtual + custom)
-    vault.py                 Persistent file storage
-    config.py                Settings loader (SYNAPSE_DATA_DIR)
-    mcp_client.py            External MCP server manager (stdio + remote/OAuth)
-    routes/                  API route handlers
-    orchestration/
-      engine.py              DAG-based workflow executor
-      steps.py               Step executors: Agent, LLM, Tool, Evaluator, Parallel,
-                             Merge, Loop, Transform, Human, End
-      models_orchestration.py  Data models for all step types
-      state.py               Shared state + checkpointing
-      logger.py              Per-run audit logs
-  tools/                     Built-in MCP tool scripts (stdio processes)
-    sequential_thinking/     Default sequential-thinking MCP server
-    memory/                  Default knowledge-graph memory MCP server
-  services/                  Business logic (code indexer, memory store)
-  data/                      User data — gitignored
-    user_agents.json         Agent configurations
-    orchestrations.json      Orchestration definitions
-    mcp_servers.json         Remote MCP server configs
-    vault/                   Agent file storage
-```
-
-**Frontend ↔ Backend:** Next.js proxies `/api/*` and `/auth/*` to the backend via `next.config.ts` rewrites. Server-side routes use `BACKEND_URL` env var.
-
-**MCP Transport:** Local servers use stdio transport. Remote servers use Streamable HTTP (SSE) with OAuth 2.0 PKCE or Bearer token auth. Synapse manages token refresh and session lifecycle automatically.
-
-**Default MCP Servers:** Sequential Thinking and Memory servers start automatically with Synapse — no configuration required. They give every agent structured reasoning chains and persistent cross-session memory out of the box.
 
 ---
 
