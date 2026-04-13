@@ -222,7 +222,7 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
 # Maps cli.* model names to their CLI binary + flags
 _CLI_COMMANDS: dict[str, list[str]] = {
     "cli.claude": ["claude", "-p"],
-    "cli.gemini": ["gemini", "--prompt"],
+    "cli.gemini": ["gemini", "--prompt", ""],
     "cli.codex":  ["codex"],
 }
 
