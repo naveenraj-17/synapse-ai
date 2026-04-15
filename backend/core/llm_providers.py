@@ -224,9 +224,10 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
 
 # Maps cli.* model names to their CLI binary + flags
 _CLI_COMMANDS: dict[str, list[str]] = {
-    "cli.claude":   ["claude", "-p", "--verbose", "--output-format", "json"],
+    "cli.claude":   ["claude", "-p", "--allowedTools", ""],
     "cli.gemini":   ["gemini", "--prompt", ""],
-    "cli.codex":    ["codex", "exec", "--full-auto"],
+    "cli.codex":    ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox",
+                     "-c", "instructions=", "-c", "features.shell_tool=false"],
     "cli.copilot":  ["copilot", "-p"],
 }
 
@@ -308,6 +309,7 @@ async def call_cli_provider(
 
     ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
     AUTH_PATTERNS = ["login", "authenticate", "auth", "expired", "sign in", "api key", "unauthorized"]
+    RATE_LIMIT_PATTERNS = ["429", "rate limit", "ratelimit", "quota", "too many requests", "capacity", "resource_exhausted", "ratelimitexceeded"]
 
     parts = cli_model.lower().split(".")
     if len(parts) >= 2:
@@ -341,9 +343,6 @@ async def call_cli_provider(
                 cmd.extend(["--effort", "high"])
             else:
                 cmd.extend(["--effort", "low"])
-
-            # Disable all native Claude Code tools so only our XML tool emulation is active
-            cmd.append("--no-tools")
 
         elif base_cli == "cli.gemini":
             if "pro" in variant:
@@ -391,7 +390,7 @@ async def call_cli_provider(
                 # --no-tools (added above) ensures Claude Code's native tools are stripped so
                 # only our XML emulation is active.
                 temp_sys_prompt_file = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", prefix="claude_sys_prompt_", delete=False,
+                    mode="w", suffix=".md", prefix="claude_sys_prompt_", delete=False,
                     encoding="utf-8", dir=_tmp_dir
                 )
                 temp_sys_prompt_file.write(sys_prompt)
@@ -444,7 +443,7 @@ async def call_cli_provider(
 
             stdin_source = open(temp_input_file.name, "rb")
 
-        print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(str(a)[:80] for a in cmd)}", flush=True)
+        print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(str(a) for a in cmd)}", flush=True)
 
         process = await asyncio.create_subprocess_exec(
             executable,
@@ -476,7 +475,15 @@ async def call_cli_provider(
 
         stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
         if stderr_text:
-            lower_err = stderr_text.lower()
+            # Scan only the tail of stderr for error patterns — Codex (and some other CLIs)
+            # echo the stdin/banner to stderr, which can contain words like "capacity" that
+            # would falsely trigger rate-limit detection. Real API errors appear at the end.
+            lower_err = stderr_text[-600:].lower()
+            if any(p in lower_err for p in RATE_LIMIT_PATTERNS):
+                raise LLMError(
+                    f"CLI provider '{cli_model}' rate limit / capacity error.\n"
+                    f"Details: {stderr_text[:400]}"
+                )
             if any(p in lower_err for p in AUTH_PATTERNS):
                 raise LLMError(
                     f"CLI provider '{cli_model}' authentication failure detected.\n"
