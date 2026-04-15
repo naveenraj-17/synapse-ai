@@ -139,9 +139,9 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
         icon: AWSIcon,
         color: '#f59e0b',
         description: 'Enterprise-grade models via AWS, including Claude, Llama, and Titan.',
-        keyPlaceholder: 'ABSK...',
+        keyPlaceholder: 'ABSK... or bedrock-api-key...',
         keyLink: { label: 'Set up Bedrock API keys in AWS Console →', url: 'https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-console' },
-        keyNote: 'Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.',
+        keyNote: 'Supports long-term keys (ABSK...) and temporary keys (bedrock-api-key...). Bearer prefix is auto-normalized.',
     },
     anthropic_cli: {
         label: 'Claude (CLI)',
@@ -301,7 +301,7 @@ export const ModelsTab = ({
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
                                                     <input type="password" value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK..." />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK... or bedrock-api-key..." />
                                                     {meta.keyNote && (
                                                         <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
                                                     )}

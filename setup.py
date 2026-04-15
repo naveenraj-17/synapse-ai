@@ -1272,25 +1272,13 @@ def _fetch_grok_models(api_key):
         return []
 
 def _fetch_bedrock_models(api_key, region):
-    """List Bedrock foundation models -- tries boto3, falls back to direct HTTP."""
-    # Try boto3 first
-    try:
-        import boto3  # type: ignore
-        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
-        client = boto3.client("bedrock", region_name=region)
-        resp = client.list_foundation_models()
-        models = sorted(set(
-            s["modelId"] for s in resp.get("modelSummaries", [])
-            if s.get("modelId")
-        ))
-        return models
-    except ImportError:
-        pass  # fall through to HTTP path
-    except Exception as e:
-        warn(f"boto3 Bedrock listing failed: {e}")
-        return []
+    """List Bedrock foundation models using direct HTTPS bearer auth.
 
-    # Fallback: direct HTTP with ABSK bearer token
+    boto3's AWS_BEARER_TOKEN_BEDROCK env var is only supported for bedrock-runtime
+    (inference), not for the bedrock management API (list_foundation_models).
+    Direct HTTP with Authorization: Bearer is the correct path for API key auth.
+    """
+    # Primary: direct HTTP with bearer token — works for both ABSK and bedrock-api-key formats.
     try:
         import urllib.request
         import json as _json
@@ -1300,6 +1288,19 @@ def _fetch_bedrock_models(api_key, region):
             data = _json.loads(r.read())
         models = sorted(set(
             s["modelId"] for s in data.get("modelSummaries", [])
+            if s.get("modelId")
+        ))
+        return models
+    except Exception as e:
+        warn(f"Direct HTTP Bedrock listing failed ({type(e).__name__}: {e}), trying boto3...")
+
+    # Fallback: boto3 (works when IAM credentials are available in the environment)
+    try:
+        import boto3  # type: ignore
+        client = boto3.client("bedrock", region_name=region)
+        resp = client.list_foundation_models()
+        models = sorted(set(
+            s["modelId"] for s in resp.get("modelSummaries", [])
             if s.get("modelId")
         ))
         return models
@@ -1446,7 +1447,7 @@ def ask_llm(cfg):
             cfg["model"] = ask_choice("Select model", models)
 
     elif choice == "Bedrock (AWS)":
-        key = ask("Enter Bedrock API Key (ABSK)")
+        key = ask("Enter Bedrock API Key (ABSK... or bedrock-api-key... format)")
         region = ask("AWS Region", default=cfg.get("aws_region") or "us-east-1")
         cfg["bedrock_api_key"] = key
         cfg["aws_region"] = region

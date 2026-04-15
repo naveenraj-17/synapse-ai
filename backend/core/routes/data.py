@@ -19,6 +19,25 @@ from services.synthetic_data import generate_synthetic_data, SyntheticDataReques
 
 router = APIRouter()
 
+
+def _bedrock_management_get(path: str, region: str, api_key: str, params: dict | None = None) -> dict:
+    """Direct HTTPS call to the Bedrock management (control-plane) API using bearer token auth.
+
+    The Bedrock management API (list_foundation_models, list_inference_profiles) does not
+    support the AWS_BEARER_TOKEN_BEDROCK env var that boto3 uses for bedrock-runtime.
+    Direct HTTP with Authorization: Bearer is the correct approach for API key auth here.
+    """
+    import urllib.request
+    import urllib.parse
+    url = f"https://bedrock.{region}.amazonaws.com{path}"
+    if params:
+        url = f"{url}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        import json as _json
+        return _json.loads(resp.read())
+
+
 # --- Synthetic Data ---
 
 @router.post("/api/synthetic/generate")
@@ -305,20 +324,30 @@ async def get_models():
         if not bedrock_available:
             return False, BEDROCK_FALLBACK, ["amazon.titan-embed-text-v1", "amazon.titan-embed-text-v2:0"]
         try:
-            # Bedrock foundation models include embeddings
+            region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+            api_key = (settings.get("bedrock_api_key") or "").strip()
+
             def _list():
-                c = _make_aws_client("bedrock", settings.get("aws_region", "us-east-1"), settings)
-                resp = c.list_foundation_models()
+                summaries = []
+                if api_key:
+                    # API key auth: use direct HTTPS — boto3 does not apply bearer tokens
+                    # to the Bedrock management (control-plane) API.
+                    data = _bedrock_management_get("/foundation-models", region, api_key)
+                    summaries = data.get("modelSummaries", []) or []
+                else:
+                    c = _make_aws_client("bedrock", region, settings)
+                    resp = c.list_foundation_models()
+                    summaries = resp.get("modelSummaries", []) or []
                 chat = []
                 embed = []
-                for m in resp.get("modelSummaries", []):
+                for m in summaries:
                     mid = f"bedrock.{m['modelId']}"
                     if "EMBEDDING" in m.get("outputModalities", []):
                         embed.append(mid)
                     else:
                         chat.append(mid)
                 return chat, embed
-            
+
             chat, embed = await asyncio.to_thread(_list)
             return True, chat if chat else BEDROCK_FALLBACK, embed if embed else ["bedrock.amazon.titan-embed-text-v1"]
         except Exception:
@@ -456,11 +485,19 @@ async def get_bedrock_models():
     """Lists Bedrock foundation models."""
     settings = load_settings()
     region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+    api_key = (settings.get("bedrock_api_key") or "").strip()
 
     def _list_models_sync():
-        client = _make_aws_client("bedrock", region, settings)
-        resp = client.list_foundation_models()
-        summaries = resp.get("modelSummaries", []) or []
+        summaries = []
+        if api_key:
+            # API key (ABSK / bedrock-api-key format): use direct HTTPS bearer auth.
+            # The Bedrock management API does not support AWS_BEARER_TOKEN_BEDROCK via boto3.
+            data = _bedrock_management_get("/foundation-models", region, api_key)
+            summaries = data.get("modelSummaries", []) or []
+        else:
+            client = _make_aws_client("bedrock", region, settings)
+            resp = client.list_foundation_models()
+            summaries = resp.get("modelSummaries", []) or []
         models: list[str] = []
         for s in summaries:
             model_id = s.get("modelId")
@@ -472,10 +509,10 @@ async def get_bedrock_models():
         models = await asyncio.to_thread(_list_models_sync)
         return {"models": models}
     except Exception as e:
-        print(f"Error listing Bedrock models: {e}")
+        print(f"Error listing Bedrock models: {type(e).__name__}: {e}")
         return {
             "models": [],
-            "error": "Unable to list Bedrock models. Check AWS credentials/permissions and region.",
+            "error": f"Unable to list Bedrock models: {e}",
         }
 
 
@@ -484,33 +521,51 @@ async def get_bedrock_inference_profiles():
     """Lists Bedrock inference profiles."""
     settings = load_settings()
     region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+    api_key = (settings.get("bedrock_api_key") or "").strip()
+
+    def _parse_profile_summaries(summaries) -> list[dict]:
+        profiles = []
+        for s in summaries or []:
+            if not isinstance(s, dict):
+                continue
+            profiles.append(
+                {
+                    "id": s.get("inferenceProfileId") or s.get("id") or "",
+                    "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
+                    "name": s.get("inferenceProfileName") or s.get("name") or "",
+                    "status": s.get("status") or "",
+                    "type": s.get("type") or "",
+                }
+            )
+        return profiles
 
     def _list_profiles_sync():
-        client = _make_aws_client("bedrock", region, settings)
-
         profiles = []
         next_token = None
-        while True:
-            kwargs: dict = {}
-            if next_token:
-                kwargs["nextToken"] = next_token
-            resp = client.list_inference_profiles(**kwargs)
-            print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
-            for s in resp.get("inferenceProfileSummaries") or []:
-                if not isinstance(s, dict):
-                    continue
-                profiles.append(
-                    {
-                        "id": s.get("inferenceProfileId") or s.get("id") or "",
-                        "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
-                        "name": s.get("inferenceProfileName") or s.get("name") or "",
-                        "status": s.get("status") or "",
-                        "type": s.get("type") or "",
-                    }
-                )
-            next_token = resp.get("nextToken")
-            if not next_token:
-                break
+
+        if api_key:
+            # API key (ABSK / bedrock-api-key format): use direct HTTPS bearer auth.
+            # The Bedrock management API does not support AWS_BEARER_TOKEN_BEDROCK via boto3.
+            while True:
+                params = {"nextToken": next_token} if next_token else None
+                resp = _bedrock_management_get("/inference-profiles", region, api_key, params)
+                print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
+                profiles.extend(_parse_profile_summaries(resp.get("inferenceProfileSummaries")))
+                next_token = resp.get("nextToken")
+                if not next_token:
+                    break
+        else:
+            client = _make_aws_client("bedrock", region, settings)
+            while True:
+                kwargs: dict = {}
+                if next_token:
+                    kwargs["nextToken"] = next_token
+                resp = client.list_inference_profiles(**kwargs)
+                print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
+                profiles.extend(_parse_profile_summaries(resp.get("inferenceProfileSummaries")))
+                next_token = resp.get("nextToken")
+                if not next_token:
+                    break
 
         return sorted(profiles, key=lambda p: (p.get("name") or p.get("arn") or p.get("id") or ""))
 
@@ -518,7 +573,7 @@ async def get_bedrock_inference_profiles():
         profiles = await asyncio.to_thread(_list_profiles_sync)
         return {"profiles": profiles}
     except Exception as e:
-        error_msg = str(e)
+        error_msg = f"{type(e).__name__}: {e}"
         print(f"Error listing Bedrock inference profiles: {error_msg}")
         return {
             "profiles": [],

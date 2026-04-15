@@ -15,9 +15,14 @@ import json
 import tempfile
 import asyncio
 import base64
+import threading
 import httpx
 import boto3
 from botocore.config import Config
+
+# Lock to guard the process-level AWS_BEARER_TOKEN_BEDROCK env var.
+# Multiple threads (via asyncio.to_thread) could otherwise race on set/clear.
+_aws_env_lock = threading.Lock()
 
 
 # ─── Image helpers ──────────────────────────────────────────────────────────────
@@ -173,14 +178,10 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
 
     # If a Bedrock API key is provided, prefer it and avoid mixing auth mechanisms.
     if bedrock_api_key:
-        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_api_key
         access_key = ""
         secret_key = ""
         session_token = ""
     else:
-        # Clear if user removed it in settings
-        if os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
-            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
         access_key = (settings.get("aws_access_key_id") or "").strip()
         secret_key = (settings.get("aws_secret_access_key") or "").strip()
         session_token = (settings.get("aws_session_token") or "").strip()
@@ -217,7 +218,15 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     )
     kwargs["config"] = retry_config
 
-    return boto3.client(**kwargs)
+    # Guard the process-level env var with a lock so concurrent threads don't
+    # race on set/clear (AWS_BEARER_TOKEN_BEDROCK is read by botocore at client
+    # creation time for the bedrock-runtime bearer-token auth path).
+    with _aws_env_lock:
+        if bedrock_api_key:
+            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_api_key
+        else:
+            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
+        return boto3.client(**kwargs)
 
 
 # ─── CLI Session Providers ──────────────────────────────────────────────────────
