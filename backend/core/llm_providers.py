@@ -175,15 +175,6 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
             lower = bedrock_api_key.lower()
         if lower.startswith("bearer "):
             bedrock_api_key = bedrock_api_key.split(" ", 1)[1].strip()
-            lower = bedrock_api_key.lower()
-
-        # bedrock-api-key format (temporary keys) must be Base64-encoded before
-        # being used as a bearer token. AWS decodes it server-side; sending the
-        # raw value causes "Base64 decoding failed" AccessDeniedException.
-        # ABSK keys are already in the expected format and must NOT be re-encoded.
-        if lower.startswith("bedrock-api-key"):
-            import base64
-            bedrock_api_key = base64.b64encode(bedrock_api_key.encode()).decode()
 
     # If a Bedrock API key is provided, prefer it and avoid mixing auth mechanisms.
     if bedrock_api_key:
@@ -1361,8 +1352,17 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
                             "Bedrock model requires an inference profile (no on-demand throughput). "
                             "Set Bedrock Inference Profile in settings, or pick a different model."
                         )
+                    # AccessDeniedException on Converse = auth failure.
+                    # InvokeModel requires SigV4 and does NOT support bearer token auth,
+                    # so falling through would just produce a different auth error.
+                    # Raise immediately with a clear message.
+                    if "AccessDeniedException" in msg_str:
+                        raise LLMError(
+                            f"Bedrock authentication failed: {converse_err}. "
+                            "Check your API key or IAM credentials in Settings."
+                        )
                     print(f"DEBUG: Bedrock converse failed (attempt {attempt}), falling back to invoke_model: {converse_err}")
-                    # Fall through to InvokeModel
+                    # Fall through to InvokeModel (for older models not on Converse API)
                     resp = await _invoke_model_call()
                     response_body = json.loads(resp.get("body").read()) if resp and resp.get("body") else {}
                     content = response_body.get("content") or []
