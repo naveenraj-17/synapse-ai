@@ -18,6 +18,8 @@ import base64
 import threading
 import httpx
 import boto3
+import botocore.exceptions
+from botocore import UNSIGNED as _BEDROCK_UNSIGNED
 from botocore.config import Config
 
 # Lock to guard the process-level AWS_BEARER_TOKEN_BEDROCK env var.
@@ -1247,62 +1249,51 @@ async def _bedrock_converse_direct(
     region: str, api_key: str, model_id: str,
     messages: list, system_blocks: list, max_tokens: int,
 ) -> dict:
-    """Direct HTTPS POST to Bedrock Converse endpoint using bearer token auth.
+    """Call Bedrock Converse via boto3 with UNSIGNED auth + before-send bearer injection.
 
-    Used instead of boto3 when bedrock_api_key is set, because botocore mangles
-    bedrock-api-key format keys when using AWS_BEARER_TOKEN_BEDROCK env var.
-    Returns the same dict structure as boto3's bedrock.converse().
+    boto3's before-send event fires right before urllib3 sends the HTTP request.
+    We inject Authorization: Bearer {api_key} at that point so botocore signing
+    (disabled via UNSIGNED) cannot interfere.
+
+    Both ABSK (long-term, 132-char) and bedrock-api-key (short-term, 1000+char)
+    keys are sent as-is — no prefix stripping — matching AWS documentation.
+    boto3 handles image-bytes serialisation natively; no manual base64 conversion needed.
     """
-    import urllib.request as _ureq
-    import urllib.error as _uerr
-    import urllib.parse as _uparse
+    def _make_client():
+        session = boto3.session.Session()
 
-    # URL-encode the model ID (colons in model IDs like "v1:0" must be percent-encoded)
-    encoded_model_id = _uparse.quote(model_id, safe="")
-    url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{encoded_model_id}/converse"
+        def _inject_auth(request, **kwargs):  # noqa: ARG001
+            request.headers['Authorization'] = f'Bearer {api_key}'
 
-    # boto3 passes image bytes as raw bytes objects, but json.dumps cannot serialize them.
-    # Convert any image bytes blocks to base64 strings for JSON serialization.
-    def _prepare_messages(msgs: list) -> list:
-        result = []
-        for m in msgs:
-            blocks = []
-            for b in m.get("content", []):
-                if "image" in b:
-                    src = b["image"].get("source", {})
-                    if isinstance(src.get("bytes"), bytes):
-                        b = {**b, "image": {**b["image"], "source": {"bytes": base64.b64encode(src["bytes"]).decode()}}}
-                blocks.append(b)
-            result.append({"role": m["role"], "content": blocks})
-        return result
+        # Register on the session so it applies to this client only.
+        # before-send fires with AWSPreparedRequest; returning None lets the
+        # call proceed normally with the injected header.
+        session.events.register(
+            'before-send.bedrock-runtime.Converse',
+            _inject_auth,
+        )
 
-    body = json.dumps({
-        "messages": _prepare_messages(messages),
-        "system": system_blocks,
-        "inferenceConfig": {"maxTokens": max_tokens},
-    }).encode("utf-8")
-
-    req = _ureq.Request(
-        url,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+        return session.client(
+            'bedrock-runtime',
+            region_name=region,
+            aws_access_key_id='unsigned',
+            aws_secret_access_key='unsigned',
+            config=Config(signature_version=_BEDROCK_UNSIGNED),
+        )
 
     def _run():
+        client = _make_client()
         try:
-            with _ureq.urlopen(req, timeout=300) as resp:
-                return json.loads(resp.read())
-        except _uerr.HTTPError as e:
-            error_body = ""
-            try:
-                error_body = e.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
-            raise RuntimeError(f"HTTP {e.code}: {error_body}") from e
+            return client.converse(
+                modelId=model_id,
+                messages=messages,
+                system=system_blocks,
+                inferenceConfig={'maxTokens': max_tokens},
+            )
+        except botocore.exceptions.ClientError as e:
+            status = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 0)
+            msg = e.response.get('Error', {}).get('Message', str(e))
+            raise RuntimeError(f"HTTP {status}: {msg}") from e
 
     return await asyncio.to_thread(_run)
 
