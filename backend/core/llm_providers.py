@@ -333,7 +333,7 @@ async def call_cli_provider(
             # Extract base model by removing any thinking suffixes
             clean_variant = variant.replace('-thinking', '').replace('-max', '').replace('-high', '')
             cmd.extend(["--model", clean_variant])
-            
+
             # Thinking / Effort overrides
             if "-thinking" in variant or "-max" in variant:
                 cmd.extend(["--effort", "medium"])
@@ -341,6 +341,9 @@ async def call_cli_provider(
                 cmd.extend(["--effort", "high"])
             else:
                 cmd.extend(["--effort", "low"])
+
+            # Disable all native Claude Code tools so only our XML tool emulation is active
+            cmd.append("--no-tools")
 
         elif base_cli == "cli.gemini":
             if "pro" in variant:
@@ -385,6 +388,8 @@ async def call_cli_provider(
         else:
             if base_cli == "cli.claude" and sys_prompt:
                 # Write sys_prompt to a temp file and pass via --system-prompt-file.
+                # --no-tools (added above) ensures Claude Code's native tools are stripped so
+                # only our XML emulation is active.
                 temp_sys_prompt_file = tempfile.NamedTemporaryFile(
                     mode="w", suffix=".txt", prefix="claude_sys_prompt_", delete=False,
                     encoding="utf-8", dir=_tmp_dir
@@ -398,6 +403,23 @@ async def call_cli_provider(
                 # full_prompt = sys_prompt.strip() + "\n\n" + rest, so strip the prefix.
                 prefix = sys_prompt.strip()
                 stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
+
+            elif base_cli == "cli.gemini" and sys_prompt:
+                # Gemini CLI reads GEMINI_SYSTEM_MD env var as the path to a markdown file
+                # containing the system prompt, overriding its native default system prompt.
+                temp_sys_prompt_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".md", prefix="gemini_sys_prompt_", delete=False,
+                    encoding="utf-8", dir=_tmp_dir
+                )
+                temp_sys_prompt_file.write(sys_prompt)
+                temp_sys_prompt_file.flush()
+                temp_sys_prompt_file.close()
+                env["GEMINI_SYSTEM_MD"] = temp_sys_prompt_file.name
+
+                # stdin carries only the content after the sys_prompt (tools + messages).
+                prefix = sys_prompt.strip()
+                stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
+
             else:
                 stdin_payload = full_prompt
 
