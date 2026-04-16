@@ -87,6 +87,7 @@ export function OrchestrationTab() {
     const [responseModal, setResponseModal] = useState<{ step_name: string; content: string } | null>(null);
     const [confirmDeleteOrchId, setConfirmDeleteOrchId] = useState<string | null>(null);
     const [builderOpen, setBuilderOpen] = useState(false);
+    const [builderSessionKey, setBuilderSessionKey] = useState(0);
 
     // --- Active runs (for reconnect banner) ---
     const [activeRuns, setActiveRuns] = useState<Array<{
@@ -634,7 +635,7 @@ export function OrchestrationTab() {
                 <h1 className="text-2xl font-bold text-zinc-100">Orchestrations</h1>
                 <p className="text-zinc-500 text-xs mt-0.5">Design multi-agent workflows with visual canvas</p>
                 <button
-                    onClick={() => { createNew(); setBuilderOpen(true); }}
+                    onClick={() => { createNew(); setBuilderOpen(true); setBuilderSessionKey(k => k + 1); }}
                     className="absolute top-4 right-14 flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
                 >
                     <Sparkles size={13} /> Build with AI
@@ -855,7 +856,13 @@ export function OrchestrationTab() {
                 onClose={() => setBuilderOpen(false)}
                 agents={agents}
                 availableModels={availableModels}
-                currentOrchestrationId={selectedOrchId}
+                currentOrchestrationId={
+                    // Only pass a real saved orchestration ID — not the temp frontend draft ID
+                    selectedOrchId && orchestrations.some(o => o.id === selectedOrchId)
+                        ? selectedOrchId
+                        : null
+                }
+                sessionKey={builderSessionKey}
                 onOrchestrationSaved={(orch) => {
                     setOrchestrations((prev) => {
                         const idx = prev.findIndex((o) => o.id === orch.id);

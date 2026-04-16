@@ -82,6 +82,7 @@ TOOLS_LIST = {
     "vault_sandbox": str(TOOLS_DIR / "sandbox.py"),
     "code_vault_search": str(TOOLS_DIR / "code_search.py"),
     "web_scraper": str(TOOLS_DIR / "web_scraper.py"),
+    "bash": str(TOOLS_DIR / "bash.py"),
 }
 
 REPOS_FILE = DATA_DIR / "repos.json"

@@ -8,13 +8,17 @@ import type { Orchestration } from '@/types/orchestration';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ToolEntry {
+    name: string;
+    args?: any;
+    result?: string;
+}
+
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
-    kind?: 'text' | 'tool_call' | 'tool_result' | 'banner_orch' | 'banner_agent';
-    toolName?: string;
-    toolArgs?: any;
-    toolResult?: string;
+    kind?: 'text' | 'tool_group' | 'banner_orch' | 'banner_agent';
+    tools?: ToolEntry[];
     bannerText?: string;
 }
 
@@ -26,7 +30,65 @@ interface BuilderPanelProps {
     currentOrchestrationId: string | null;
     onOrchestrationSaved: (orch: Orchestration) => void;
     onAgentSaved: (agent: any) => void;
+    sessionKey?: number;
 }
+
+// ─── Tools Collapsible ────────────────────────────────────────────────────────
+
+function ToolsCollapsible({ tools, isStreaming }: { tools: ToolEntry[]; isStreaming?: boolean }) {
+    const [open, setOpen] = useState(false);
+    if (!tools || tools.length === 0) return null;
+    const doneCount = tools.filter((t) => t.result !== undefined).length;
+
+    return (
+        <div className="flex justify-start">
+            <div className="max-w-[90%] border border-zinc-700/50 rounded-lg overflow-hidden bg-zinc-800/30">
+                <button
+                    onClick={() => setOpen((v) => !v)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors text-left"
+                >
+                    {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                    <span>🔧 {tools.length} tool call{tools.length !== 1 ? 's' : ''}</span>
+                    {isStreaming && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse shrink-0" />}
+                    <span className="ml-auto text-zinc-600 text-[10px]">{doneCount}/{tools.length} complete</span>
+                </button>
+                {open && (
+                    <div className="border-t border-zinc-700/40 divide-y divide-zinc-800/60">
+                        {tools.map((tool, i) => (
+                            <div key={i} className="px-3 py-2">
+                                <div className="flex items-center gap-1.5 text-purple-400 text-[11px] font-mono mb-1">
+                                    <span>🔧</span>
+                                    <span>{tool.name}</span>
+                                    {tool.result !== undefined && <span className="text-emerald-500 ml-auto">✓</span>}
+                                </div>
+                                {tool.args && Object.keys(tool.args).length > 0 && (
+                                    <pre className="text-[10px] text-zinc-500 overflow-x-auto whitespace-pre-wrap mb-1">
+                                        {JSON.stringify(tool.args, null, 2)}
+                                    </pre>
+                                )}
+                                {tool.result !== undefined && (
+                                    <details className="mt-1">
+                                        <summary className="text-[10px] text-zinc-600 cursor-pointer select-none list-none">
+                                            Result
+                                        </summary>
+                                        <pre className="mt-1 text-[10px] text-zinc-400 overflow-x-auto max-h-32 whitespace-pre-wrap">
+                                            {(() => {
+                                                try { return JSON.stringify(JSON.parse(tool.result || ''), null, 2); }
+                                                catch { return tool.result; }
+                                            })()}
+                                        </pre>
+                                    </details>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const TYPE_COLORS: Record<string, string> = {
     code: 'bg-sky-900/60 text-sky-400 border-sky-700/40',
@@ -41,6 +103,13 @@ function typeColor(type: string) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const BUILDER_WELCOME_MESSAGE: ChatMessage = {
+    role: 'assistant',
+    content:
+        "Hi! I'm the Synapse Builder. Tell me what kind of agent or orchestration you'd like to build, and I'll ask any clarifying questions before creating it.\n\nFor example:\n- *\"Build a research workflow that searches the web and writes a summary to the vault\"*\n- *\"Create an agent that monitors my emails and drafts replies\"*",
+    kind: 'text',
+};
+
 export function BuilderPanel({
     isOpen,
     onClose,
@@ -49,24 +118,32 @@ export function BuilderPanel({
     currentOrchestrationId,
     onOrchestrationSaved,
     onAgentSaved,
+    sessionKey,
 }: BuilderPanelProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        {
-            role: 'assistant',
-            content:
-                "Hi! I'm the Synapse Builder. Tell me what kind of agent or orchestration you'd like to build, and I'll ask any clarifying questions before creating it.\n\nFor example:\n- *\"Build a research workflow that searches the web and writes a summary to the vault\"*\n- *\"Create an agent that monitors my emails and drafts replies\"*",
-            kind: 'text',
-        },
-    ]);
+    const [messages, setMessages] = useState<ChatMessage[]>([BUILDER_WELCOME_MESSAGE]);
     const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
-    const [canCreateAgents, setCanCreateAgents] = useState(false);
+    const [canCreateAgents, setCanCreateAgents] = useState(true);
     const [selectedModel, setSelectedModel] = useState('');
     const [input, setInput] = useState('');
     const [streaming, setStreaming] = useState(false);
+    const [streamingStatus, setStreamingStatus] = useState<string | null>(null);
+    const [isThinking, setIsThinking] = useState(false);
     const [accordionOpen, setAccordionOpen] = useState(false);
 
     const bottomRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const toolEntriesRef = useRef<ToolEntry[]>([]);
+
+    // Reset conversation state each time the parent starts a new builder session
+    useEffect(() => {
+        if (sessionKey === undefined) return;
+        setMessages([BUILDER_WELCOME_MESSAGE]);
+        setSelectedAgentIds(new Set());
+        setCanCreateAgents(true);
+        setInput('');
+        setAccordionOpen(false);
+        toolEntriesRef.current = [];
+    }, [sessionKey]);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,12 +172,11 @@ export function BuilderPanel({
         setMessages((prev) => [...prev, userMsg]);
         setInput('');
         setStreaming(true);
+        setStreamingStatus('Thinking…');
+        setIsThinking(true);
+        toolEntriesRef.current = [];
 
         let assistantIdx = -1;
-        setMessages((prev) => {
-            assistantIdx = prev.length;
-            return [...prev, { role: 'assistant', content: '', kind: 'text' }];
-        });
 
         try {
             const res = await fetch('/api/builder/chat', {
@@ -137,42 +213,50 @@ export function BuilderPanel({
 
                     switch (event.type) {
                         case 'thinking':
-                            setMessages((prev) =>
-                                prev.map((m, i) => i === assistantIdx ? { ...m, content: m.content || '…' } : m)
-                            );
+                            setStreamingStatus('Thinking…');
+                            setIsThinking(true);
                             break;
 
                         case 'chunk':
-                            setMessages((prev) =>
-                                prev.map((m, i) => {
-                                    if (i !== assistantIdx) return m;
-                                    const base = m.content === '…' ? '' : m.content;
-                                    return { ...m, content: base + event.content };
-                                })
-                            );
+                            setStreamingStatus(null);
+                            setIsThinking(false);
+                            if (assistantIdx === -1) {
+                                setMessages((prev) => {
+                                    assistantIdx = prev.length;
+                                    return [...prev, { role: 'assistant', content: event.content, kind: 'text' }];
+                                });
+                            } else {
+                                setMessages((prev) =>
+                                    prev.map((m, i) => {
+                                        if (i !== assistantIdx) return m;
+                                        const base = m.content === '…' ? '' : m.content;
+                                        return { ...m, content: base + event.content };
+                                    })
+                                );
+                            }
                             break;
 
-                        case 'tool_call':
-                            setMessages((prev) => [
-                                ...prev,
-                                { role: 'assistant', kind: 'tool_call', content: '', toolName: event.tool_name, toolArgs: event.args },
-                            ]);
-                            setMessages((prev) => {
-                                assistantIdx = prev.length;
-                                return [...prev, { role: 'assistant', content: '', kind: 'text' }];
-                            });
+                        case 'tool_call': {
+                            const toolName = (event.tool_name as string).replace(/_/g, ' ');
+                            toolEntriesRef.current = [
+                                ...toolEntriesRef.current,
+                                { name: event.tool_name, args: event.args },
+                            ];
+                            setStreamingStatus(`🔧 ${toolName}…`);
+                            setIsThinking(false);
                             break;
+                        }
 
-                        case 'tool_result':
-                            setMessages((prev) => {
-                                const withoutEmpty = prev[prev.length - 1]?.content === '' ? prev.slice(0, -1) : prev;
-                                return [...withoutEmpty, { role: 'assistant', kind: 'tool_result', content: '', toolName: event.tool_name, toolResult: event.result }];
-                            });
-                            setMessages((prev) => {
-                                assistantIdx = prev.length;
-                                return [...prev, { role: 'assistant', content: '', kind: 'text' }];
-                            });
+                        case 'tool_result': {
+                            const toolName = (event.tool_name as string | undefined)?.replace(/_/g, ' ') ?? 'tool';
+                            const entries = [...toolEntriesRef.current];
+                            if (entries.length > 0) {
+                                entries[entries.length - 1] = { ...entries[entries.length - 1], result: event.result };
+                                toolEntriesRef.current = entries;
+                            }
+                            setStreamingStatus(`✓ ${toolName}`);
                             break;
+                        }
 
                         case 'orchestration_saved':
                             onOrchestrationSaved(event.orchestration as Orchestration);
@@ -191,29 +275,61 @@ export function BuilderPanel({
                             break;
 
                         case 'final':
-                            setMessages((prev) =>
-                                prev.map((m, i) => i === assistantIdx ? { ...m, content: event.response } : m)
-                            );
+                            setStreamingStatus(null);
+                            setIsThinking(false);
+                            setMessages((prev) => {
+                                const next = [...prev];
+                                if (toolEntriesRef.current.length > 0) {
+                                    next.push({
+                                        role: 'assistant',
+                                        kind: 'tool_group',
+                                        content: '',
+                                        tools: [...toolEntriesRef.current],
+                                    });
+                                }
+                                next.push({ role: 'assistant', kind: 'text', content: event.response });
+                                assistantIdx = next.length - 1;
+                                return next;
+                            });
+                            toolEntriesRef.current = [];
                             break;
 
                         case 'error':
-                            setMessages((prev) =>
-                                prev.map((m, i) => i === assistantIdx ? { ...m, content: `Error: ${event.message}` } : m)
-                            );
+                            setStreamingStatus(null);
+                            setIsThinking(false);
+                            setMessages((prev) => {
+                                const next = [...prev];
+                                if (toolEntriesRef.current.length > 0) {
+                                    next.push({ role: 'assistant', kind: 'tool_group', content: '', tools: [...toolEntriesRef.current] });
+                                }
+                                next.push({ role: 'assistant', kind: 'text', content: `Error: ${event.message}` });
+                                assistantIdx = next.length - 1;
+                                return next;
+                            });
+                            toolEntriesRef.current = [];
                             break;
                     }
                 }
             }
         } catch (err: any) {
-            setMessages((prev) =>
-                prev.map((m, i) => i === assistantIdx ? { ...m, content: `Error: ${err.message}` } : m)
-            );
+            setMessages((prev) => {
+                const next = [...prev];
+                if (toolEntriesRef.current.length > 0) {
+                    next.push({ role: 'assistant', kind: 'tool_group', content: '', tools: [...toolEntriesRef.current] });
+                }
+                next.push({ role: 'assistant', kind: 'text', content: `Error: ${err.message}` });
+                return next;
+            });
+            toolEntriesRef.current = [];
         } finally {
+            toolEntriesRef.current = [];
             setMessages((prev) => {
                 const last = prev[prev.length - 1];
-                return last?.kind === 'text' && last.content === '' ? prev.slice(0, -1) : prev;
+                return last?.kind === 'text' && (last.content === '' || last.content === '…') ? prev.slice(0, -1) : prev;
             });
             setStreaming(false);
+            setStreamingStatus(null);
+            setIsThinking(false);
             textareaRef.current?.focus();
         }
     };
@@ -244,40 +360,9 @@ export function BuilderPanel({
                 {/* ── Chat area ───────────────────────────────────────────── */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
                     {messages.map((msg, i) => {
-                        if (msg.kind === 'tool_call') {
-                            return (
-                                <div key={i} className="flex justify-start">
-                                    <div className="max-w-[90%] px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
-                                        <div className="flex items-center gap-1.5 text-purple-400 text-xs font-mono">
-                                            <span>🔧</span>
-                                            <span>{msg.toolName}</span>
-                                        </div>
-                                        {msg.toolArgs && Object.keys(msg.toolArgs).length > 0 && (
-                                            <pre className="mt-1.5 text-[10px] text-zinc-500 overflow-x-auto whitespace-pre-wrap">
-                                                {JSON.stringify(msg.toolArgs, null, 2)}
-                                            </pre>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        if (msg.kind === 'tool_result') {
-                            return (
-                                <div key={i} className="flex justify-start">
-                                    <details className="max-w-[90%] bg-zinc-800/40 border border-zinc-700/40 rounded-lg px-3 py-2 cursor-pointer">
-                                        <summary className="text-[11px] text-zinc-500 select-none list-none flex items-center gap-1.5">
-                                            <span className="text-emerald-500">✓</span> {msg.toolName} result
-                                        </summary>
-                                        <pre className="mt-2 text-[10px] text-zinc-400 overflow-x-auto max-h-40 whitespace-pre-wrap">
-                                            {(() => {
-                                                try { return JSON.stringify(JSON.parse(msg.toolResult || ''), null, 2); }
-                                                catch { return msg.toolResult; }
-                                            })()}
-                                        </pre>
-                                    </details>
-                                </div>
-                            );
+                        if (msg.kind === 'tool_group') {
+                            const isLast = i === messages.length - 1;
+                            return <ToolsCollapsible key={i} tools={msg.tools ?? []} isStreaming={streaming && isLast} />;
                         }
 
                         if (msg.kind === 'banner_orch' || msg.kind === 'banner_agent') {
@@ -314,6 +399,20 @@ export function BuilderPanel({
                             </div>
                         );
                     })}
+                    {/* ── Live status indicator ── */}
+                    {streaming && (
+                        <div className="flex items-center gap-2 pl-1">
+                            {isThinking ? (
+                                <Loader2 size={11} className="animate-spin text-zinc-500 shrink-0" />
+                            ) : (
+                                <div className="w-1.5 h-1.5 rounded-full bg-purple-500/70 animate-pulse shrink-0" />
+                            )}
+                            <span className="text-[11px] text-zinc-500 font-mono">
+                                {streamingStatus ?? 'Processing…'}
+                            </span>
+                        </div>
+                    )}
+
                     <div ref={bottomRef} />
                 </div>
 

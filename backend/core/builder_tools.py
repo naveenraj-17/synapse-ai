@@ -127,6 +127,27 @@ BUILDER_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_tools_detail",
+            "description": (
+                "Get the full details (name, description, and input schema) for a list of tool names. "
+                "Use this after list_all_tools to inspect exact parameter schemas before assigning tools to agents or tool steps."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tool_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of tool names to fetch full details for (e.g. [\"brave_search\", \"read_file\"])",
+                    }
+                },
+                "required": ["tool_names"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_tool_servers",
             "description": "List all configured MCP tool servers with their names, types, and connection status.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -322,6 +343,33 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         except Exception as e:
             return {"error": f"Could not list tools: {e}"}
 
+    elif tool_name == "get_tools_detail":
+        try:
+            from core.tools import aggregate_all_tools
+            from core.routes.tools import load_custom_tools
+            from core.routes.agents import load_user_agents as _lau
+            _agents = _lau()
+            active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
+            custom_tools = load_custom_tools()
+            all_tools, _, _, _ = await aggregate_all_tools(
+                server_module.agent_sessions, active_agent, custom_tools
+            )
+            requested = set(args.get("tool_names", []))
+            result = {}
+            for t in all_tools:
+                if t.name in requested:
+                    result[t.name] = {
+                        "name": t.name,
+                        "description": t.description or "",
+                        "inputSchema": t.inputSchema if hasattr(t, "inputSchema") else {},
+                    }
+            missing = requested - result.keys()
+            if missing:
+                result["_not_found"] = sorted(missing)
+            return result
+        except Exception as e:
+            return {"error": f"Could not fetch tool details: {e}"}
+
     elif tool_name == "list_tool_servers":
         servers = _mcp_store.load()
         if not isinstance(servers, list):
@@ -480,12 +528,24 @@ Before creating anything non-trivial, always ask clarifying questions:
 
 Only proceed to build after you understand the requirements clearly.
 
-## TOOL USAGE
-Use your tools to discover the environment before making decisions:
-- Call `list_agents` to see what agents already exist (reuse them!)
-- Call `list_all_tools` to check if required capabilities are available
-- Call `list_orchestrations` to see existing workflows for context
-- Call `list_tool_servers` to understand what MCP servers are connected
+## CREATING VS UPDATING — READ THIS CAREFULLY
+- **Default action is always `create_orchestration`** for any new workflow request.
+- **ONLY use `update_orchestration`** when the user EXPLICITLY says "edit", "modify", "update", or "change" a specific, already-existing orchestration by name or ID.
+- If a `current_orchestration_id` is provided in your context, it means the user is *viewing* that orchestration — it does NOT mean they want to modify it. Treat it as read-only context unless the user explicitly asks to change it.
+- When in doubt, ask: "Should I create a new orchestration or update the existing one?"
+
+## WHEN NO AGENTS ARE AVAILABLE OR CREATABLE
+- Always start by calling `list_agents` to see what exists before deciding.
+- If agents exist but none were pre-selected, ask the user which ones to include.
+- If no agents exist and you don't have permission to create agents, say clearly: "No agents are configured yet and I don't have permission to create new ones. Please enable 'Create new agents if needed' in the panel."
+- Never loop calling the same tools repeatedly — if you're missing what you need, ask the user.
+
+## TOOL USAGE — IMPORTANT LIMITS
+- Call `list_agents` ONLY if you need to pick agents (e.g. user hasn't pre-selected any). If agent IDs are already provided in your context, skip this call.
+- **NEVER call `list_all_tools` proactively.** Only call it if the user explicitly asks "what tools are available?" or you cannot proceed without knowing a specific tool name. It returns 200+ tools and severely bloats the context.
+- Call `get_tools_detail` only when you have a specific tool name and need its full input schema.
+- Call `list_orchestrations` only when explicitly relevant (e.g. user asks to see existing workflows).
+- **NEVER call `get_agent`, `update_agent`, or `create_agent` unless the user's message explicitly asks you to inspect or modify a specific agent.** Pre-selected agent IDs in your context are ready to use — do not inspect or modify them unprompted.
 
 ## WHEN A CAPABILITY DOESN'T EXIST
 If a user asks for something that requires a tool that doesn't exist in `list_all_tools`:

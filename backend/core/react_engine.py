@@ -208,6 +208,12 @@ async def run_agent_step(
     run_id: str | None = None,
     images: list[str] | None = None,
     system_prompt_extra: str | None = None,
+    # ── optional extension params (used by builder wrapper) ───────────────────
+    agent_override: dict | None = None,   # skip _resolve_agent_by_id
+    tools_override: list | None = None,   # skip aggregate_all_tools; list of OpenAI-format tool dicts
+    tool_executor=None,                   # async (name, args) -> str | None; None = fall through
+    post_tool_hook=None,                  # async gen (name, raw_output) -> yields extra events
+    history_override: list | None = None, # use instead of get_recent_history_messages
 ):
     """Lower-level single-agent ReAct execution.
 
@@ -218,7 +224,7 @@ async def run_agent_step(
         max_turns = MAX_TURNS
 
     # Resolve agent
-    active_agent = _resolve_agent_by_id(agent_id)
+    active_agent = agent_override if agent_override is not None else _resolve_agent_by_id(agent_id)
     agent_id_for_session = active_agent.get("id", agent_id or "unknown")
 
     # Build system prompt with repo and DB context injection
@@ -242,12 +248,20 @@ async def run_agent_step(
     inject_tools_in_prompt = mode in ("cli", "bedrock")
 
     # Aggregate tools & build system prompt
-    custom_tools = load_custom_tools()
-    print(f"DEBUG RUN_AGENT: start agent_id={agent_id_for_session}, sessions={list(server_module.agent_sessions.keys())}", flush=True)
-    all_tools, tool_schema_map, ollama_tools, tools_json = await aggregate_all_tools(
-        server_module.agent_sessions, active_agent, custom_tools
-    )
-    print(f"DEBUG RUN_AGENT: aggregate_all_tools done, tool_count={len(all_tools)}", flush=True)
+    if tools_override is not None:
+        # Caller provided a fixed tool set (e.g. builder) — skip MCP aggregation
+        tool_schema_map = {t["function"]["name"]: t for t in tools_override}
+        all_tools = list(tool_schema_map.values())
+        ollama_tools = tools_override
+        tools_json = json.dumps(tools_override)
+        print(f"DEBUG RUN_AGENT: start agent_id={agent_id_for_session}, tools_override={len(tools_override)} tools", flush=True)
+    else:
+        custom_tools = load_custom_tools()
+        print(f"DEBUG RUN_AGENT: start agent_id={agent_id_for_session}, sessions={list(server_module.agent_sessions.keys())}", flush=True)
+        all_tools, tool_schema_map, ollama_tools, tools_json = await aggregate_all_tools(
+            server_module.agent_sessions, active_agent, custom_tools
+        )
+        print(f"DEBUG RUN_AGENT: aggregate_all_tools done, tool_count={len(all_tools)}", flush=True)
     allowed_tools = list(allowed_tools_override) if allowed_tools_override else active_agent.get("tools", ["all"])
 
     system_prompt_text = build_system_prompt(
@@ -283,9 +297,14 @@ async def run_agent_step(
     user_message = message
     memory_context = ""
     agent_type = active_agent.get("type", "conversational")
-    # Orchestrator agents always start fresh — no history carryover between runs
-    is_orchestrator = agent_type == "orchestrator"
-    recent_history_messages = [] if is_orchestrator else get_recent_history_messages(session_id, agent_id=agent_id_for_session)
+    # Orchestrator and builder agents always start fresh — no history carryover between runs
+    is_orchestrator = agent_type in ("orchestrator", "builder")
+    if history_override is not None:
+        recent_history_messages = history_override
+    elif is_orchestrator:
+        recent_history_messages = []
+    else:
+        recent_history_messages = get_recent_history_messages(session_id, agent_id=agent_id_for_session)
     current_context_text = f"User Request: {user_message}\n"
     final_response = ""
     last_intent = "chat"
@@ -463,6 +482,23 @@ async def run_agent_step(
                     current_context_text += f"\nSystem: The 'query_past_conversations' tool is no longer available. Use the current conversation context instead.\n"
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": "Tool removed"}
                     continue
+
+                # ===== BUILT-IN EXECUTOR OVERRIDE (e.g. builder) =====
+                # Checked before MCP/custom routing; returns None to fall through.
+
+                if tool_executor is not None:
+                    _exec_result = await tool_executor(tool_name, tool_args)
+                    if _exec_result is not None:
+                        raw_output = maybe_vault(tool_name, _exec_result)
+                        current_context_text += f"\nTool '{tool_name}' Output: {raw_output}\n"
+                        tools_used_summary.append(f"{tool_name}: {raw_output}")
+                        preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
+                        print(f"DEBUG: 🔧 Executor result ({tool_name}): {preview}")
+                        yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
+                        if post_tool_hook is not None:
+                            async for _extra in post_tool_hook(tool_name, raw_output):
+                                yield _extra
+                        continue
 
                 # ===== CUSTOM TOOLS (Webhook + Python) =====
 
@@ -746,6 +782,9 @@ async def run_agent_step(
                     # MCP tool results are no longer embedded in ChromaDB
                     preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
+                    if post_tool_hook is not None:
+                        async for _extra in post_tool_hook(tool_name, raw_output):
+                            yield _extra
                     tools_used_summary.append(f"{tool_name}: {raw_output}")
                 except Exception as e:
                     error_msg = str(e)
