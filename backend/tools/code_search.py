@@ -63,8 +63,8 @@ app = Server("code-search-server")
 
 def _get_pool() -> ConnectionPool:
     global _pool, _pool_url
-    from core.config import load_settings as _load_settings
-    db_url = _load_settings().get("sql_connection_string", "")
+    from core.config import load_settings as _load_settings, sanitize_db_url as _sanitize_db_url
+    db_url = _sanitize_db_url(_load_settings().get("sql_connection_string", ""))
     if not db_url:
         raise RuntimeError("No database URL configured. Set sql_connection_string in Settings → General.")
     if _pool is None or _pool_url != db_url:
