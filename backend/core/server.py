@@ -21,7 +21,7 @@ _SESSION_READ_TIMEOUT = timedelta(seconds=60)
 try:
     from core.memory import MemoryStore
 except ImportError:
-    print("Warning: MemoryStore dependencies not found. Memory disabled.")
+    print("Warning: MemoryStore dependencies not found. Memory disabled.", file=sys.stderr)
     MemoryStore = None
 
 from core.mcp_client import MCPClientManager
@@ -426,6 +426,7 @@ async def lifespan(app: FastAPI):
                     command=cmd,
                     args=mcp_cfg["args"],
                     env=env,
+                    cwd=str(Path.home()),
                 )
                 read, write = await exit_stack.enter_async_context(stdio_client(server_params))
                 session = await exit_stack.enter_async_context(
