@@ -101,7 +101,7 @@ export function OrchestrationTab() {
     // --- Fetch orchestrations + agents ---
     useEffect(() => {
         fetch('/api/orchestrations').then(r => r.json()).then(data => {
-            setOrchestrations(Array.isArray(data) ? data : []);
+            setOrchestrations(Array.isArray(data) ? data.filter((o: any) => o.id !== 'orch_native_builder') : []);
         }).catch(() => {});
 
         fetch('/api/agents').then(r => r.json()).then(data => {

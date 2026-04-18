@@ -334,6 +334,7 @@ class OrchestrationEngine:
             if isinstance(schema, dict) and "default" in schema:
                 state[key] = schema["default"]
         state["user_input"] = user_input
+        state["user_query"] = user_input
         return state
 
     def _resolve_next(self, step: StepConfig, run: OrchestrationRun) -> tuple[str | None, dict | None]:

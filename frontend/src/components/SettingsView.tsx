@@ -901,7 +901,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                     {/* AGENTS TAB */}
                     {activeTab === 'agents' && (
                         <AgentsTab
-                            agents={agents}
+                            agents={agents.filter((a: any) => !a.id.startsWith('agent_native_builder'))}
                             selectedAgentId={selectedAgentId}
                             setSelectedAgentId={setSelectedAgentId}
                             draftAgent={draftAgent}
