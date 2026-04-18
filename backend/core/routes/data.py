@@ -182,6 +182,14 @@ async def get_models():
     openai_key = (settings.get("openai_key") or "").strip()
     grok_key = (settings.get("grok_key") or "").strip()
     deepseek_key = (settings.get("deepseek_key") or "").strip()
+    openai_compatible_key = (settings.get("openai_compatible_key") or "").strip()
+    openai_compatible_base_url = (settings.get("openai_compatible_base_url") or "").strip()
+    openai_compatible_models_str = (settings.get("openai_compatible_models") or "").strip()
+    local_compatible_base_url = (settings.get("local_compatible_base_url") or "").strip()
+    local_compatible_key = (settings.get("local_compatible_key") or "").strip()
+    local_compatible_models_str = (settings.get("local_compatible_models") or "").strip()
+    openai_compatible_embed_models_str = (settings.get("openai_compatible_embed_models") or "").strip()
+    local_compatible_embed_models_str = (settings.get("local_compatible_embed_models") or "").strip()
     bedrock_available = bool((settings.get("bedrock_api_key") or "").strip() or
                              (settings.get("aws_access_key_id") or "").strip())
 
@@ -401,6 +409,63 @@ async def get_models():
         models = await _fetch_copilot_models()
         return True, models, []
 
+    async def fetch_openai_compatible() -> tuple[bool, list[str], list[str]]:
+        if not openai_compatible_base_url:
+            return False, [], []
+        models = [m.strip() for m in openai_compatible_models_str.split(",") if m.strip()]
+        manual_embed = [m.strip() for m in openai_compatible_embed_models_str.split(",") if m.strip()]
+        if openai_compatible_key and openai_compatible_base_url:
+            try:
+                url = openai_compatible_base_url.rstrip("/")
+                if url.endswith("/v1"):
+                    url = url[:-3]
+                async with httpx.AsyncClient() as client:
+                    headers = {}
+                    if openai_compatible_key:
+                        headers["Authorization"] = f"Bearer {openai_compatible_key}"
+                    r = await client.get(f"{url}/v1/models", headers=headers, timeout=5.0)
+                    if r.status_code == 200:
+                        data = r.json().get("data", [])
+                        api_models = sorted(set(m["id"] for m in data if m.get("id")))
+                        if api_models:
+                            models = api_models
+            except Exception as e:
+                print(f"Error fetching OpenAI-compatible models: {type(e).__name__}: {e}")
+        available = bool(openai_compatible_base_url)
+        prefixed = [f"oaic.{m}" for m in models]
+        auto_embed = [m for m in models if "embed" in m.lower()]
+        all_embed = list(dict.fromkeys(manual_embed + auto_embed))
+        prefixed_embed = [f"oaic.{m}" for m in all_embed]
+        return available, prefixed, prefixed_embed
+
+    async def fetch_local_compatible() -> tuple[bool, list[str], list[str]]:
+        if not local_compatible_base_url:
+            return False, [], []
+        models = [m.strip() for m in local_compatible_models_str.split(",") if m.strip()]
+        manual_embed = [m.strip() for m in local_compatible_embed_models_str.split(",") if m.strip()]
+        try:
+            url = local_compatible_base_url.rstrip("/")
+            if url.endswith("/v1"):
+                url = url[:-3]
+            async with httpx.AsyncClient() as client:
+                headers = {}
+                if local_compatible_key:
+                    headers["Authorization"] = f"Bearer {local_compatible_key}"
+                r = await client.get(f"{url}/v1/models", headers=headers, timeout=5.0)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    api_models = sorted(set(m["id"] for m in data if m.get("id")))
+                    if api_models:
+                        models = api_models
+        except Exception as e:
+            print(f"Error fetching local-compatible models: {type(e).__name__}: {e}")
+        available = bool(local_compatible_base_url)
+        prefixed = [f"locv1.{m}" for m in models]
+        auto_embed = [m for m in models if "embed" in m.lower()]
+        all_embed = list(dict.fromkeys(manual_embed + auto_embed))
+        prefixed_embed = [f"locv1.{m}" for m in all_embed]
+        return available, prefixed, prefixed_embed
+
     # Run all fetches concurrently; return_exceptions=True ensures one provider failure
     # doesn't cancel the others.
     _PROVIDER_FALLBACKS = [
@@ -411,16 +476,19 @@ async def get_models():
         (True, GROK_FALLBACK, []),                                                       # grok
         (True, DEEPSEEK_FALLBACK, []),                                                   # deepseek
         (True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]),                # bedrock
+        (False, [], []),                                                                 # openai_compatible
+        (False, [], []),                                                                 # local_compatible
         (False, [], []),                                                                 # anthropic_cli
         (False, [], []),                                                                 # gemini_cli
         (False, [], []),                                                                 # codex_cli
         (False, [], []),                                                                 # github_copilot_cli
     ]
-    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "anthropic_cli", "gemini_cli", "codex_cli", "github_copilot_cli"]
+    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "openai_compatible", "local_compatible", "anthropic_cli", "gemini_cli", "codex_cli", "github_copilot_cli"]
 
     raw = await asyncio.gather(
         fetch_ollama(), fetch_openai(), fetch_anthropic(),
         fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock(),
+        fetch_openai_compatible(), fetch_local_compatible(),
         fetch_claude_cli(), fetch_gemini_cli(), fetch_codex_cli(),
         fetch_github_copilot_cli(),
         return_exceptions=True,
@@ -441,10 +509,12 @@ async def get_models():
     grok_avail, grok_chat, grok_embed = results[4]
     deepseek_avail, deepseek_chat, deepseek_embed = results[5]
     bedrock_avail, bedrock_chat, bedrock_embed = results[6]
-    c_claude_avail, c_claude_chat, _ = results[7]
-    c_gemini_avail, c_gemini_chat, _ = results[8]
-    c_codex_avail, c_codex_chat, _ = results[9]
-    c_copilot_avail, c_copilot_chat, _ = results[10]
+    oaic_avail, oaic_chat, oaic_embed = results[7]
+    locv1_avail, locv1_chat, locv1_embed = results[8]
+    c_claude_avail, c_claude_chat, _ = results[9]
+    c_gemini_avail, c_gemini_chat, _ = results[10]
+    c_codex_avail, c_codex_chat, _ = results[11]
+    c_copilot_avail, c_copilot_chat, _ = results[12]
 
     # --- Build provider map ---
     providers = {
@@ -455,6 +525,8 @@ async def get_models():
         "grok": {"available": grok_avail, "models": grok_chat, "embedding_models": grok_embed},
         "deepseek": {"available": deepseek_avail, "models": deepseek_chat, "embedding_models": deepseek_embed},
         "bedrock": {"available": bedrock_avail, "models": bedrock_chat, "embedding_models": bedrock_embed},
+        "openai_compatible": {"available": oaic_avail, "models": oaic_chat, "embedding_models": oaic_embed},
+        "local_compatible": {"available": locv1_avail, "models": locv1_chat, "embedding_models": locv1_embed},
         "anthropic_cli": {"available": c_claude_avail, "models": c_claude_chat, "embedding_models": []},
         "gemini_cli": {"available": c_gemini_avail, "models": c_gemini_chat, "embedding_models": []},
         "codex_cli": {"available": c_codex_avail, "models": c_codex_chat, "embedding_models": []},
@@ -468,7 +540,7 @@ async def get_models():
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + c_claude_chat + c_gemini_chat + c_codex_chat + c_copilot_chat
+    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + oaic_chat + locv1_chat + c_claude_chat + c_gemini_chat + c_codex_chat + c_copilot_chat
 
     return {
         "providers": providers,

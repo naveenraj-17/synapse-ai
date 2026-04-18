@@ -119,6 +119,10 @@ def detect_mode_from_model(model_name: str) -> str:
         return "cloud"
     if m.startswith("deepseek"):
         return "cloud"
+    if m.startswith("oaic."):
+        return "cloud"
+    if m.startswith("locv1."):
+        return "cloud"
     return "local"
 
 
@@ -150,6 +154,10 @@ def detect_provider_from_model(model_name: str) -> str:
         return "grok"
     if m.startswith("deepseek"):
         return "deepseek"
+    if m.startswith("oaic."):
+        return "openai_compatible"
+    if m.startswith("locv1."):
+        return "local_compatible"
     return "ollama"
 
 
@@ -1245,6 +1253,119 @@ async def call_deepseek(model, messages, system, api_key, tools=None, images=Non
     raise LLMError(error_msg)
 
 
+def _normalize_v1_base_url(base_url: str) -> str:
+    """Normalize a v1-compatible base URL by stripping trailing /v1."""
+    url = base_url.rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    return url
+
+
+async def call_v1_compatible(model, messages, system, base_url, api_key, tools=None, images=None):
+    """Call any OpenAI v1-compatible endpoint with 5-attempt exponential backoff.
+
+    Used for both cloud OpenAI-compatible providers (OpenRouter, Together, etc.)
+    and local v1-compatible servers (vLLM, LM Studio, etc.).
+
+    The model name is expected to have its prefix (oaic. or locv1.) already stripped
+    before calling this function.
+
+    Args:
+        model: Model name as known by the remote API (prefix already stripped)
+        messages: List of {"role": ..., "content": ...} dicts
+        system: System instruction text
+        base_url: Base URL (e.g. https://openrouter.ai/api) — /v1/chat/completions appended
+        api_key: API key (may be empty for local servers with no auth)
+        tools: Ollama-format tool list (forwarded as OpenAI function definitions)
+        images: List of base64 data-URI image strings to attach to the last user message
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
+    """
+    if not base_url or not base_url.strip():
+        raise LLMError("V1-compatible provider: base URL is not configured.")
+
+    V1_TIMEOUT = 180.0
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
+    full_messages = []
+    if system and str(system).strip():
+        full_messages.append({"role": "system", "content": str(system).strip()})
+    full_messages.extend(messages or [])
+
+    if images:
+        for i in range(len(full_messages) - 1, -1, -1):
+            if full_messages[i].get("role") == "user":
+                full_messages[i] = dict(full_messages[i])
+                full_messages[i]["content"] = _build_openai_image_content(
+                    str(full_messages[i].get("content", "")), images
+                )
+                break
+
+    payload: dict = {"model": model, "messages": full_messages}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    endpoint = f"{_normalize_v1_base_url(base_url)}/v1/chat/completions"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            async with httpx.AsyncClient(timeout=V1_TIMEOUT) as client:
+                resp = await client.post(endpoint, headers=headers, json=payload)
+            if resp.status_code in (429, 499, 500, 502, 503, 529):
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"DEBUG: ⏳ V1-compatible {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(backoff)
+                    continue
+            resp.raise_for_status()
+            data = resp.json()
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            choice = data["choices"][0]
+            msg = choice.get("message", {})
+            if msg.get("tool_calls"):
+                tc = msg["tool_calls"][0]
+                text = json.dumps({
+                    "tool": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"].get("arguments", "{}"))
+                })
+                return text, input_tokens, output_tokens
+            print(f"DEBUG: ✅ V1-compatible call complete (attempt {attempt})", flush=True)
+            return msg.get("content", ""), input_tokens, output_tokens
+        except httpx.TimeoutException:
+            last_error = f"Request timed out ({V1_TIMEOUT}s)"
+            print(f"DEBUG: ⏱️ V1-compatible timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+        except httpx.HTTPStatusError as e:
+            last_error = f"HTTP {e.response.status_code}: {str(e)[:200]}"
+            print(f"DEBUG: ❌ V1-compatible HTTP error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES and e.response.status_code in (429, 499, 500, 502, 503, 529):
+                await asyncio.sleep(backoff)
+                continue
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ V1-compatible error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+
+    error_msg = f"V1-compatible LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
+
+
 async def _bedrock_converse_https(
     region: str, api_key: str, model_id: str,
     messages: list, system_blocks: list, max_tokens: int,
@@ -1676,6 +1797,26 @@ async def generate_response(
                     tools=tools,
                     images=images,
                 )
+            elif current_model.startswith("oaic."):
+                result_text, input_tokens, output_tokens = await call_v1_compatible(
+                    current_model[len("oaic."):],
+                    messages,
+                    augmented_system,
+                    current_settings.get("openai_compatible_base_url", ""),
+                    current_settings.get("openai_compatible_key", ""),
+                    tools=tools,
+                    images=images,
+                )
+            elif current_model.startswith("locv1."):
+                result_text, input_tokens, output_tokens = await call_v1_compatible(
+                    current_model[len("locv1."):],
+                    messages,
+                    augmented_system,
+                    current_settings.get("local_compatible_base_url", ""),
+                    current_settings.get("local_compatible_key", ""),
+                    tools=tools,
+                    images=images,
+                )
             else:
                 return "Error: Unknown cloud model selected."
         except LLMError:
@@ -1842,6 +1983,12 @@ async def embed_batch(texts: list[str], model: str, settings: dict) -> list[list
 
     if provider == "openai":
         return await _embed_openai(texts, model, settings.get("openai_key", ""))
+    elif provider == "openai_compatible":
+        clean_model = model[len("oaic."):] if model.startswith("oaic.") else model
+        return await _embed_v1_compatible(texts, clean_model, settings.get("openai_compatible_base_url", ""), settings.get("openai_compatible_key", ""))
+    elif provider == "local_compatible":
+        clean_model = model[len("locv1."):] if model.startswith("locv1.") else model
+        return await _embed_v1_compatible(texts, clean_model, settings.get("local_compatible_base_url", ""), settings.get("local_compatible_key", ""))
     elif provider == "gemini":
         kwargs = {} if output_dim is None else {"output_dim": output_dim}
         return await _embed_gemini(texts, model, settings.get("gemini_key", ""), **kwargs)
@@ -1871,6 +2018,26 @@ async def _embed_openai(texts: list[str], model: str, api_key: str) -> list[list
     except Exception as e:
         print(f"ERROR: OpenAI embedding failed: {e}")
         return [[0.0] * 1536 for _ in range(len(texts))]
+
+
+async def _embed_v1_compatible(texts: list[str], model: str, base_url: str, api_key: str, output_dim: int = 768) -> list[list[float]]:
+    """Embed via an OpenAI v1-compatible /v1/embeddings endpoint."""
+    if not base_url:
+        print("WARNING: V1-compatible embedding skipped — base URL not configured")
+        return [[0.0] * output_dim for _ in range(len(texts))]
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    endpoint = f"{_normalize_v1_base_url(base_url)}/v1/embeddings"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(endpoint, headers=headers, json={"model": model, "input": texts})
+            resp.raise_for_status()
+            data = resp.json()
+            return [item["embedding"] for item in data["data"]]
+    except Exception as e:
+        print(f"ERROR: V1-compatible embedding failed: {e}")
+        return [[0.0] * output_dim for _ in range(len(texts))]
 
 
 async def _embed_gemini(
