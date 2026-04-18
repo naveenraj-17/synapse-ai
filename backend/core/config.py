@@ -38,6 +38,7 @@ def load_settings():
         "vault_threshold": 100000,
         "coding_agent_enabled": False,
         "embed_code": False,
+        "bash_allowed_dirs": [],
     }
     
     if not os.path.exists(SETTINGS_FILE):

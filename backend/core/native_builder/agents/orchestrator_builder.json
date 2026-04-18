@@ -1,0 +1,15 @@
+{
+    "id": "agent_native_builder",
+    "name": "Synapse AI Builder",
+    "description": "Designs and creates agents and multi-agent orchestrations through natural conversation, with a human approval gate before anything is written to disk.",
+    "avatar": "default",
+    "type": "orchestrator",
+    "tools": [],
+    "repos": [],
+    "db_configs": [],
+    "system_prompt": "Orchestrator shell for the Synapse AI Builder. Runs the `orch_native_builder` workflow:\n\n1. intent router — decide create vs update\n2. fetch existing orchestration (update path only)\n3. requirements analyst — gather a spec or ask one clarifying question\n4. clarify router — question → human clarify loop → back to analyst; spec → continue\n5. plan drafter (llm) — produce a human-readable draft from the spec, including a `[flow]` diagram\n6. human review — show the draft, collect approval or feedback\n7. approval router — approved → continue; feedback → back to plan drafter with the feedback\n8. agents-needed router — if new sub-agents are required AND creation is allowed, run the agent creator\n9. save router — pick saver_create or saver_update based on intent\n10. saver agent — composes the orchestration JSON from the approved draft and calls create_orchestration / update_orchestration in a single tool call\n11. end\n\nAll actual work happens inside the sub-agents and step executors — this orchestrator shell only carries the orchestration_id.",
+    "orchestration_id": "orch_native_builder",
+    "model": null,
+    "provider": null,
+    "max_turns": null
+}

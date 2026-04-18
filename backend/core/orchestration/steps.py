@@ -81,6 +81,7 @@ class AgentStepExecutor:
                 source="orchestration",
                 run_id=run.run_id,
                 system_prompt_extra=system_prompt_extra,
+                model_override=step.model,
             ):
                 execution_events.append(event)
                 agent_log.log_event(event)
@@ -210,7 +211,7 @@ class ToolStepExecutor:
                 print(f"DEBUG TOOL STEP: ⚠ parse failed turn={turn + 1}: {last_error}", flush=True)
                 continue
 
-            called_tool = tool_call.get("tool") or tool_call.get("name", "")
+            called_tool = tool_call.get("tool", "")
             tool_args = tool_call.get("arguments", {})
 
             # tool_execution matches the event type the logger and react_engine emit
@@ -256,6 +257,14 @@ class ToolStepExecutor:
         """Execute a tool via MCP session or Docker sandbox (custom Python tools)."""
         from datetime import timedelta
         server_module = engine.server_module
+
+        # Native builder tools (create_orchestration, list_agents, etc.) —
+        # dispatched directly to execute_builder_tool so TOOL steps can drive
+        # the builder primitives.
+        from core.builder_tools import BUILDER_TOOL_NAMES, execute_builder_tool
+        if tool_name in BUILDER_TOOL_NAMES:
+            return await execute_builder_tool(tool_name, tool_args, server_module)
+
         tool_router = getattr(server_module, "tool_router", {})
         if tool_name in tool_router:
             agent_name, actual_tool_name = tool_router[tool_name]
@@ -448,7 +457,7 @@ class EvaluatorStepExecutor:
             from core.react_engine import parse_tool_call
             tool_call, _ = parse_tool_call(response)
             if tool_call:
-                tool_name = tool_call.get("tool") or tool_call.get("name", "")
+                tool_name = tool_call.get("tool", "")
                 if tool_name in {f"route_{l}" for l in labels}:
                     routing_decision = {
                         "type": "routing_decision",
@@ -482,9 +491,10 @@ class EvaluatorStepExecutor:
             run.shared_state[f"_routing_decision_{step.id}"] = label
             run.shared_state[f"_routing_reasoning_{step.id}"] = routing_decision.get("arguments", {}).get("reasoning", "")
 
-            # Store evaluator output if output_key is configured
+            # Store bare route label so downstream evaluators/templates can match it verbatim.
+            # Reasoning is already kept in `_routing_reasoning_<step_id>` above.
             if step.output_key:
-                run.shared_state[step.output_key] = f"Route: {label} — {routing_decision.get('arguments', {}).get('reasoning', '')}"
+                run.shared_state[step.output_key] = label
 
 
 class ParallelStepExecutor:

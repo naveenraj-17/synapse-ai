@@ -54,6 +54,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [vaultEnabled, setVaultEnabled] = useState(true);
     const [vaultThreshold, setVaultThreshold] = useState(100000);
     const [allowDbWrite, setAllowDbWrite] = useState(false);
+    const [bashAllowedDirs, setBashAllowedDirs] = useState<string[]>([]);
 
     // Keys
     const [openaiKey, setOpenaiKey] = useState('');
@@ -215,6 +216,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             vault_threshold: vaultThreshold,
             allow_db_write: allowDbWrite,
             embed_code: embedCode,
+            bash_allowed_dirs: bashAllowedDirs,
         };
 
         try {
@@ -401,6 +403,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setVaultThreshold(data.vault_threshold || 100000);
                 setAllowDbWrite(data.allow_db_write || false);
                 setEmbedCode(data.embed_code || false);
+                setBashAllowedDirs(data.bash_allowed_dirs || []);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
                 if (data.bedrock_api_key) {
@@ -872,6 +875,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             setAllowDbWrite={setAllowDbWrite}
                             embedCode={embedCode}
                             setEmbedCode={setEmbedCode}
+                            bashAllowedDirs={bashAllowedDirs}
+                            setBashAllowedDirs={setBashAllowedDirs}
                             onSave={handleSaveSection}
                             isSaving={isSaving}
                         />

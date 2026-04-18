@@ -34,15 +34,30 @@ class OrchestrationEngine:
         except Exception:
             return {}
 
-    async def run(self, initial_input: str, run_id: str, session_id: str | None = None) -> AsyncGenerator[dict, None]:
-        """Execute the orchestration from the entry step. Yields SSE-compatible events."""
+    async def run(
+        self,
+        initial_input: str,
+        run_id: str,
+        session_id: str | None = None,
+        initial_state: dict | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Execute the orchestration from the entry step. Yields SSE-compatible events.
+
+        `initial_state`, if provided, is merged into shared_state after schema
+        defaults and `user_input` are applied — letting callers pre-populate
+        context (e.g. current_orchestration_id, selected_agent_ids).
+        """
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        shared_state = self._init_state(initial_input)
+        if initial_state:
+            shared_state.update(initial_state)
 
         run = OrchestrationRun(
             run_id=run_id,
             orchestration_id=self.orch.id,
             session_id=session_id,
-            shared_state=self._init_state(initial_input),
+            shared_state=shared_state,
             current_step_id=self.orch.entry_step_id,
             started_at=now,
         )

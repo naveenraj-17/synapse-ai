@@ -5,13 +5,26 @@ Thin wrappers around the shared ReAct engine (core.react_engine).
 import json
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from core.models import ChatRequest, ChatResponse
 from core.react_engine import run_react_loop, parse_tool_call  # noqa: F401 — re-export for backwards compat
 
 router = APIRouter()
+
+
+def _resolve_agent(request: ChatRequest):
+    """Return the agent dict for the request's agent_id (or the active agent)."""
+    from core.routes.agents import load_user_agents, get_active_agent_data
+    agent_id = getattr(request, "agent_id", None)
+    if agent_id:
+        agents = load_user_agents()
+        return next((a for a in agents if a["id"] == agent_id), None)
+    try:
+        return get_active_agent_data()
+    except RuntimeError:
+        return None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -44,6 +57,15 @@ async def chat_stream(request: ChatRequest):
 
     async def event_generator():
         import core.server as _server
+
+        # Route builder agents to the dedicated builder stream
+        agent = _resolve_agent(request)
+        if agent and agent.get("type") == "builder":
+            from core.routes.builder import run_builder_stream_compat
+            async for chunk in run_builder_stream_compat(request, _server):
+                yield chunk
+            return
+
         try:
             async for event in run_react_loop(request, _server):
                 etype = event["type"]

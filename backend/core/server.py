@@ -47,6 +47,7 @@ from core.routes.profiling import router as profiling_router
 from core.routes.schedules import router as schedules_router
 from core.routes.import_export import router as import_export_router
 from core.routes.vault import router as vault_router
+from core.routes.builder import router as builder_router
 from core.profiling import TimingMiddleware
 
 # Configuration
@@ -81,6 +82,7 @@ TOOLS_LIST = {
     "vault_sandbox": str(TOOLS_DIR / "sandbox.py"),
     "code_vault_search": str(TOOLS_DIR / "code_search.py"),
     "web_scraper": str(TOOLS_DIR / "web_scraper.py"),
+    "bash": str(TOOLS_DIR / "bash.py"),
 }
 
 REPOS_FILE = DATA_DIR / "repos.json"
@@ -484,6 +486,17 @@ async def lifespan(app: FastAPI):
         import core.server as _self_module
         app.state.server_module = _self_module
 
+        # --- Seed the native builder orchestration (idempotent) ---
+        try:
+            from core.native_builder import seed_native_builder
+            seed_result = seed_native_builder()
+            if (seed_result["agents_added"] or seed_result["agents_updated"]
+                    or seed_result.get("agents_removed")
+                    or seed_result["orchestration"] != "unchanged"):
+                print(f"Native builder seeded: {seed_result}")
+        except Exception as e:
+            print(f"Warning: Failed to seed native builder: {e}")
+
         # --- Initialize Messaging Manager (if enabled) ---
         if _settings.get("messaging_enabled", False):
             try:
@@ -614,6 +627,7 @@ app.include_router(schedules_router)
 app.include_router(profiling_router)
 app.include_router(import_export_router)
 app.include_router(vault_router)
+app.include_router(builder_router)
 
 if __name__ == "__main__":
     import uvicorn

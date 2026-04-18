@@ -98,6 +98,7 @@ class Settings(BaseModel):
     vault_threshold: int = 100000
     allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
     embed_code: bool = False  # If False, search_codebase is disabled and postgres not required
+    bash_allowed_dirs: list[str] = []  # Extra dirs the bash tool can run commands in (repos + vault always included)
     report_agent_enabled: bool = True
     coding_agent_enabled: bool = True
     messaging_enabled: bool = True
