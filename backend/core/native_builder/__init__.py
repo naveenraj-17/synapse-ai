@@ -41,4 +41,12 @@ Wiring rules that apply to every step:
 - `entry_step_id` at the orchestration level must match the first step actually executed.
 - Agents are referenced by their real `agent_xxxxxxx` ID — never invent one.
 - For tool steps, confirm the tool exists via `get_tools_detail` before naming it in `forced_tool`.
+
+State lifecycle rules (CRITICAL — violating these silently breaks the orchestration):
+- `user_input` and `user_query` are ALWAYS pre-populated with the user's initial message before any step runs. Use either freely in `input_keys` or `{state.user_input}` / `{state.user_query}` in `prompt_template`.
+- Every other state key starts at its schema default (usually `""`) and stays empty until a step's `output_key` writes to it.
+- NEVER reference `{state.X}` in a `prompt_template` or include `X` in a step's `input_keys` unless ONE of the following is true:
+  (a) X is `user_input` or `user_query` (always available from the start), OR
+  (b) On EVERY execution path that can reach this step, some earlier step has `output_key: X`.
+- When designing the `state_schema`, for each key you must be able to name: which step WRITES it (its `output_key`) and which steps READ it. If you cannot name the writer, do not use the key in any step.
 """
