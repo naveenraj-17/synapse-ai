@@ -122,7 +122,7 @@ def detect_mode_from_model(model_name: str) -> str:
     if m.startswith("oaic."):
         return "cloud"
     if m.startswith("locv1."):
-        return "cloud"
+        return "local"
     return "local"
 
 
@@ -2023,8 +2023,7 @@ async def _embed_openai(texts: list[str], model: str, api_key: str) -> list[list
 async def _embed_v1_compatible(texts: list[str], model: str, base_url: str, api_key: str, output_dim: int = 768) -> list[list[float]]:
     """Embed via an OpenAI v1-compatible /v1/embeddings endpoint."""
     if not base_url:
-        print("WARNING: V1-compatible embedding skipped — base URL not configured")
-        return [[0.0] * output_dim for _ in range(len(texts))]
+        raise LLMError("V1-compatible embedding — base URL not configured")
     headers = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -2036,8 +2035,7 @@ async def _embed_v1_compatible(texts: list[str], model: str, base_url: str, api_
             data = resp.json()
             return [item["embedding"] for item in data["data"]]
     except Exception as e:
-        print(f"ERROR: V1-compatible embedding failed: {e}")
-        return [[0.0] * output_dim for _ in range(len(texts))]
+        raise LLMError(f"V1-compatible embedding failed: {e}")
 
 
 async def _embed_gemini(
