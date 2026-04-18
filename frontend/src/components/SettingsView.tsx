@@ -44,7 +44,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [mode, setMode] = useState('local'); // local | cloud
     const [localModels, setLocalModels] = useState<string[]>([]);
     const [cloudModels, setCloudModels] = useState<string[]>([]);
-    const [providers, setProviders] = useState<Record<string, { available: boolean; models: string[] }>>({});
+    const [providers, setProviders] = useState<Record<string, { available: boolean; models: string[]; embedding_models?: string[] }>>({});
     const [loadingModels, setLoadingModels] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -63,6 +63,14 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [grokKey, setGrokKey] = useState('');
     const [deepseekKey, setDeepseekKey] = useState('');
     const [bedrockApiKey, setBedrockApiKey] = useState('');
+    const [openaiCompatibleKey, setOpenaiCompatibleKey] = useState('');
+    const [openaiCompatibleBaseUrl, setOpenaiCompatibleBaseUrl] = useState('');
+    const [openaiCompatibleModels, setOpenaiCompatibleModels] = useState('');
+    const [openaiCompatibleEmbedModels, setOpenaiCompatibleEmbedModels] = useState('');
+    const [localCompatibleBaseUrl, setLocalCompatibleBaseUrl] = useState('');
+    const [localCompatibleKey, setLocalCompatibleKey] = useState('');
+    const [localCompatibleModels, setLocalCompatibleModels] = useState('');
+    const [localCompatibleEmbedModels, setLocalCompatibleEmbedModels] = useState('');
     const [awsRegion, setAwsRegion] = useState('us-east-1');
     const [bedrockInferenceProfile, setBedrockInferenceProfile] = useState('');
     const [bedrockInferenceProfiles, setBedrockInferenceProfiles] = useState<Array<{ id: string; arn: string; name: string; status?: string; type?: string }>>([]);
@@ -206,6 +214,14 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             gemini_key: geminiKey,
             grok_key: grokKey,
             deepseek_key: deepseekKey,
+            openai_compatible_key: openaiCompatibleKey,
+            openai_compatible_base_url: openaiCompatibleBaseUrl,
+            openai_compatible_models: openaiCompatibleModels,
+            openai_compatible_embed_models: openaiCompatibleEmbedModels,
+            local_compatible_base_url: localCompatibleBaseUrl,
+            local_compatible_key: localCompatibleKey,
+            local_compatible_models: localCompatibleModels,
+            local_compatible_embed_models: localCompatibleEmbedModels,
             bedrock_api_key: bedrockApiKey,
             bedrock_inference_profile: bedrockInferenceProfile,
             aws_region: awsRegion,
@@ -393,6 +409,14 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setGeminiKey(data.gemini_key || '');
                 setGrokKey(data.grok_key || '');
                 setDeepseekKey(data.deepseek_key || '');
+                setOpenaiCompatibleKey(data.openai_compatible_key || '');
+                setOpenaiCompatibleBaseUrl(data.openai_compatible_base_url || '');
+                setOpenaiCompatibleModels(data.openai_compatible_models || '');
+                setOpenaiCompatibleEmbedModels(data.openai_compatible_embed_models || '');
+                setLocalCompatibleBaseUrl(data.local_compatible_base_url || '');
+                setLocalCompatibleKey(data.local_compatible_key || '');
+                setLocalCompatibleModels(data.local_compatible_models || '');
+                setLocalCompatibleEmbedModels(data.local_compatible_embed_models || '');
                 setBedrockApiKey(data.bedrock_api_key || '');
                 setAwsRegion(data.aws_region || 'us-east-1');
                 setBedrockInferenceProfile(data.bedrock_inference_profile || '');
@@ -978,6 +1002,14 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             onExpandBedrock={refreshBedrockInferenceProfiles}
                             onSave={handleSaveSection}
                             isSaving={isSaving}
+                            openaiCompatibleKey={openaiCompatibleKey} setOpenaiCompatibleKey={setOpenaiCompatibleKey}
+                            openaiCompatibleBaseUrl={openaiCompatibleBaseUrl} setOpenaiCompatibleBaseUrl={setOpenaiCompatibleBaseUrl}
+                            openaiCompatibleModels={openaiCompatibleModels} setOpenaiCompatibleModels={setOpenaiCompatibleModels}
+                            openaiCompatibleEmbedModels={openaiCompatibleEmbedModels} setOpenaiCompatibleEmbedModels={setOpenaiCompatibleEmbedModels}
+                            localCompatibleBaseUrl={localCompatibleBaseUrl} setLocalCompatibleBaseUrl={setLocalCompatibleBaseUrl}
+                            localCompatibleKey={localCompatibleKey} setLocalCompatibleKey={setLocalCompatibleKey}
+                            localCompatibleModels={localCompatibleModels} setLocalCompatibleModels={setLocalCompatibleModels}
+                            localCompatibleEmbedModels={localCompatibleEmbedModels} setLocalCompatibleEmbedModels={setLocalCompatibleEmbedModels}
                         />
                     )}
 

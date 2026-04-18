@@ -79,6 +79,14 @@ class Settings(BaseModel):
     gemini_key: str = ""
     grok_key: str = ""  # xAI Grok API key (starts with 'xai-')
     deepseek_key: str = ""  # DeepSeek API key
+    openai_compatible_key: str = ""  # API key for OpenAI-compatible cloud (OpenRouter, Together, etc.)
+    openai_compatible_base_url: str = ""  # Base URL for OpenAI-compatible cloud (e.g. https://openrouter.ai/api)
+    openai_compatible_models: str = ""  # Comma-separated model names for OpenAI-compatible cloud
+    local_compatible_base_url: str = ""  # Base URL for local v1-compatible (vLLM, LM Studio, etc.)
+    local_compatible_key: str = ""  # Optional API key for local v1-compatible
+    local_compatible_models: str = ""  # Comma-separated model names for local v1-compatible
+    openai_compatible_embed_models: str = ""  # Comma-separated embedding model names for OpenAI-compatible cloud
+    local_compatible_embed_models: str = ""  # Comma-separated embedding model names for local v1-compatible
     bedrock_api_key: str = ""  # e.g. ABSK... (Amazon Bedrock API key)
     # Optional: required for some Bedrock models that don't support on-demand throughput.
     # Can be an inference profile ID or full ARN.

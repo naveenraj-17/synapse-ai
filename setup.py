@@ -701,6 +701,14 @@ DEFAULT_SETTINGS = {
     "gemini_key": "",
     "deepseek_key": "",
     "xai_key": "",
+    "openai_compatible_key": "",
+    "openai_compatible_base_url": "",
+    "openai_compatible_models": "",
+    "local_compatible_base_url": "",
+    "local_compatible_key": "",
+    "local_compatible_models": "",
+    "openai_compatible_embed_models": "",
+    "local_compatible_embed_models": "",
     "google_maps_api_key": "",
     "bedrock_api_key": "",
     "bedrock_inference_profile": "",
@@ -717,6 +725,7 @@ DEFAULT_SETTINGS = {
     "global_config": {},
     "vault_enabled": True,
     "vault_threshold": 100000,
+    "allow_db_write": False,
     "coding_agent_enabled": False,
     "report_agent_enabled": False,
     "browser_automation_enabled": True,
@@ -1271,6 +1280,19 @@ def _fetch_grok_models(api_key):
         warn(f"Could not fetch Grok models: {e}")
         return []
 
+def _fetch_v1_compatible_models(base_url, api_key=""):
+    try:
+        url = base_url.rstrip("/") + "/v1/models"
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        data = _fetch_json(url, headers=headers)
+        models = sorted(set(m["id"] for m in data.get("data", []) if m.get("id")), reverse=True)
+        return models
+    except Exception as e:
+        warn(f"Could not fetch models from {base_url}: {e}")
+        return []
+
 def _fetch_bedrock_models(api_key, region):
     """List Bedrock foundation models using direct HTTPS bearer auth.
 
@@ -1383,7 +1405,7 @@ def ask_llm(cfg):
             return
 
     info("Select a cloud LLM provider:")
-    providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "DeepSeek", "Grok (xAI)", "Bedrock (AWS)"]
+    providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "DeepSeek", "Grok (xAI)", "OpenAI Compatible", "Local V1 Compatible", "Bedrock (AWS)"]
     choice = ask_choice("Select provider", providers)
 
     if choice == "Gemini":
@@ -1445,6 +1467,49 @@ def ask_llm(cfg):
             cfg["model"] = ask("Enter model name manually", default="grok-3")
         else:
             cfg["model"] = ask_choice("Select model", models)
+
+    elif choice == "OpenAI Compatible":
+        key = ask("Enter API key")
+        base_url = ask("Enter base URL (without /v1)", default="https://openrouter.ai/api")
+        cfg["openai_compatible_key"] = key
+        cfg["openai_compatible_base_url"] = base_url.rstrip("/")
+        cfg["mode"] = "cloud"
+        info("Fetching available models...")
+        models = _fetch_v1_compatible_models(base_url, key)
+        if not models:
+            warn("No models returned. Enter model names manually.")
+            manual = ask("Enter model names (comma-separated)")
+            cfg["openai_compatible_models"] = manual
+            if manual:
+                first = manual.split(",")[0].strip()
+                cfg["model"] = f"oaic.{first}"
+            else:
+                cfg["model"] = ask("Enter model name manually")
+        else:
+            choice_model = ask_choice("Select model", models)
+            cfg["model"] = f"oaic.{choice_model}"
+
+    elif choice == "Local V1 Compatible":
+        base_url = ask("Enter base URL (without /v1)", default="http://localhost:8000")
+        cfg["local_compatible_base_url"] = base_url.rstrip("/")
+        key = ask("Enter API key (leave blank if not required)")
+        if key:
+            cfg["local_compatible_key"] = key
+        cfg["mode"] = "cloud"
+        info("Fetching available models...")
+        models = _fetch_v1_compatible_models(base_url, key)
+        if not models:
+            warn("No models returned. Enter model names manually.")
+            manual = ask("Enter model names (comma-separated)")
+            cfg["local_compatible_models"] = manual
+            if manual:
+                first = manual.split(",")[0].strip()
+                cfg["model"] = f"locv1.{first}"
+            else:
+                cfg["model"] = ask("Enter model name manually")
+        else:
+            choice_model = ask_choice("Select model", models)
+            cfg["model"] = f"locv1.{choice_model}"
 
     elif choice == "Bedrock (AWS)":
         key = ask("Enter Bedrock API Key (ABSK... or bedrock-api-key... format)")
