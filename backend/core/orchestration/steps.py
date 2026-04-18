@@ -94,7 +94,10 @@ class AgentStepExecutor:
         finally:
             agent_log.run_end(_log_status)
 
-        if step.output_key and final_response:
+        if final_response is None:
+            raise RuntimeError(f"Agent step '{step.name}' ended without producing a final response")
+
+        if step.output_key:
             run.shared_state[step.output_key] = final_response
 
         # Store execution trace for memory across re-invocations
@@ -252,6 +255,9 @@ class ToolStepExecutor:
             "response": final_response if final_response is not None
                         else f"Tool step '{step.name}' failed after {max_turns} attempt(s): {last_error}",
         }
+
+        if final_response is None:
+            raise RuntimeError(f"Tool step '{step.name}' failed after {max_turns} attempt(s): {last_error}")
 
     async def _execute_tool(self, tool_name: str, tool_args: dict, engine: "OrchestrationEngine") -> str:
         """Execute a tool via MCP session or Docker sandbox (custom Python tools)."""

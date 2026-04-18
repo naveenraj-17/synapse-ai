@@ -73,7 +73,7 @@ export function OrchestrationTab() {
     const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
     // --- Run state ---
-    const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'failed'>('idle');
+    const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'>('idle');
     const [runStepStatuses, setRunStepStatuses] = useState<Record<string, 'pending' | 'running' | 'paused' | 'completed' | 'failed'>>({});
     const [runId, setRunId] = useState<string | null>(null);
     const [runInput, setRunInput] = useState('');
@@ -97,6 +97,13 @@ export function OrchestrationTab() {
         started_at: string | null;
     }>>([]);
     const activeRunsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [pastRuns, setPastRuns] = useState<Array<{
+        run_id: string;
+        orchestration_id: string;
+        status: string;
+        started_at?: string;
+        ended_at?: string;
+    }>>([]);
 
     // --- Fetch orchestrations + agents ---
     useEffect(() => {
@@ -120,6 +127,7 @@ export function OrchestrationTab() {
             .then(data => {
                 if (Array.isArray(data)) {
                     setActiveRuns(data.filter(r => r.status === 'running' || r.status === 'paused'));
+                    setPastRuns(data);
                 }
             })
             .catch(() => {});
@@ -140,7 +148,7 @@ export function OrchestrationTab() {
         setSelectedStepId(null);
         setDraft(orch ? { ...orch } : null);
         setRunId(runInfo.run_id);
-        setRunStatus(runInfo.status as 'running' | 'paused' | 'completed' | 'failed');
+        setRunStatus(runInfo.status as 'running' | 'paused' | 'completed' | 'failed' | 'cancelled');
         setRunLog([`[Reconnected to run ${runInfo.run_id}]`]);
         setHumanPrompt(null);
         setHumanContext(null);
@@ -579,7 +587,7 @@ export function OrchestrationTab() {
                 await fetch(`/api/orchestrations/runs/${runId}/cancel`, { method: 'POST' });
             } catch { /* ignore */ }
         }
-        setRunStatus('failed');
+        setRunStatus('cancelled');
         setRunLog(prev => [...prev, '[Cancelled]']);
     };
 
@@ -598,6 +606,13 @@ export function OrchestrationTab() {
         setHumanResponse('');
 
         streamSSE(`/api/orchestrations/runs/${runId}/human-input`, { response });
+    };
+
+    const resumeRun = async () => {
+        if (!runId) return;
+        setRunStatus('running');
+        setRunLog(prev => [...prev, '[Resuming from where run stopped...]']);
+        streamSSE(`/api/orchestrations/runs/${runId}/resume`, {});
     };
 
     // Cleanup on unmount
@@ -826,6 +841,10 @@ export function OrchestrationTab() {
                             setHumanResponse={setHumanResponse}
                             onSubmitHuman={submitHumanInput}
                             onOpenResponseModal={setResponseModal}
+                            runId={runId}
+                            onResumeRun={resumeRun}
+                            pastRuns={pastRuns}
+                            onRestoreRun={restoreRun}
                         />
                     </div>
 
@@ -958,6 +977,7 @@ function ResponseModal({ stepName, content, onClose }: { stepName: string; conte
 function BottomPanel({
     draft, setDraft, runStatus, runLog, runInput, setRunInput,
     humanPrompt, humanContext, humanResponse, setHumanResponse, onSubmitHuman, onOpenResponseModal,
+    runId, onResumeRun, pastRuns, onRestoreRun,
 }: {
     draft: Orchestration;
     setDraft: (o: Orchestration) => void;
@@ -971,6 +991,10 @@ function BottomPanel({
     setHumanResponse: (v: string) => void;
     onSubmitHuman: () => void;
     onOpenResponseModal: (entry: { step_name: string; content: string }) => void;
+    runId: string | null;
+    onResumeRun: () => void;
+    pastRuns: { run_id: string; orchestration_id: string; status: string; started_at?: string; ended_at?: string }[];
+    onRestoreRun: (run: { run_id: string; orchestration_id: string; status: string }) => void;
 }) {
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
@@ -1047,7 +1071,8 @@ function BottomPanel({
                             <span className={`ml-2 inline-block w-2 h-2 rounded-full ${
                                 runStatus === 'running' ? 'bg-blue-400 animate-pulse' :
                                 runStatus === 'completed' ? 'bg-green-400' :
-                                runStatus === 'paused' ? 'bg-yellow-400' : 'bg-red-400'
+                                runStatus === 'paused' ? 'bg-yellow-400' :
+                                runStatus === 'cancelled' ? 'bg-zinc-500' : 'bg-red-400'
                             }`} />
                         )}
                     </button>
@@ -1102,7 +1127,7 @@ function BottomPanel({
                 {activeSection === 'run' && (
                     <div className="space-y-2">
                         {/* Input bar */}
-                        {(runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed') && (
+                        {(runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled') && (
                             <div className="flex gap-2">
                                 <input
                                     className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 outline-none"
@@ -1111,6 +1136,14 @@ function BottomPanel({
                                     placeholder="Initial input for the orchestration..."
                                     onKeyDown={(e) => { if (e.key === 'Enter') { /* startRun triggered from top bar */ } }}
                                 />
+                                {(runStatus === 'failed' || runStatus === 'cancelled') && runId && (
+                                    <button
+                                        onClick={onResumeRun}
+                                        className="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-500 text-white rounded whitespace-nowrap"
+                                    >
+                                        Resume from failure
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -1256,6 +1289,33 @@ function BottomPanel({
                                 })
                             )}
                         </div>
+
+                        {/* Recent Runs */}
+                        {pastRuns.length > 0 && (
+                            <div className="space-y-1 mt-2">
+                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Recent Runs</div>
+                                {pastRuns.slice(0, 10).map(r => (
+                                    <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded bg-zinc-800/50">
+                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                            r.status === 'completed' ? 'bg-green-400' :
+                                            r.status === 'failed' ? 'bg-red-400' :
+                                            r.status === 'cancelled' ? 'bg-zinc-500' :
+                                            r.status === 'paused' ? 'bg-yellow-400' : 'bg-blue-400 animate-pulse'
+                                        }`} />
+                                        <span className="text-zinc-400 truncate flex-1" title={r.run_id}>{r.run_id}</span>
+                                        <span className="text-zinc-500 capitalize">{r.status}</span>
+                                        {(r.status === 'failed' || r.status === 'cancelled') && (
+                                            <button
+                                                onClick={() => onRestoreRun(r)}
+                                                className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded"
+                                            >
+                                                Resume
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

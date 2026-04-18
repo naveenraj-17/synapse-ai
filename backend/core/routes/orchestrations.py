@@ -162,6 +162,51 @@ async def get_run_status(run_id: str):
         raise HTTPException(status_code=404, detail="Run not found")
 
 
+@router.post("/api/orchestrations/runs/{run_id}/resume")
+async def resume_failed_run(run_id: str, request: Request):
+    """Resume a failed or cancelled orchestration from where it stopped. Returns SSE stream."""
+    server_module = request.app.state.server_module
+
+    from core.orchestration.engine import OrchestrationEngine
+
+    queue: asyncio.Queue = asyncio.Queue()
+    _SENTINEL = object()
+
+    async def _run_engine():
+        try:
+            async for event in OrchestrationEngine.resume_failed(run_id, server_module):
+                await queue.put(event)
+                await asyncio.sleep(0)
+        except FileNotFoundError:
+            await queue.put({"type": "orchestration_error", "error": "Run not found"})
+        except Exception as e:
+            await queue.put({"type": "orchestration_error", "error": str(e)})
+        finally:
+            _active_tasks.pop(run_id, None)
+            await queue.put(_SENTINEL)
+
+    task = asyncio.create_task(_run_engine())
+    _active_tasks[run_id] = task
+
+    async def event_stream():
+        while True:
+            event = await queue.get()
+            if event is _SENTINEL:
+                break
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+        yield "data: {\"type\": \"done\"}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @router.post("/api/orchestrations/runs/{run_id}/human-input")
 async def submit_human_input(run_id: str, request: Request):
     """Submit human input and resume the orchestration. Returns SSE stream.

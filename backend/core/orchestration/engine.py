@@ -85,6 +85,8 @@ class OrchestrationEngine:
         """Core execution loop — shared between run() and resume()."""
         total_turns = len(run.step_history)
         logger = getattr(self, "logger", None)
+        loop_start_time = time.time()
+        timeout_seconds = (self.orch.timeout_minutes or 30) * 60
 
         while run.current_step_id and run.status == "running":
             # Checkpoint between steps — ensures MCP background tasks
@@ -98,6 +100,13 @@ class OrchestrationEngine:
                 _cancelled_run_ids.discard(run.run_id)
                 run.status = "cancelled"
                 print(f"DEBUG ENGINE: 🛑 run '{run.run_id}' cancelled by request", flush=True)
+                break
+
+            # Global timeout guard
+            elapsed = time.time() - loop_start_time
+            if elapsed > timeout_seconds:
+                run.status = "failed"
+                yield {"type": "orchestration_error", "error": f"Global timeout ({self.orch.timeout_minutes} min) exceeded after {round(elapsed / 60, 1)} min"}
                 break
 
             step = self.step_map.get(run.current_step_id)
@@ -274,6 +283,53 @@ class OrchestrationEngine:
             },
             "tool_name": None,
         }
+
+    @classmethod
+    async def resume_failed(
+        cls, run_id: str, server_module
+    ) -> AsyncGenerator[dict, None]:
+        """Resume a failed or cancelled orchestration from where it stopped.
+
+        For failed runs: the failed step's history entry is removed so it re-executes.
+        For cancelled runs: resumes from current_step_id (which was never started).
+        All state accumulated by prior steps is preserved.
+        """
+        from .state import SharedState as SS
+
+        restored = SS.restore(run_id)
+        run = restored.run
+
+        if run.status not in ("failed", "cancelled"):
+            yield {"type": "orchestration_error", "error": f"Run is not recoverable (status={run.status})"}
+            return
+
+        from core.routes.orchestrations import load_orchestrations
+        orchestrations = load_orchestrations()
+        orch_data = next((o for o in orchestrations if o["id"] == run.orchestration_id), None)
+        if not orch_data:
+            yield {"type": "orchestration_error", "error": f"Orchestration '{run.orchestration_id}' not found"}
+            return
+
+        orch = Orchestration.model_validate(orch_data)
+        engine = cls(orch, server_module)
+
+        engine.logger = OrchestrationLogger(
+            run_id=run_id,
+            orchestration_id=run.orchestration_id,
+            orchestration_name=orch.name,
+            user_input=f"(resumed from {run.status})",
+            session_id=run.session_id,
+        )
+
+        # For failed runs: remove the last failed step so it re-executes
+        if run.status == "failed" and run.step_history and run.step_history[-1].get("status") == "failed":
+            run.step_history.pop()
+
+        run.status = "running"
+
+        state = SharedState(run)
+        async for event in engine._execute_loop(run, state):
+            yield event
 
     @classmethod
     async def resume(

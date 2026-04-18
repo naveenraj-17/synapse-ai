@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -496,6 +497,24 @@ async def lifespan(app: FastAPI):
                 print(f"Native builder seeded: {seed_result}")
         except Exception as e:
             print(f"Warning: Failed to seed native builder: {e}")
+
+        # --- Sweep zombie orchestration runs (stale "running" from prior server crash) ---
+        try:
+            from core.orchestration.state import SharedState
+            zombie_runs = [r for r in SharedState.list_runs(limit=200) if r.get("status") == "running"]
+            if zombie_runs:
+                now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                for zr in zombie_runs:
+                    try:
+                        restored = SharedState.restore(zr["run_id"])
+                        restored.run.status = "failed"
+                        restored.run.ended_at = now_str
+                        restored.checkpoint()
+                    except Exception:
+                        pass
+                print(f"Swept {len(zombie_runs)} zombie orchestration run(s) (marked failed)")
+        except Exception as e:
+            print(f"Warning: Zombie run sweep failed: {e}")
 
         # --- Initialize Messaging Manager (if enabled) ---
         if _settings.get("messaging_enabled", False):
