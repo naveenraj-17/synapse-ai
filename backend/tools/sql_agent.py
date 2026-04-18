@@ -7,7 +7,7 @@ import asyncio
 import json
 import os
 from sqlalchemy import create_engine, inspect, text
-from core.config import load_settings, DATA_DIR, sanitize_db_url
+from core.config import load_settings, DATA_DIR
 
 # Initialize MCP Server
 app = Server("sql-mcp-server")
@@ -60,7 +60,7 @@ def get_db_engine(db_id: str | None = None):
 
     # Fallback: global sql_connection_string from settings
     settings = load_settings()
-    db_url = sanitize_db_url(settings.get("sql_connection_string", ""))
+    db_url = settings.get("sql_connection_string", "")
     if not db_url:
         raise ValueError("No db_id provided and no global SQL connection string found in settings.")
     cache_key = "__global__"
