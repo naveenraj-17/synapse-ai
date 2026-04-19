@@ -294,7 +294,7 @@ class OrchestrationEngine:
         For cancelled runs: resumes from current_step_id (which was never started).
         All state accumulated by prior steps is preserved.
         """
-        from .state import SharedState as SS
+        from .state import SharedState as SS, _cancelled_run_ids
 
         restored = SS.restore(run_id)
         run = restored.run
@@ -324,6 +324,10 @@ class OrchestrationEngine:
         # For failed runs: remove the last failed step so it re-executes
         if run.status == "failed" and run.step_history and run.step_history[-1].get("status") == "failed":
             run.step_history.pop()
+
+        # Clear any stale cancel signal left by cancel_run so _execute_loop
+        # doesn't immediately re-cancel on the first iteration.
+        _cancelled_run_ids.discard(run_id)
 
         run.status = "running"
 

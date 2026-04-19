@@ -687,7 +687,7 @@ export function OrchestrationTab() {
                         >
                             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
                         </button>
-                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' ? (
+                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled' ? (
                             <button
                                 onClick={startRun}
                                 className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
@@ -996,7 +996,7 @@ function BottomPanel({
     pastRuns: { run_id: string; orchestration_id: string; status: string; started_at?: string; ended_at?: string }[];
     onRestoreRun: (run: { run_id: string; orchestration_id: string; status: string }) => void;
 }) {
-    const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run'>('run');
+    const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run' | 'recent'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
     const [humanContextHeight, setHumanContextHeight] = useState(200);
     const logRef = useRef<HTMLDivElement>(null);
@@ -1077,6 +1077,21 @@ function BottomPanel({
                         )}
                     </button>
                 ))}
+                <button
+                    onClick={() => setActiveSection('recent')}
+                    className={`px-4 py-2 text-xs font-medium transition-colors ${
+                        activeSection === 'recent'
+                            ? 'text-blue-400 border-b-2 border-blue-400'
+                            : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                >
+                    Recent Runs
+                    {pastRuns.length > 0 && (
+                        <span className="ml-1.5 text-[10px] bg-zinc-700 text-zinc-400 rounded-full px-1.5 py-0.5">
+                            {pastRuns.length}
+                        </span>
+                    )}
+                </button>
             </div>
 
             <div className="p-4 flex-1 overflow-y-auto min-h-0">
@@ -1120,6 +1135,41 @@ function BottomPanel({
                                 placeholder="No limit"
                             />
                         </div>
+                    </div>
+                )}
+
+                {/* Recent Runs */}
+                {activeSection === 'recent' && (
+                    <div className="space-y-1">
+                        {pastRuns.length === 0 ? (
+                            <div className="text-zinc-600 italic text-xs">No runs yet.</div>
+                        ) : (
+                            pastRuns.slice(0, 20).map(r => (
+                                <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded bg-zinc-800/50">
+                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                        r.status === 'completed' ? 'bg-green-400' :
+                                        r.status === 'failed'    ? 'bg-red-400' :
+                                        r.status === 'cancelled' ? 'bg-zinc-500' :
+                                        r.status === 'paused'    ? 'bg-yellow-400' : 'bg-blue-400 animate-pulse'
+                                    }`} />
+                                    <span className="text-zinc-400 truncate flex-1" title={r.run_id}>{r.run_id}</span>
+                                    <span className="text-zinc-500 capitalize">{r.status}</span>
+                                    {r.started_at && (
+                                        <span className="text-zinc-600 text-[10px]">
+                                            {new Date(r.started_at).toLocaleTimeString()}
+                                        </span>
+                                    )}
+                                    {(r.status === 'failed' || r.status === 'cancelled') && (
+                                        <button
+                                            onClick={() => { onRestoreRun(r); setActiveSection('run'); }}
+                                            className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded"
+                                        >
+                                            Resume
+                                        </button>
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
 
@@ -1290,32 +1340,6 @@ function BottomPanel({
                             )}
                         </div>
 
-                        {/* Recent Runs */}
-                        {pastRuns.length > 0 && (
-                            <div className="space-y-1 mt-2">
-                                <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Recent Runs</div>
-                                {pastRuns.slice(0, 10).map(r => (
-                                    <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded bg-zinc-800/50">
-                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                            r.status === 'completed' ? 'bg-green-400' :
-                                            r.status === 'failed' ? 'bg-red-400' :
-                                            r.status === 'cancelled' ? 'bg-zinc-500' :
-                                            r.status === 'paused' ? 'bg-yellow-400' : 'bg-blue-400 animate-pulse'
-                                        }`} />
-                                        <span className="text-zinc-400 truncate flex-1" title={r.run_id}>{r.run_id}</span>
-                                        <span className="text-zinc-500 capitalize">{r.status}</span>
-                                        {(r.status === 'failed' || r.status === 'cancelled') && (
-                                            <button
-                                                onClick={() => onRestoreRun(r)}
-                                                className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded"
-                                            >
-                                                Resume
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
