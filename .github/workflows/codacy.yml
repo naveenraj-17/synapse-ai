@@ -34,7 +34,6 @@ jobs:
             echo "::group::Running $tool"
             docker run --rm \
               --env CODACY_CODE="$PWD" \
-              --env CODACY_PROJECT_TOKEN="${{ secrets.CODACY_PROJECT_TOKEN }}" \
               --env JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8" \
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume "$PWD":"$PWD" \
@@ -58,12 +57,19 @@ jobs:
 
           for path in glob.glob("sarif_results/*.sarif"):
               if os.path.getsize(path) == 0:
+                  os.remove(path)
                   continue
               try:
                   with open(path) as f:
                       data = json.load(f)
+                  runs = data.get("runs", [])
+                  has_results = any(run.get("results") for run in runs)
+                  if not runs or not has_results:
+                      print(f"Skipping {path}: no results")
+                      os.remove(path)
+                      continue
                   tool = os.path.basename(path).replace(".sarif", "")
-                  for i, run in enumerate(data.get("runs", [])):
+                  for i, run in enumerate(runs):
                       if "automationDetails" not in run:
                           run["automationDetails"] = {}
                       run["automationDetails"]["id"] = f"codacy-{tool}-{i}"
@@ -71,6 +77,7 @@ jobs:
                       json.dump(data, f, indent=2)
               except (json.JSONDecodeError, KeyError):
                   print(f"Warning: Could not process {path}")
+                  os.remove(path)
           '
 
       - name: Fix file permissions
