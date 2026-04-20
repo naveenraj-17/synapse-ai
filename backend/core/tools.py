@@ -78,12 +78,16 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     
     allowed_tools = active_agent.get("tools", ["all"])
 
-    # Auto-inject default tools based on agent type
-    agent_type = active_agent.get("type", "conversational")
-    for category in ["all_types", agent_type]:
-        for tool_name in DEFAULT_TOOLS_BY_TYPE.get(category, set()):
-            if tool_name not in allowed_tools:
-                allowed_tools.append(tool_name)
+    # Auto-inject default tools based on agent type.
+    # Agents with `skip_default_tools: true` opt out entirely — their tool list
+    # is exactly what they declared. Used by tightly scoped agents (e.g. builder
+    # savers) where extra tools add Gemini function-selection noise.
+    if not active_agent.get("skip_default_tools", False):
+        agent_type = active_agent.get("type", "conversational")
+        for category in ["all_types", agent_type]:
+            for tool_name in DEFAULT_TOOLS_BY_TYPE.get(category, set()):
+                if tool_name not in allowed_tools:
+                    allowed_tools.append(tool_name)
 
     # Remove search_codebase if embed_code is disabled
     settings = load_settings()

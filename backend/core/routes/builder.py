@@ -72,6 +72,11 @@ class BuilderResumeRequest(BaseModel):
 async def _translate_engine_events(event_source, run_id: str):
     """Shared translator: engine events → BuilderPanel events."""
     orchestration_saved_emitted = False
+    # Track orch_id from builder tool results so we can emit orchestration_saved
+    # at completion even when the saver uses skeleton+add_step tools (not the
+    # monolithic create_orchestration tool).
+    tracked_orch_id: str | None = None
+
     async for event in event_source:
         etype = event.get("type")
 
@@ -102,6 +107,7 @@ async def _translate_engine_events(event_source, run_id: str):
                 except Exception:
                     pass
             elif tool_name in ("create_orchestration", "update_orchestration"):
+                # Legacy monolithic tool path
                 try:
                     from core.routes.orchestrations import load_orchestrations as _load_orchs
                     orch_id = None
@@ -122,6 +128,33 @@ async def _translate_engine_events(event_source, run_id: str):
                             orchestration_saved_emitted = True
                 except Exception:
                     pass
+            elif tool_name == "create_orchestration_skeleton":
+                # Skeleton-based saver: extract orch_id for later
+                try:
+                    parsed = json.loads(preview)
+                    oid = None
+                    if isinstance(parsed, dict):
+                        orch_obj = parsed.get("orchestration")
+                        if isinstance(orch_obj, dict):
+                            oid = orch_obj.get("id")
+                        if not oid:
+                            oid = parsed.get("orch_id") or parsed.get("id")
+                    if not oid:
+                        m = re.search(r'"id"\s*:\s*"(orch_[a-z0-9]+)"', preview)
+                        if m:
+                            oid = m.group(1)
+                    if oid:
+                        tracked_orch_id = oid
+                except Exception:
+                    pass
+            elif tool_name == "validate_orchestration" and not tracked_orch_id:
+                # Fallback: extract orch_id from validate result args
+                try:
+                    m = re.search(r'orch_[a-z0-9]+', preview)
+                    if m:
+                        tracked_orch_id = m.group(0)
+                except Exception:
+                    pass
 
         elif etype == "human_input_required":
             yield {
@@ -133,21 +166,34 @@ async def _translate_engine_events(event_source, run_id: str):
             }
 
         elif etype == "orchestration_complete":
-            final_state = event.get("final_state", {}) or {}
-            final_orch = final_state.get("final_orch")
-            orch_obj = None
-            if isinstance(final_orch, dict):
-                orch_obj = final_orch.get("orchestration") or (final_orch if "id" in final_orch else None)
-            elif isinstance(final_orch, str) and final_orch.strip():
-                try:
-                    parsed = json.loads(final_orch)
-                    orch_obj = parsed.get("orchestration") if isinstance(parsed, dict) else None
-                    orch_obj = orch_obj or (parsed if isinstance(parsed, dict) and "id" in parsed else None)
-                except Exception:
-                    orch_obj = None
-            if orch_obj and "id" in orch_obj:
-                yield {"type": "orchestration_saved", "orchestration": orch_obj}
-                orchestration_saved_emitted = True
+            if not orchestration_saved_emitted:
+                # Try to emit orchestration_saved from final_state or tracked_orch_id
+                final_state = event.get("final_state", {}) or {}
+                final_orch = final_state.get("final_orch")
+                orch_obj = None
+                if isinstance(final_orch, dict):
+                    orch_obj = final_orch.get("orchestration") or (final_orch if "id" in final_orch else None)
+                elif isinstance(final_orch, str) and final_orch.strip():
+                    try:
+                        parsed = json.loads(final_orch)
+                        orch_obj = parsed.get("orchestration") if isinstance(parsed, dict) else None
+                        orch_obj = orch_obj or (parsed if isinstance(parsed, dict) and "id" in parsed else None)
+                    except Exception:
+                        orch_obj = None
+                if orch_obj and "id" in orch_obj:
+                    yield {"type": "orchestration_saved", "orchestration": orch_obj}
+                    orchestration_saved_emitted = True
+
+                # Fallback: use tracked_orch_id to load the full orchestration from disk
+                if not orchestration_saved_emitted and tracked_orch_id:
+                    try:
+                        from core.routes.orchestrations import load_orchestrations as _load_orchs
+                        full_orch = next((o for o in _load_orchs() if o.get("id") == tracked_orch_id), None)
+                        if full_orch:
+                            yield {"type": "orchestration_saved", "orchestration": full_orch}
+                            orchestration_saved_emitted = True
+                    except Exception:
+                        pass
 
         elif etype == "final":
             response = event.get("response", "")
@@ -155,8 +201,19 @@ async def _translate_engine_events(event_source, run_id: str):
             final_text = _summarize_final(response, final_state, orchestration_saved_emitted)
             yield {"type": "final", "response": final_text}
 
+        elif etype == "step_complete":
+            yield {"type": "step_complete", "step_name": event.get("step_name", "")}
+
+        elif etype == "routing_decision":
+            yield {
+                "type": "routing_decision",
+                "decision": event.get("decision", ""),
+                "step_name": event.get("step_name", ""),
+            }
+
         elif etype in ("orchestration_error", "step_error"):
             yield {"type": "error", "message": event.get("error", "Unknown error")}
+
 
 
 async def run_builder_stream(request: BuilderChatRequest, server_module):
@@ -231,6 +288,7 @@ async def run_builder_resume_stream(
     from core.routes.orchestrations import load_orchestrations
 
     async def _event_source():
+        yield {"type": "thinking", "message": "Resuming..."}
         restored = SS.restore(run_id)
         run = restored.run
 
@@ -254,9 +312,20 @@ async def run_builder_resume_stream(
 
         current_step = engine.step_map.get(run.current_step_id)
         output_key = (current_step.output_key if current_step else None) or "human_response"
-        run.shared_state[output_key] = human_response
+
+        # The frontend sends { field_name: "user text" } — extract the plain
+        # text value so downstream prompt templates like {state.human_response}
+        # receive a clean string, not a dict representation.
+        if isinstance(human_response, dict) and len(human_response) == 1:
+            flat_value = next(iter(human_response.values()))
+        elif isinstance(human_response, dict):
+            flat_value = " ".join(str(v) for v in human_response.values())
+        else:
+            flat_value = human_response
+
+        run.shared_state[output_key] = flat_value
         if output_key != "human_response":
-            run.shared_state["human_response"] = human_response
+            run.shared_state["human_response"] = flat_value
 
         run.waiting_for_human = False
         run.status = "running"
