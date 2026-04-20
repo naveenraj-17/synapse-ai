@@ -265,9 +265,20 @@ async def run_builder_resume_stream(
 
         current_step = engine.step_map.get(run.current_step_id)
         output_key = (current_step.output_key if current_step else None) or "human_response"
-        run.shared_state[output_key] = human_response
+
+        # The frontend sends { field_name: "user text" } — extract the plain
+        # text value so downstream prompt templates like {state.human_response}
+        # receive a clean string, not a dict representation.
+        if isinstance(human_response, dict) and len(human_response) == 1:
+            flat_value = next(iter(human_response.values()))
+        elif isinstance(human_response, dict):
+            flat_value = " ".join(str(v) for v in human_response.values())
+        else:
+            flat_value = human_response
+
+        run.shared_state[output_key] = flat_value
         if output_key != "human_response":
-            run.shared_state["human_response"] = human_response
+            run.shared_state["human_response"] = flat_value
 
         run.waiting_for_human = False
         run.status = "running"

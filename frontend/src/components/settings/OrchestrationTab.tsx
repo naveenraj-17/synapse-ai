@@ -882,7 +882,8 @@ export function OrchestrationTab() {
                         : null
                 }
                 sessionKey={builderSessionKey}
-                onOrchestrationSaved={(orch) => {
+                onOrchestrationSaved={async (orch) => {
+                    // Immediately update with the event data so user sees it
                     setOrchestrations((prev) => {
                         const idx = prev.findIndex((o) => o.id === orch.id);
                         return idx >= 0
@@ -891,6 +892,29 @@ export function OrchestrationTab() {
                     });
                     setDraft(orch);
                     setSelectedOrchId(orch.id);
+
+                    // Re-fetch the full orchestration from backend to get the
+                    // canonical version with all steps properly resolved
+                    try {
+                        const res = await fetch('/api/orchestrations');
+                        if (res.ok) {
+                            const all = await res.json();
+                            const freshList = Array.isArray(all)
+                                ? all.filter((o: any) => o.id !== 'orch_native_builder')
+                                : [];
+                            setOrchestrations(freshList);
+                            const fresh = freshList.find((o: any) => o.id === orch.id);
+                            if (fresh) {
+                                setDraft(fresh);
+                            }
+                        }
+                    } catch { /* use event data as fallback */ }
+
+                    // Auto-close builder after a short delay so user sees
+                    // the orchestration load in the canvas
+                    setTimeout(() => {
+                        setBuilderOpen(false);
+                    }, 1500);
                 }}
                 onAgentSaved={(agent) => {
                     setAgents((prev) => {
