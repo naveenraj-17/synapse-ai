@@ -671,7 +671,11 @@ export function OrchestrationTab() {
                         <Plus size={14} /> New
                     </button>
                     <button
-                        onClick={() => { createNew(); setBuilderOpen(true); setBuilderSessionKey(k => k + 1); }}
+                        onClick={() => { 
+                            if (!selectedOrchId) createNew(); 
+                            setBuilderOpen(true); 
+                            setBuilderSessionKey(k => k + 1); 
+                        }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
                     >
                         <Sparkles size={13} /> Build with AI
@@ -909,12 +913,6 @@ export function OrchestrationTab() {
                             }
                         }
                     } catch { /* use event data as fallback */ }
-
-                    // Auto-close builder after a short delay so user sees
-                    // the orchestration load in the canvas
-                    setTimeout(() => {
-                        setBuilderOpen(false);
-                    }, 1500);
                 }}
                 onAgentSaved={(agent) => {
                     setAgents((prev) => {
