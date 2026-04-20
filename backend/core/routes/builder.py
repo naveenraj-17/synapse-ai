@@ -145,14 +145,18 @@ async def _translate_engine_events(event_source, run_id: str):
                             oid = m.group(1)
                     if oid:
                         tracked_orch_id = oid
-                except Exception:
-                    pass
+                        print(f"DEBUG BUILDER: 🔍 Tracked orch_id={oid} from create_orchestration_skeleton", flush=True)
+                    else:
+                        print(f"DEBUG BUILDER: ⚠️ Could not extract orch_id from skeleton preview: {preview[:200]}", flush=True)
+                except Exception as e:
+                    print(f"DEBUG BUILDER: ❌ Error parsing skeleton result: {e}", flush=True)
             elif tool_name == "validate_orchestration" and not tracked_orch_id:
                 # Fallback: extract orch_id from validate result args
                 try:
                     m = re.search(r'orch_[a-z0-9]+', preview)
                     if m:
                         tracked_orch_id = m.group(0)
+                        print(f"DEBUG BUILDER: 🔍 Tracked orch_id={tracked_orch_id} from validate_orchestration", flush=True)
                 except Exception:
                     pass
 
@@ -179,12 +183,13 @@ async def _translate_engine_events(event_source, run_id: str):
                         orch_obj = parsed.get("orchestration") if isinstance(parsed, dict) else None
                         orch_obj = orch_obj or (parsed if isinstance(parsed, dict) and "id" in parsed else None)
                     except Exception:
-                        orch_obj = None
+                        pass
+                
                 if orch_obj and "id" in orch_obj:
                     yield {"type": "orchestration_saved", "orchestration": orch_obj}
                     orchestration_saved_emitted = True
 
-                # Fallback: use tracked_orch_id to load the full orchestration from disk
+                # Fallback 1: use tracked_orch_id to load the full orchestration from disk
                 if not orchestration_saved_emitted and tracked_orch_id:
                     try:
                         from core.routes.orchestrations import load_orchestrations as _load_orchs
@@ -194,6 +199,20 @@ async def _translate_engine_events(event_source, run_id: str):
                             orchestration_saved_emitted = True
                     except Exception:
                         pass
+
+                # Fallback 2: find the most recently updated user orchestration
+                if not orchestration_saved_emitted:
+                    try:
+                        from core.routes.orchestrations import load_orchestrations as _load_orchs
+                        all_orchs = _load_orchs()
+                        user_orchs = [o for o in all_orchs if o.get("id") != "orch_native_builder"]
+                        if user_orchs:
+                            latest = max(user_orchs, key=lambda o: o.get("updated_at", o.get("created_at", "")))
+                            yield {"type": "orchestration_saved", "orchestration": latest}
+                            orchestration_saved_emitted = True
+                    except Exception:
+                        pass
+
 
         elif etype == "final":
             response = event.get("response", "")
