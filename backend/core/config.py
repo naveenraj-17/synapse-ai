@@ -1,6 +1,7 @@
 import os
 import json
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
@@ -24,6 +25,16 @@ def load_settings():
         "openai_key": "",
         "anthropic_key": "",
         "gemini_key": "",
+        "grok_key": "",
+        "deepseek_key": "",
+        "openai_compatible_key": "",
+        "openai_compatible_base_url": "",
+        "openai_compatible_models": "",
+        "local_compatible_base_url": "",
+        "local_compatible_key": "",
+        "local_compatible_models": "",
+        "openai_compatible_embed_models": "",
+        "local_compatible_embed_models": "",
         "bedrock_api_key": "",
         "bedrock_inference_profile": "",
         "embedding_model": "",
@@ -34,10 +45,16 @@ def load_settings():
         "sql_connection_string": "",
         "n8n_url": "http://localhost:5678",
         "n8n_api_key": "",
+        "n8n_table_id": "",
+        "global_config": {},
         "vault_enabled": True,
         "vault_threshold": 100000,
+        "allow_db_write": False,
         "coding_agent_enabled": False,
+        "report_agent_enabled": True,
+        "messaging_enabled": True,
         "embed_code": False,
+        "bash_allowed_dirs": [],
     }
     
     if not os.path.exists(SETTINGS_FILE):
@@ -51,3 +68,20 @@ def load_settings():
     except Exception as e:
         print(f"DEBUG: Error loading settings: {e}")
         return default_settings
+
+
+def sanitize_db_url(raw: str) -> str:
+    """Normalize a PostgreSQL URL for use with psycopg (not SQLAlchemy).
+
+    Fixes:
+    1. Strips SQLAlchemy dialect suffix (e.g. postgresql+psycopg → postgresql)
+    2. Rewrites empty password (user:@host → user@host) which psycopg/libpq cannot parse.
+    """
+    if not raw:
+        return ""
+    p = urlparse(raw)
+    netloc = p.netloc
+    if netloc:
+        netloc = netloc.replace(":@", "@")
+    scheme = p.scheme.split("+")[0]
+    return urlunparse(p._replace(scheme=scheme, netloc=netloc))

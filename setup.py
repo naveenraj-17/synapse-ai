@@ -701,6 +701,14 @@ DEFAULT_SETTINGS = {
     "gemini_key": "",
     "deepseek_key": "",
     "xai_key": "",
+    "openai_compatible_key": "",
+    "openai_compatible_base_url": "",
+    "openai_compatible_models": "",
+    "local_compatible_base_url": "",
+    "local_compatible_key": "",
+    "local_compatible_models": "",
+    "openai_compatible_embed_models": "",
+    "local_compatible_embed_models": "",
     "google_maps_api_key": "",
     "bedrock_api_key": "",
     "bedrock_inference_profile": "",
@@ -717,6 +725,7 @@ DEFAULT_SETTINGS = {
     "global_config": {},
     "vault_enabled": True,
     "vault_threshold": 100000,
+    "allow_db_write": False,
     "coding_agent_enabled": False,
     "report_agent_enabled": False,
     "browser_automation_enabled": True,
@@ -1108,6 +1117,102 @@ def _detect_codex_cli():
         return []
     return ["cli.codex"]
 
+_COPILOT_FALLBACK_MODELS = [
+    "cli.copilot",
+    "cli.copilot.claude-sonnet-4-5",
+    "cli.copilot.claude-opus-4-5",
+    "cli.copilot.claude-haiku-4-5",
+    "cli.copilot.gpt-4o",
+    "cli.copilot.gpt-4.1",
+    "cli.copilot.o3",
+    "cli.copilot.o4-mini",
+]
+
+def _get_github_token_sync():
+    """Discover a GitHub token from env vars, gh CLI, or copilot config files (cross-platform)."""
+    import os as _os, json as _json, platform
+    from pathlib import Path
+    token = (_os.getenv("COPILOT_GITHUB_TOKEN")
+             or _os.getenv("GH_TOKEN")
+             or _os.getenv("GITHUB_TOKEN"))
+    if token:
+        return token
+    if shutil.which("gh"):
+        try:
+            r = subprocess.run(["gh", "auth", "token"], capture_output=True, timeout=5)
+            if r.returncode == 0 and (t := r.stdout.decode().strip()):
+                return t
+        except Exception:
+            pass
+    system = platform.system()
+    if system == "Windows":
+        config_dirs = [Path(_os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "github-copilot"]
+    elif system == "Darwin":
+        config_dirs = [
+            Path.home() / "Library" / "Application Support" / "github-copilot",
+            Path.home() / ".config" / "github-copilot",
+        ]
+    else:
+        config_dirs = [
+            Path(_os.getenv("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "github-copilot",
+        ]
+    for config_dir in config_dirs:
+        p = config_dir / "hosts.json"
+        if p.exists():
+            try:
+                data = _json.loads(p.read_text())
+                t = (data.get("github.com", {}).get("oauth_token")
+                     or data.get("github.com", {}).get("token"))
+                if t:
+                    return t
+            except Exception:
+                pass
+    p = Path.home() / ".copilot" / "config.json"
+    if p.exists():
+        try:
+            data = _json.loads(p.read_text())
+            if t := (data.get("oauth_token") or data.get("token")):
+                return t
+        except Exception:
+            pass
+    return None
+
+
+def _fetch_copilot_models_sync():
+    """Fetch live model list from GitHub Models catalog API; falls back to hardcoded list."""
+    import urllib.request, json as _json
+    token = _get_github_token_sync()
+    if not token:
+        return _COPILOT_FALLBACK_MODELS
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/catalog/models",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = _json.loads(resp.read())
+        names = [m["name"] for m in data if isinstance(m, dict) and m.get("name")]
+        return (["cli.copilot"] + [f"cli.copilot.{n}" for n in names]) if names else _COPILOT_FALLBACK_MODELS
+    except Exception:
+        return _COPILOT_FALLBACK_MODELS
+
+
+def _detect_github_copilot_cli():
+    """Returns GitHub Copilot CLI model list if 'copilot' binary is found, else []."""
+    if not shutil.which("copilot"):
+        return []
+    try:
+        r = subprocess.run(["copilot", "--version"], capture_output=True, timeout=5)
+        if r.returncode != 0:
+            return []
+    except Exception:
+        return []
+    return _fetch_copilot_models_sync()
+
 def _fetch_gemini_models(api_key):
     try:
         data = _fetch_json(
@@ -1175,26 +1280,27 @@ def _fetch_grok_models(api_key):
         warn(f"Could not fetch Grok models: {e}")
         return []
 
-def _fetch_bedrock_models(api_key, region):
-    """List Bedrock foundation models -- tries boto3, falls back to direct HTTP."""
-    # Try boto3 first
+def _fetch_v1_compatible_models(base_url, api_key=""):
     try:
-        import boto3  # type: ignore
-        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
-        client = boto3.client("bedrock", region_name=region)
-        resp = client.list_foundation_models()
-        models = sorted(set(
-            s["modelId"] for s in resp.get("modelSummaries", [])
-            if s.get("modelId")
-        ))
+        url = base_url.rstrip("/") + "/v1/models"
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        data = _fetch_json(url, headers=headers)
+        models = sorted(set(m["id"] for m in data.get("data", []) if m.get("id")), reverse=True)
         return models
-    except ImportError:
-        pass  # fall through to HTTP path
     except Exception as e:
-        warn(f"boto3 Bedrock listing failed: {e}")
+        warn(f"Could not fetch models from {base_url}: {e}")
         return []
 
-    # Fallback: direct HTTP with ABSK bearer token
+def _fetch_bedrock_models(api_key, region):
+    """List Bedrock foundation models using direct HTTPS bearer auth.
+
+    boto3's AWS_BEARER_TOKEN_BEDROCK env var is only supported for bedrock-runtime
+    (inference), not for the bedrock management API (list_foundation_models).
+    Direct HTTP with Authorization: Bearer is the correct path for API key auth.
+    """
+    # Primary: direct HTTP with bearer token — works for both ABSK and bedrock-api-key formats.
     try:
         import urllib.request
         import json as _json
@@ -1204,6 +1310,19 @@ def _fetch_bedrock_models(api_key, region):
             data = _json.loads(r.read())
         models = sorted(set(
             s["modelId"] for s in data.get("modelSummaries", [])
+            if s.get("modelId")
+        ))
+        return models
+    except Exception as e:
+        warn(f"Direct HTTP Bedrock listing failed ({type(e).__name__}: {e}), trying boto3...")
+
+    # Fallback: boto3 (works when IAM credentials are available in the environment)
+    try:
+        import boto3  # type: ignore
+        client = boto3.client("bedrock", region_name=region)
+        resp = client.list_foundation_models()
+        models = sorted(set(
+            s["modelId"] for s in resp.get("modelSummaries", [])
             if s.get("modelId")
         ))
         return models
@@ -1286,7 +1405,7 @@ def ask_llm(cfg):
             return
 
     info("Select a cloud LLM provider:")
-    providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "DeepSeek", "Grok (xAI)", "Bedrock (AWS)"]
+    providers = ["Gemini", "OpenAI", "Claude (Anthropic)", "DeepSeek", "Grok (xAI)", "OpenAI Compatible", "Local V1 Compatible", "Bedrock (AWS)"]
     choice = ask_choice("Select provider", providers)
 
     if choice == "Gemini":
@@ -1349,8 +1468,51 @@ def ask_llm(cfg):
         else:
             cfg["model"] = ask_choice("Select model", models)
 
+    elif choice == "OpenAI Compatible":
+        key = ask("Enter API key")
+        base_url = ask("Enter base URL (without /v1)", default="https://openrouter.ai/api")
+        cfg["openai_compatible_key"] = key
+        cfg["openai_compatible_base_url"] = base_url.rstrip("/")
+        cfg["mode"] = "cloud"
+        info("Fetching available models...")
+        models = _fetch_v1_compatible_models(base_url, key)
+        if not models:
+            warn("No models returned. Enter model names manually.")
+            manual = ask("Enter model names (comma-separated)")
+            cfg["openai_compatible_models"] = manual
+            if manual:
+                first = manual.split(",")[0].strip()
+                cfg["model"] = f"oaic.{first}"
+            else:
+                cfg["model"] = ask("Enter model name manually")
+        else:
+            choice_model = ask_choice("Select model", models)
+            cfg["model"] = f"oaic.{choice_model}"
+
+    elif choice == "Local V1 Compatible":
+        base_url = ask("Enter base URL (without /v1)", default="http://localhost:8000")
+        cfg["local_compatible_base_url"] = base_url.rstrip("/")
+        key = ask("Enter API key (leave blank if not required)")
+        if key:
+            cfg["local_compatible_key"] = key
+        cfg["mode"] = "cloud"
+        info("Fetching available models...")
+        models = _fetch_v1_compatible_models(base_url, key)
+        if not models:
+            warn("No models returned. Enter model names manually.")
+            manual = ask("Enter model names (comma-separated)")
+            cfg["local_compatible_models"] = manual
+            if manual:
+                first = manual.split(",")[0].strip()
+                cfg["model"] = f"locv1.{first}"
+            else:
+                cfg["model"] = ask("Enter model name manually")
+        else:
+            choice_model = ask_choice("Select model", models)
+            cfg["model"] = f"locv1.{choice_model}"
+
     elif choice == "Bedrock (AWS)":
-        key = ask("Enter Bedrock API Key (ABSK)")
+        key = ask("Enter Bedrock API Key (ABSK... or bedrock-api-key... format)")
         region = ask("AWS Region", default=cfg.get("aws_region") or "us-east-1")
         cfg["bedrock_api_key"] = key
         cfg["aws_region"] = region

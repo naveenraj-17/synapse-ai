@@ -27,6 +27,8 @@ interface GeneralTabProps {
     setAllowDbWrite: (v: boolean) => void;
     embedCode: boolean;
     setEmbedCode: (v: boolean) => void;
+    bashAllowedDirs: string[];
+    setBashAllowedDirs: (v: string[]) => void;
     onSave: () => void;
     isSaving?: boolean;
 }
@@ -37,9 +39,11 @@ export function GeneralTab({
     vaultThreshold, setVaultThreshold,
     allowDbWrite, setAllowDbWrite,
     embedCode, setEmbedCode,
+    bashAllowedDirs, setBashAllowedDirs,
     onSave, isSaving,
 }: GeneralTabProps) {
     const [embedChecking, setEmbedChecking] = useState(false);
+    const [newDir, setNewDir] = useState('');
     const [embedCheckState, setEmbedCheckState] = useState<EmbedCheckState | null>(null);
     const [dbForm, setDbForm] = useState<DbForm>({ host: 'localhost', port: '5432', username: 'postgres', password: '', dbName: 'synapse' });
     const [setupInProgress, setSetupInProgress] = useState(false);
@@ -379,6 +383,57 @@ export function GeneralTab({
                         </button>
                     </div>
                 )}
+            </div>
+
+            {/* Bash Command Directories */}
+            <div className="space-y-4">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Bash Command Directories</label>
+                <p className="text-xs text-zinc-600">
+                    Extra directories the bash tool can execute commands in.
+                    Linked repos and vault are always included automatically.
+                </p>
+                {bashAllowedDirs.length > 0 && (
+                    <div className="space-y-1">
+                        {bashAllowedDirs.map((dir, i) => (
+                            <div key={i} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2">
+                                <span className="text-xs font-mono text-zinc-300 truncate">{dir}</span>
+                                <button
+                                    onClick={() => setBashAllowedDirs(bashAllowedDirs.filter((_, j) => j !== i))}
+                                    className="text-zinc-600 hover:text-red-400 transition-colors text-xs ml-2 flex-shrink-0"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={newDir}
+                        onChange={e => setNewDir(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' && newDir.trim()) {
+                                setBashAllowedDirs([...bashAllowedDirs, newDir.trim()]);
+                                setNewDir('');
+                            }
+                        }}
+                        placeholder="/path/to/directory"
+                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-mono"
+                    />
+                    <button
+                        onClick={() => {
+                            if (newDir.trim()) {
+                                setBashAllowedDirs([...bashAllowedDirs, newDir.trim()]);
+                                setNewDir('');
+                            }
+                        }}
+                        disabled={!newDir.trim()}
+                        className="px-4 py-2.5 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        Add
+                    </button>
+                </div>
             </div>
 
             <div className="pt-4 flex justify-end">

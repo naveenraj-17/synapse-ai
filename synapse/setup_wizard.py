@@ -38,6 +38,14 @@ DEFAULT_SETTINGS = {
     "aws_region": "us-east-1",
     "sql_connection_string": "",
     "ollama_base_url": "",
+    "openai_compatible_key": "",
+    "openai_compatible_base_url": "",
+    "openai_compatible_models": "",
+    "local_compatible_base_url": "",
+    "local_compatible_key": "",
+    "local_compatible_models": "",
+    "openai_compatible_embed_models": "",
+    "local_compatible_embed_models": "",
     "n8n_url": "http://localhost:5678",
     "n8n_api_key": "",
     "n8n_table_id": "",
@@ -104,7 +112,7 @@ def run():
     cfg["report_agent_enabled"] = _ask_yn("Enable Report Agent?", "n")
 
     print("\nLLM Provider (you can fill keys later)")
-    providers = ["Ollama (local)", "Gemini", "OpenAI", "Claude (Anthropic)", "Bedrock (AWS)", "Skip for now"]
+    providers = ["Ollama (local)", "Gemini", "OpenAI", "Claude (Anthropic)", "OpenAI Compatible", "Local V1 Compatible", "Bedrock (AWS)", "Skip for now"]
     choice = _ask_choice("Select provider", providers)
     if choice.startswith("Ollama"):
         cfg["mode"] = "local"
@@ -123,6 +131,22 @@ def run():
         cfg["mode"] = "cloud"
         cfg["bedrock_api_key"] = _ask("Bedrock API key", cfg.get("bedrock_api_key", ""))
         cfg["aws_region"] = _ask("AWS region", cfg.get("aws_region", "us-east-1"))
+    elif choice == "OpenAI Compatible":
+        cfg["mode"] = "cloud"
+        cfg["openai_compatible_key"] = _ask("API key", cfg.get("openai_compatible_key", ""))
+        cfg["openai_compatible_base_url"] = _ask("Base URL (without /v1)", cfg.get("openai_compatible_base_url", ""))
+        cfg["openai_compatible_models"] = _ask("Model names (comma-separated)", cfg.get("openai_compatible_models", ""))
+        if cfg["openai_compatible_models"] and not cfg.get("model"):
+            first = cfg["openai_compatible_models"].split(",")[0].strip()
+            cfg["model"] = f"oaic.{first}"
+    elif choice == "Local V1 Compatible":
+        cfg["mode"] = "cloud"
+        cfg["local_compatible_base_url"] = _ask("Base URL (without /v1)", cfg.get("local_compatible_base_url", ""))
+        cfg["local_compatible_key"] = _ask("API key (optional)", cfg.get("local_compatible_key", ""))
+        cfg["local_compatible_models"] = _ask("Model names (comma-separated)", cfg.get("local_compatible_models", ""))
+        if cfg["local_compatible_models"] and not cfg.get("model"):
+            first = cfg["local_compatible_models"].split(",")[0].strip()
+            cfg["model"] = f"locv1.{first}"
 
     print("\nExample data")
     if _ask_yn("Import example data (if available)?", "y"):

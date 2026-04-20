@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE, TOKEN_FILE
+from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE, TOKEN_FILE, sanitize_db_url
 from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
@@ -126,7 +126,7 @@ async def update_settings(settings: Settings):
 async def check_embed_setup():
     """Check if PostgreSQL + pgvector are correctly set up for code embedding."""
     settings = load_settings()
-    db_url = settings.get("sql_connection_string", "")
+    db_url = sanitize_db_url(settings.get("sql_connection_string", ""))
 
     # Build a masked hint (no password) for the frontend to display
     db_url_hint = ""

@@ -4,7 +4,7 @@ All indexing/management functions live in services/code_indexer.py.
 """
 import os
 import re
-from core.config import load_settings
+from core.config import load_settings, sanitize_db_url
 from services.code_indexer import CODE_EMBEDDING_MODEL, CODE_EMBEDDING_DIM, get_table_name
 
 try:
@@ -22,7 +22,7 @@ def _get_pool():
     global _pool, _pool_url
     if not PSYCOPG_AVAILABLE:
         raise RuntimeError("psycopg_pool is not installed. Enable the coding agent feature.")
-    db_url = load_settings().get("sql_connection_string", "")
+    db_url = sanitize_db_url(load_settings().get("sql_connection_string", ""))
     if not db_url:
         raise RuntimeError("No database URL configured. Set sql_connection_string in Settings → General.")
     if _pool is None or _pool_url != db_url:

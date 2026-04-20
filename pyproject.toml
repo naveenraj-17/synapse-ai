@@ -59,3 +59,14 @@ include = [
     "backend/tools/",
     "backend/main.py",
 ]
+
+[tool.bandit]
+targets = ["backend", "synapse"]
+exclude_dirs = [
+    "backend/venv",
+    "backend/.venv",
+    "backend/data",
+    "backend/logs",
+    "backend/chroma_db",
+]
+skips = []

@@ -19,6 +19,25 @@ from services.synthetic_data import generate_synthetic_data, SyntheticDataReques
 
 router = APIRouter()
 
+
+def _bedrock_management_get(path: str, region: str, api_key: str, params: dict | None = None) -> dict:
+    """Direct HTTPS call to the Bedrock management (control-plane) API using bearer token auth.
+
+    The Bedrock management API (list_foundation_models, list_inference_profiles) does not
+    support the AWS_BEARER_TOKEN_BEDROCK env var that boto3 uses for bedrock-runtime.
+    Direct HTTP with Authorization: Bearer is the correct approach for API key auth here.
+    """
+    import urllib.request
+    import urllib.parse
+    url = f"https://bedrock.{region}.amazonaws.com{path}"
+    if params:
+        url = f"{url}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        import json as _json
+        return _json.loads(resp.read())
+
+
 # --- Synthetic Data ---
 
 @router.post("/api/synthetic/generate")
@@ -54,6 +73,96 @@ async def list_datasets():
 
 # --- Models ---
 
+_COPILOT_FALLBACK_MODELS = [
+    "cli.copilot",
+    "cli.copilot.claude-sonnet-4-5",
+    "cli.copilot.claude-opus-4-5",
+    "cli.copilot.claude-haiku-4-5",
+    "cli.copilot.gpt-4o",
+    "cli.copilot.gpt-4.1",
+    "cli.copilot.o3",
+    "cli.copilot.o4-mini",
+]
+
+async def _get_github_token() -> "str | None":
+    """Discover a GitHub token from env vars, gh CLI, or copilot config files (cross-platform)."""
+    import shutil, os as _os, json as _json, platform
+    token = (_os.getenv("COPILOT_GITHUB_TOKEN")
+             or _os.getenv("GH_TOKEN")
+             or _os.getenv("GITHUB_TOKEN"))
+    if token:
+        return token
+    if shutil.which("gh"):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "gh", "auth", "token",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if proc.returncode == 0 and (t := stdout.decode().strip()):
+                return t
+        except Exception:
+            pass
+    # Config file paths differ by OS
+    system = platform.system()
+    if system == "Windows":
+        config_dirs = [Path(_os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "github-copilot"]
+    elif system == "Darwin":
+        config_dirs = [
+            Path.home() / "Library" / "Application Support" / "github-copilot",
+            Path.home() / ".config" / "github-copilot",
+        ]
+    else:  # Linux and others
+        config_dirs = [
+            Path(_os.getenv("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "github-copilot",
+        ]
+    for config_dir in config_dirs:
+        hosts_path = config_dir / "hosts.json"
+        if hosts_path.exists():
+            try:
+                data = _json.loads(hosts_path.read_text())
+                t = (data.get("github.com", {}).get("oauth_token")
+                     or data.get("github.com", {}).get("token"))
+                if t:
+                    return t
+            except Exception:
+                pass
+    # Older plaintext fallback (~/.copilot/config.json)
+    config_path = Path.home() / ".copilot" / "config.json"
+    if config_path.exists():
+        try:
+            data = _json.loads(config_path.read_text())
+            if t := (data.get("oauth_token") or data.get("token")):
+                return t
+        except Exception:
+            pass
+    return None
+
+
+async def _fetch_copilot_models() -> "list[str]":
+    """Fetch live model list from GitHub Models catalog API; falls back to hardcoded list."""
+    token = await _get_github_token()
+    if not token:
+        return _COPILOT_FALLBACK_MODELS
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                "https://api.github.com/catalog/models",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        if resp.status_code != 200:
+            return _COPILOT_FALLBACK_MODELS
+        data = resp.json()
+        names = [m["name"] for m in data if isinstance(m, dict) and m.get("name")]
+        return (["cli.copilot"] + [f"cli.copilot.{n}" for n in names]) if names else _COPILOT_FALLBACK_MODELS
+    except Exception:
+        return _COPILOT_FALLBACK_MODELS
+
+
 @router.get("/api/models")
 async def get_models():
     """Fetches available models dynamically from each provider's API."""
@@ -73,6 +182,14 @@ async def get_models():
     openai_key = (settings.get("openai_key") or "").strip()
     grok_key = (settings.get("grok_key") or "").strip()
     deepseek_key = (settings.get("deepseek_key") or "").strip()
+    openai_compatible_key = (settings.get("openai_compatible_key") or "").strip()
+    openai_compatible_base_url = (settings.get("openai_compatible_base_url") or "").strip()
+    openai_compatible_models_str = (settings.get("openai_compatible_models") or "").strip()
+    local_compatible_base_url = (settings.get("local_compatible_base_url") or "").strip()
+    local_compatible_key = (settings.get("local_compatible_key") or "").strip()
+    local_compatible_models_str = (settings.get("local_compatible_models") or "").strip()
+    openai_compatible_embed_models_str = (settings.get("openai_compatible_embed_models") or "").strip()
+    local_compatible_embed_models_str = (settings.get("local_compatible_embed_models") or "").strip()
     bedrock_available = bool((settings.get("bedrock_api_key") or "").strip() or
                              (settings.get("aws_access_key_id") or "").strip())
 
@@ -215,20 +332,30 @@ async def get_models():
         if not bedrock_available:
             return False, BEDROCK_FALLBACK, ["amazon.titan-embed-text-v1", "amazon.titan-embed-text-v2:0"]
         try:
-            # Bedrock foundation models include embeddings
+            region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+            api_key = (settings.get("bedrock_api_key") or "").strip()
+
             def _list():
-                c = _make_aws_client("bedrock", settings.get("aws_region", "us-east-1"), settings)
-                resp = c.list_foundation_models()
+                summaries = []
+                if api_key:
+                    # API key auth: use direct HTTPS — boto3 does not apply bearer tokens
+                    # to the Bedrock management (control-plane) API.
+                    data = _bedrock_management_get("/foundation-models", region, api_key)
+                    summaries = data.get("modelSummaries", []) or []
+                else:
+                    c = _make_aws_client("bedrock", region, settings)
+                    resp = c.list_foundation_models()
+                    summaries = resp.get("modelSummaries", []) or []
                 chat = []
                 embed = []
-                for m in resp.get("modelSummaries", []):
+                for m in summaries:
                     mid = f"bedrock.{m['modelId']}"
                     if "EMBEDDING" in m.get("outputModalities", []):
                         embed.append(mid)
                     else:
                         chat.append(mid)
                 return chat, embed
-            
+
             chat, embed = await asyncio.to_thread(_list)
             return True, chat if chat else BEDROCK_FALLBACK, embed if embed else ["bedrock.amazon.titan-embed-text-v1"]
         except Exception:
@@ -263,6 +390,82 @@ async def get_models():
         models = ["cli.codex"] if shutil.which("codex") else []
         return bool(models), models, []
 
+    async def fetch_github_copilot_cli() -> tuple[bool, list[str], list[str]]:
+        import shutil
+        if not shutil.which("copilot"):
+            return False, [], []
+        # Verify it's the GitHub Copilot CLI binary
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "copilot", "--version",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+            if proc.returncode != 0:
+                return False, [], []
+        except Exception:
+            return False, [], []
+        models = await _fetch_copilot_models()
+        return True, models, []
+
+    async def fetch_openai_compatible() -> tuple[bool, list[str], list[str]]:
+        if not openai_compatible_base_url:
+            return False, [], []
+        models = [m.strip() for m in openai_compatible_models_str.split(",") if m.strip()]
+        manual_embed = [m.strip() for m in openai_compatible_embed_models_str.split(",") if m.strip()]
+        if openai_compatible_key and openai_compatible_base_url:
+            try:
+                url = openai_compatible_base_url.rstrip("/")
+                if url.endswith("/v1"):
+                    url = url[:-3]
+                async with httpx.AsyncClient() as client:
+                    headers = {}
+                    if openai_compatible_key:
+                        headers["Authorization"] = f"Bearer {openai_compatible_key}"
+                    r = await client.get(f"{url}/v1/models", headers=headers, timeout=5.0)
+                    if r.status_code == 200:
+                        data = r.json().get("data", [])
+                        api_models = sorted(set(m["id"] for m in data if m.get("id")))
+                        if api_models:
+                            models = api_models
+            except Exception as e:
+                print(f"Error fetching OpenAI-compatible models: {type(e).__name__}: {e}")
+        available = bool(openai_compatible_base_url)
+        prefixed = [f"oaic.{m}" for m in models]
+        auto_embed = [m for m in models if "embed" in m.lower()]
+        all_embed = list(dict.fromkeys(manual_embed + auto_embed))
+        prefixed_embed = [f"oaic.{m}" for m in all_embed]
+        return available, prefixed, prefixed_embed
+
+    async def fetch_local_compatible() -> tuple[bool, list[str], list[str]]:
+        if not local_compatible_base_url:
+            return False, [], []
+        models = [m.strip() for m in local_compatible_models_str.split(",") if m.strip()]
+        manual_embed = [m.strip() for m in local_compatible_embed_models_str.split(",") if m.strip()]
+        try:
+            url = local_compatible_base_url.rstrip("/")
+            if url.endswith("/v1"):
+                url = url[:-3]
+            async with httpx.AsyncClient() as client:
+                headers = {}
+                if local_compatible_key:
+                    headers["Authorization"] = f"Bearer {local_compatible_key}"
+                r = await client.get(f"{url}/v1/models", headers=headers, timeout=5.0)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    api_models = sorted(set(m["id"] for m in data if m.get("id")))
+                    if api_models:
+                        models = api_models
+        except Exception as e:
+            print(f"Error fetching local-compatible models: {type(e).__name__}: {e}")
+        available = bool(local_compatible_base_url)
+        prefixed = [f"locv1.{m}" for m in models]
+        auto_embed = [m for m in models if "embed" in m.lower()]
+        all_embed = list(dict.fromkeys(manual_embed + auto_embed))
+        prefixed_embed = [f"locv1.{m}" for m in all_embed]
+        return available, prefixed, prefixed_embed
+
     # Run all fetches concurrently; return_exceptions=True ensures one provider failure
     # doesn't cancel the others.
     _PROVIDER_FALLBACKS = [
@@ -273,16 +476,21 @@ async def get_models():
         (True, GROK_FALLBACK, []),                                                       # grok
         (True, DEEPSEEK_FALLBACK, []),                                                   # deepseek
         (True, BEDROCK_FALLBACK, ["bedrock.amazon.titan-embed-text-v1"]),                # bedrock
+        (False, [], []),                                                                 # openai_compatible
+        (False, [], []),                                                                 # local_compatible
         (False, [], []),                                                                 # anthropic_cli
         (False, [], []),                                                                 # gemini_cli
         (False, [], []),                                                                 # codex_cli
+        (False, [], []),                                                                 # github_copilot_cli
     ]
-    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "anthropic_cli", "gemini_cli", "codex_cli"]
+    _PROVIDER_NAMES = ["ollama", "openai", "anthropic", "gemini", "grok", "deepseek", "bedrock", "openai_compatible", "local_compatible", "anthropic_cli", "gemini_cli", "codex_cli", "github_copilot_cli"]
 
     raw = await asyncio.gather(
         fetch_ollama(), fetch_openai(), fetch_anthropic(),
         fetch_gemini(), fetch_grok(), fetch_deepseek(), fetch_bedrock(),
+        fetch_openai_compatible(), fetch_local_compatible(),
         fetch_claude_cli(), fetch_gemini_cli(), fetch_codex_cli(),
+        fetch_github_copilot_cli(),
         return_exceptions=True,
     )
 
@@ -301,9 +509,12 @@ async def get_models():
     grok_avail, grok_chat, grok_embed = results[4]
     deepseek_avail, deepseek_chat, deepseek_embed = results[5]
     bedrock_avail, bedrock_chat, bedrock_embed = results[6]
-    c_claude_avail, c_claude_chat, _ = results[7]
-    c_gemini_avail, c_gemini_chat, _ = results[8]
-    c_codex_avail, c_codex_chat, _ = results[9]
+    oaic_avail, oaic_chat, oaic_embed = results[7]
+    locv1_avail, locv1_chat, locv1_embed = results[8]
+    c_claude_avail, c_claude_chat, _ = results[9]
+    c_gemini_avail, c_gemini_chat, _ = results[10]
+    c_codex_avail, c_codex_chat, _ = results[11]
+    c_copilot_avail, c_copilot_chat, _ = results[12]
 
     # --- Build provider map ---
     providers = {
@@ -314,19 +525,22 @@ async def get_models():
         "grok": {"available": grok_avail, "models": grok_chat, "embedding_models": grok_embed},
         "deepseek": {"available": deepseek_avail, "models": deepseek_chat, "embedding_models": deepseek_embed},
         "bedrock": {"available": bedrock_avail, "models": bedrock_chat, "embedding_models": bedrock_embed},
+        "openai_compatible": {"available": oaic_avail, "models": oaic_chat, "embedding_models": oaic_embed},
+        "local_compatible": {"available": locv1_avail, "models": locv1_chat, "embedding_models": locv1_embed},
         "anthropic_cli": {"available": c_claude_avail, "models": c_claude_chat, "embedding_models": []},
         "gemini_cli": {"available": c_gemini_avail, "models": c_gemini_chat, "embedding_models": []},
         "codex_cli": {"available": c_codex_avail, "models": c_codex_chat, "embedding_models": []},
+        "github_copilot_cli": {"available": c_copilot_avail, "models": c_copilot_chat, "embedding_models": []},
     }
 
     # --- Flat list of all available models ---
     all_available = []
-    for name, info in providers.items():
+    for _, info in providers.items():
         if info["available"]:
             all_available.extend(info["models"])
 
     # --- Backward compat ---
-    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + c_claude_chat + c_gemini_chat + c_codex_chat
+    cloud_models = gemini_chat + anthropic_chat + openai_chat + grok_chat + deepseek_chat + BEDROCK_FALLBACK + oaic_chat + locv1_chat + c_claude_chat + c_gemini_chat + c_codex_chat + c_copilot_chat
 
     return {
         "providers": providers,
@@ -343,11 +557,19 @@ async def get_bedrock_models():
     """Lists Bedrock foundation models."""
     settings = load_settings()
     region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+    api_key = (settings.get("bedrock_api_key") or "").strip()
 
     def _list_models_sync():
-        client = _make_aws_client("bedrock", region, settings)
-        resp = client.list_foundation_models()
-        summaries = resp.get("modelSummaries", []) or []
+        summaries = []
+        if api_key:
+            # API key (ABSK / bedrock-api-key format): use direct HTTPS bearer auth.
+            # The Bedrock management API does not support AWS_BEARER_TOKEN_BEDROCK via boto3.
+            data = _bedrock_management_get("/foundation-models", region, api_key)
+            summaries = data.get("modelSummaries", []) or []
+        else:
+            client = _make_aws_client("bedrock", region, settings)
+            resp = client.list_foundation_models()
+            summaries = resp.get("modelSummaries", []) or []
         models: list[str] = []
         for s in summaries:
             model_id = s.get("modelId")
@@ -359,10 +581,10 @@ async def get_bedrock_models():
         models = await asyncio.to_thread(_list_models_sync)
         return {"models": models}
     except Exception as e:
-        print(f"Error listing Bedrock models: {e}")
+        print(f"Error listing Bedrock models: {type(e).__name__}: {e}")
         return {
             "models": [],
-            "error": "Unable to list Bedrock models. Check AWS credentials/permissions and region.",
+            "error": f"Unable to list Bedrock models: {e}",
         }
 
 
@@ -371,33 +593,51 @@ async def get_bedrock_inference_profiles():
     """Lists Bedrock inference profiles."""
     settings = load_settings()
     region = (settings.get("aws_region") or "us-east-1").strip() or "us-east-1"
+    api_key = (settings.get("bedrock_api_key") or "").strip()
+
+    def _parse_profile_summaries(summaries) -> list[dict]:
+        profiles = []
+        for s in summaries or []:
+            if not isinstance(s, dict):
+                continue
+            profiles.append(
+                {
+                    "id": s.get("inferenceProfileId") or s.get("id") or "",
+                    "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
+                    "name": s.get("inferenceProfileName") or s.get("name") or "",
+                    "status": s.get("status") or "",
+                    "type": s.get("type") or "",
+                }
+            )
+        return profiles
 
     def _list_profiles_sync():
-        client = _make_aws_client("bedrock", region, settings)
-
         profiles = []
         next_token = None
-        while True:
-            kwargs: dict = {}
-            if next_token:
-                kwargs["nextToken"] = next_token
-            resp = client.list_inference_profiles(**kwargs)
-            print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
-            for s in resp.get("inferenceProfileSummaries") or []:
-                if not isinstance(s, dict):
-                    continue
-                profiles.append(
-                    {
-                        "id": s.get("inferenceProfileId") or s.get("id") or "",
-                        "arn": s.get("inferenceProfileArn") or s.get("arn") or "",
-                        "name": s.get("inferenceProfileName") or s.get("name") or "",
-                        "status": s.get("status") or "",
-                        "type": s.get("type") or "",
-                    }
-                )
-            next_token = resp.get("nextToken")
-            if not next_token:
-                break
+
+        if api_key:
+            # API key (ABSK / bedrock-api-key format): use direct HTTPS bearer auth.
+            # The Bedrock management API does not support AWS_BEARER_TOKEN_BEDROCK via boto3.
+            while True:
+                params = {"nextToken": next_token} if next_token else None
+                resp = _bedrock_management_get("/inference-profiles", region, api_key, params)
+                print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
+                profiles.extend(_parse_profile_summaries(resp.get("inferenceProfileSummaries")))
+                next_token = resp.get("nextToken")
+                if not next_token:
+                    break
+        else:
+            client = _make_aws_client("bedrock", region, settings)
+            while True:
+                kwargs: dict = {}
+                if next_token:
+                    kwargs["nextToken"] = next_token
+                resp = client.list_inference_profiles(**kwargs)
+                print(f"Fetched {len(resp.get('inferenceProfileSummaries', []))} profiles from Bedrock")
+                profiles.extend(_parse_profile_summaries(resp.get("inferenceProfileSummaries")))
+                next_token = resp.get("nextToken")
+                if not next_token:
+                    break
 
         return sorted(profiles, key=lambda p: (p.get("name") or p.get("arn") or p.get("id") or ""))
 
@@ -405,7 +645,7 @@ async def get_bedrock_inference_profiles():
         profiles = await asyncio.to_thread(_list_profiles_sync)
         return {"profiles": profiles}
     except Exception as e:
-        error_msg = str(e)
+        error_msg = f"{type(e).__name__}: {e}"
         print(f"Error listing Bedrock inference profiles: {error_msg}")
         return {
             "profiles": [],

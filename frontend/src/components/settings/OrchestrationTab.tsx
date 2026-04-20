@@ -2,7 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X } from 'lucide-react';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles } from 'lucide-react';
+import { BuilderPanel } from '../orchestration/BuilderPanel';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import { ReactFlowProvider } from '@xyflow/react';
 import { WorkflowCanvas } from '../orchestration/WorkflowCanvas';
@@ -72,7 +73,7 @@ export function OrchestrationTab() {
     const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
     // --- Run state ---
-    const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'failed'>('idle');
+    const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'>('idle');
     const [runStepStatuses, setRunStepStatuses] = useState<Record<string, 'pending' | 'running' | 'paused' | 'completed' | 'failed'>>({});
     const [runId, setRunId] = useState<string | null>(null);
     const [runInput, setRunInput] = useState('');
@@ -85,6 +86,8 @@ export function OrchestrationTab() {
     const pendingStepResultRef = useRef<Map<string, { step_name: string; step_type: 'agent' | 'llm'; content: string }>>(new Map());
     const [responseModal, setResponseModal] = useState<{ step_name: string; content: string } | null>(null);
     const [confirmDeleteOrchId, setConfirmDeleteOrchId] = useState<string | null>(null);
+    const [builderOpen, setBuilderOpen] = useState(false);
+    const [builderSessionKey, setBuilderSessionKey] = useState(0);
 
     // --- Active runs (for reconnect banner) ---
     const [activeRuns, setActiveRuns] = useState<Array<{
@@ -94,11 +97,18 @@ export function OrchestrationTab() {
         started_at: string | null;
     }>>([]);
     const activeRunsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [pastRuns, setPastRuns] = useState<Array<{
+        run_id: string;
+        orchestration_id: string;
+        status: string;
+        started_at?: string;
+        ended_at?: string;
+    }>>([]);
 
     // --- Fetch orchestrations + agents ---
     useEffect(() => {
         fetch('/api/orchestrations').then(r => r.json()).then(data => {
-            setOrchestrations(Array.isArray(data) ? data : []);
+            setOrchestrations(Array.isArray(data) ? data.filter((o: any) => o.id !== 'orch_native_builder') : []);
         }).catch(() => {});
 
         fetch('/api/agents').then(r => r.json()).then(data => {
@@ -117,6 +127,7 @@ export function OrchestrationTab() {
             .then(data => {
                 if (Array.isArray(data)) {
                     setActiveRuns(data.filter(r => r.status === 'running' || r.status === 'paused'));
+                    setPastRuns(data);
                 }
             })
             .catch(() => {});
@@ -137,7 +148,7 @@ export function OrchestrationTab() {
         setSelectedStepId(null);
         setDraft(orch ? { ...orch } : null);
         setRunId(runInfo.run_id);
-        setRunStatus(runInfo.status as 'running' | 'paused' | 'completed' | 'failed');
+        setRunStatus(runInfo.status as 'running' | 'paused' | 'completed' | 'failed' | 'cancelled');
         setRunLog([`[Reconnected to run ${runInfo.run_id}]`]);
         setHumanPrompt(null);
         setHumanContext(null);
@@ -576,7 +587,7 @@ export function OrchestrationTab() {
                 await fetch(`/api/orchestrations/runs/${runId}/cancel`, { method: 'POST' });
             } catch { /* ignore */ }
         }
-        setRunStatus('failed');
+        setRunStatus('cancelled');
         setRunLog(prev => [...prev, '[Cancelled]']);
     };
 
@@ -595,6 +606,13 @@ export function OrchestrationTab() {
         setHumanResponse('');
 
         streamSSE(`/api/orchestrations/runs/${runId}/human-input`, { response });
+    };
+
+    const resumeRun = async () => {
+        if (!runId) return;
+        setRunStatus('running');
+        setRunLog(prev => [...prev, '[Resuming from where run stopped...]']);
+        streamSSE(`/api/orchestrations/runs/${runId}/resume`, {});
     };
 
     // Cleanup on unmount
@@ -625,10 +643,10 @@ export function OrchestrationTab() {
     };
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full relative">
             {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
             {/* Header */}
-            <div className="px-6 py-4 border-b border-zinc-800 shrink-0 pr-14">
+            <div className="px-6 py-4 border-b border-zinc-800 shrink-0">
                 <h1 className="text-2xl font-bold text-zinc-100">Orchestrations</h1>
                 <p className="text-zinc-500 text-xs mt-0.5">Design multi-agent workflows with visual canvas</p>
             </div>
@@ -652,6 +670,12 @@ export function OrchestrationTab() {
                     >
                         <Plus size={14} /> New
                     </button>
+                    <button
+                        onClick={() => { createNew(); setBuilderOpen(true); setBuilderSessionKey(k => k + 1); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
+                    >
+                        <Sparkles size={13} /> Build with AI
+                    </button>
                 </div>
 
                 {draft && (
@@ -663,7 +687,7 @@ export function OrchestrationTab() {
                         >
                             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
                         </button>
-                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' ? (
+                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled' ? (
                             <button
                                 onClick={startRun}
                                 className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
@@ -817,6 +841,10 @@ export function OrchestrationTab() {
                             setHumanResponse={setHumanResponse}
                             onSubmitHuman={submitHumanInput}
                             onOpenResponseModal={setResponseModal}
+                            runId={runId}
+                            onResumeRun={resumeRun}
+                            pastRuns={pastRuns}
+                            onRestoreRun={restoreRun}
                         />
                     </div>
 
@@ -840,6 +868,62 @@ export function OrchestrationTab() {
                     setConfirmDeleteOrchId(null);
                 }}
                 onClose={() => setConfirmDeleteOrchId(null)}
+            />
+
+            <BuilderPanel
+                isOpen={builderOpen}
+                onClose={() => setBuilderOpen(false)}
+                agents={agents}
+                availableModels={availableModels}
+                currentOrchestrationId={
+                    // Only pass a real saved orchestration ID — not the temp frontend draft ID
+                    selectedOrchId && orchestrations.some(o => o.id === selectedOrchId)
+                        ? selectedOrchId
+                        : null
+                }
+                sessionKey={builderSessionKey}
+                onOrchestrationSaved={async (orch) => {
+                    // Immediately update with the event data so user sees it
+                    setOrchestrations((prev) => {
+                        const idx = prev.findIndex((o) => o.id === orch.id);
+                        return idx >= 0
+                            ? prev.map((o) => (o.id === orch.id ? orch : o))
+                            : [...prev, orch];
+                    });
+                    setDraft(orch);
+                    setSelectedOrchId(orch.id);
+
+                    // Re-fetch the full orchestration from backend to get the
+                    // canonical version with all steps properly resolved
+                    try {
+                        const res = await fetch('/api/orchestrations');
+                        if (res.ok) {
+                            const all = await res.json();
+                            const freshList = Array.isArray(all)
+                                ? all.filter((o: any) => o.id !== 'orch_native_builder')
+                                : [];
+                            setOrchestrations(freshList);
+                            const fresh = freshList.find((o: any) => o.id === orch.id);
+                            if (fresh) {
+                                setDraft(fresh);
+                            }
+                        }
+                    } catch { /* use event data as fallback */ }
+
+                    // Auto-close builder after a short delay so user sees
+                    // the orchestration load in the canvas
+                    setTimeout(() => {
+                        setBuilderOpen(false);
+                    }, 1500);
+                }}
+                onAgentSaved={(agent) => {
+                    setAgents((prev) => {
+                        const idx = prev.findIndex((a) => a.id === agent.id);
+                        return idx >= 0
+                            ? prev.map((a) => (a.id === agent.id ? agent : a))
+                            : [...prev, agent];
+                    });
+                }}
             />
         </div>
     );
@@ -917,6 +1001,7 @@ function ResponseModal({ stepName, content, onClose }: { stepName: string; conte
 function BottomPanel({
     draft, setDraft, runStatus, runLog, runInput, setRunInput,
     humanPrompt, humanContext, humanResponse, setHumanResponse, onSubmitHuman, onOpenResponseModal,
+    runId, onResumeRun, pastRuns, onRestoreRun,
 }: {
     draft: Orchestration;
     setDraft: (o: Orchestration) => void;
@@ -930,8 +1015,12 @@ function BottomPanel({
     setHumanResponse: (v: string) => void;
     onSubmitHuman: () => void;
     onOpenResponseModal: (entry: { step_name: string; content: string }) => void;
+    runId: string | null;
+    onResumeRun: () => void;
+    pastRuns: { run_id: string; orchestration_id: string; status: string; started_at?: string; ended_at?: string }[];
+    onRestoreRun: (run: { run_id: string; orchestration_id: string; status: string }) => void;
 }) {
-    const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run'>('run');
+    const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run' | 'recent'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
     const [humanContextHeight, setHumanContextHeight] = useState(200);
     const logRef = useRef<HTMLDivElement>(null);
@@ -1006,11 +1095,27 @@ function BottomPanel({
                             <span className={`ml-2 inline-block w-2 h-2 rounded-full ${
                                 runStatus === 'running' ? 'bg-blue-400 animate-pulse' :
                                 runStatus === 'completed' ? 'bg-green-400' :
-                                runStatus === 'paused' ? 'bg-yellow-400' : 'bg-red-400'
+                                runStatus === 'paused' ? 'bg-yellow-400' :
+                                runStatus === 'cancelled' ? 'bg-zinc-500' : 'bg-red-400'
                             }`} />
                         )}
                     </button>
                 ))}
+                <button
+                    onClick={() => setActiveSection('recent')}
+                    className={`px-4 py-2 text-xs font-medium transition-colors ${
+                        activeSection === 'recent'
+                            ? 'text-blue-400 border-b-2 border-blue-400'
+                            : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                >
+                    Recent Runs
+                    {pastRuns.length > 0 && (
+                        <span className="ml-1.5 text-[10px] bg-zinc-700 text-zinc-400 rounded-full px-1.5 py-0.5">
+                            {pastRuns.length}
+                        </span>
+                    )}
+                </button>
             </div>
 
             <div className="p-4 flex-1 overflow-y-auto min-h-0">
@@ -1057,11 +1162,46 @@ function BottomPanel({
                     </div>
                 )}
 
+                {/* Recent Runs */}
+                {activeSection === 'recent' && (
+                    <div className="space-y-1">
+                        {pastRuns.length === 0 ? (
+                            <div className="text-zinc-600 italic text-xs">No runs yet.</div>
+                        ) : (
+                            pastRuns.slice(0, 20).map(r => (
+                                <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded bg-zinc-800/50">
+                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                        r.status === 'completed' ? 'bg-green-400' :
+                                        r.status === 'failed'    ? 'bg-red-400' :
+                                        r.status === 'cancelled' ? 'bg-zinc-500' :
+                                        r.status === 'paused'    ? 'bg-yellow-400' : 'bg-blue-400 animate-pulse'
+                                    }`} />
+                                    <span className="text-zinc-400 truncate flex-1" title={r.run_id}>{r.run_id}</span>
+                                    <span className="text-zinc-500 capitalize">{r.status}</span>
+                                    {r.started_at && (
+                                        <span className="text-zinc-600 text-[10px]">
+                                            {new Date(r.started_at).toLocaleTimeString()}
+                                        </span>
+                                    )}
+                                    {(r.status === 'failed' || r.status === 'cancelled') && (
+                                        <button
+                                            onClick={() => { onRestoreRun(r); setActiveSection('run'); }}
+                                            className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded"
+                                        >
+                                            Resume
+                                        </button>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
                 {/* Run Log */}
                 {activeSection === 'run' && (
                     <div className="space-y-2">
                         {/* Input bar */}
-                        {(runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed') && (
+                        {(runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled') && (
                             <div className="flex gap-2">
                                 <input
                                     className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 outline-none"
@@ -1070,6 +1210,14 @@ function BottomPanel({
                                     placeholder="Initial input for the orchestration..."
                                     onKeyDown={(e) => { if (e.key === 'Enter') { /* startRun triggered from top bar */ } }}
                                 />
+                                {(runStatus === 'failed' || runStatus === 'cancelled') && runId && (
+                                    <button
+                                        onClick={onResumeRun}
+                                        className="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-500 text-white rounded whitespace-nowrap"
+                                    >
+                                        Resume from failure
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -1215,6 +1363,7 @@ function BottomPanel({
                                 })
                             )}
                         </div>
+
                     </div>
                 )}
             </div>

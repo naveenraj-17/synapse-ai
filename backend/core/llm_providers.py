@@ -15,9 +15,16 @@ import json
 import tempfile
 import asyncio
 import base64
+import threading
 import httpx
 import boto3
+import botocore.exceptions
+from botocore import UNSIGNED as _BEDROCK_UNSIGNED
 from botocore.config import Config
+
+# Lock to guard the process-level AWS_BEARER_TOKEN_BEDROCK env var.
+# Multiple threads (via asyncio.to_thread) could otherwise race on set/clear.
+_aws_env_lock = threading.Lock()
 
 
 # ─── Image helpers ──────────────────────────────────────────────────────────────
@@ -112,6 +119,10 @@ def detect_mode_from_model(model_name: str) -> str:
         return "cloud"
     if m.startswith("deepseek"):
         return "cloud"
+    if m.startswith("oaic."):
+        return "cloud"
+    if m.startswith("locv1."):
+        return "local"
     return "local"
 
 
@@ -127,6 +138,8 @@ def detect_provider_from_model(model_name: str) -> str:
         return "gemini_cli"
     if m.startswith("cli.codex"):
         return "codex_cli"
+    if m.startswith("cli.copilot"):
+        return "github_copilot_cli"
     if m.startswith("cli."):
         return "cli"
     if m.startswith("gpt"):
@@ -141,8 +154,35 @@ def detect_provider_from_model(model_name: str) -> str:
         return "grok"
     if m.startswith("deepseek"):
         return "deepseek"
+    if m.startswith("oaic."):
+        return "openai_compatible"
+    if m.startswith("locv1."):
+        return "local_compatible"
     return "ollama"
 
+
+
+def _normalize_bedrock_api_key(settings: dict) -> str:
+    """Extract and normalize the Bedrock API key from settings.
+
+    Strips surrounding quotes and common header prefixes (Authorization: Bearer ...)
+    that users often paste. Both ABSK... and bedrock-api-key... formats are returned
+    as-is after stripping prefixes.
+    """
+    api_key = (settings.get("bedrock_api_key") or "").strip()
+    if not api_key:
+        return ""
+    if (api_key.startswith('"') and api_key.endswith('"')) or (
+        api_key.startswith("'") and api_key.endswith("'")
+    ):
+        api_key = api_key[1:-1].strip()
+    lower = api_key.lower()
+    if lower.startswith("authorization:"):
+        api_key = api_key.split(":", 1)[1].strip()
+        lower = api_key.lower()
+    if lower.startswith("bearer "):
+        api_key = api_key.split(" ", 1)[1].strip()
+    return api_key
 
 
 def _make_aws_client(service_name: str, region: str, settings: dict):
@@ -153,32 +193,14 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     """
     # Amazon Bedrock API keys can be provided as a bearer token via this env var.
     # See: https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html
-    bedrock_api_key = (settings.get("bedrock_api_key") or "").strip()
-    # Users often paste a full header value. Normalize to the raw ABSK... token.
-    if bedrock_api_key:
-        # Strip surrounding quotes
-        if (bedrock_api_key.startswith('"') and bedrock_api_key.endswith('"')) or (
-            bedrock_api_key.startswith("'") and bedrock_api_key.endswith("'")
-        ):
-            bedrock_api_key = bedrock_api_key[1:-1].strip()
-
-        lower = bedrock_api_key.lower()
-        if lower.startswith("authorization:"):
-            bedrock_api_key = bedrock_api_key.split(":", 1)[1].strip()
-            lower = bedrock_api_key.lower()
-        if lower.startswith("bearer "):
-            bedrock_api_key = bedrock_api_key.split(" ", 1)[1].strip()
+    bedrock_api_key = _normalize_bedrock_api_key(settings)
 
     # If a Bedrock API key is provided, prefer it and avoid mixing auth mechanisms.
     if bedrock_api_key:
-        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_api_key
         access_key = ""
         secret_key = ""
         session_token = ""
     else:
-        # Clear if user removed it in settings
-        if os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
-            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
         access_key = (settings.get("aws_access_key_id") or "").strip()
         secret_key = (settings.get("aws_secret_access_key") or "").strip()
         session_token = (settings.get("aws_session_token") or "").strip()
@@ -215,16 +237,26 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     )
     kwargs["config"] = retry_config
 
-    return boto3.client(**kwargs)
+    # Guard the process-level env var with a lock so concurrent threads don't
+    # race on set/clear (AWS_BEARER_TOKEN_BEDROCK is read by botocore at client
+    # creation time for the bedrock-runtime bearer-token auth path).
+    with _aws_env_lock:
+        if bedrock_api_key:
+            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_api_key
+        else:
+            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
+        return boto3.client(**kwargs)
 
 
 # ─── CLI Session Providers ──────────────────────────────────────────────────────
 
 # Maps cli.* model names to their CLI binary + flags
 _CLI_COMMANDS: dict[str, list[str]] = {
-    "cli.claude": ["claude", "-p", "--verbose"],
-    "cli.gemini": ["gemini", "--prompt", ""],
-    "cli.codex":  ["codex", "exec", "--full-auto"],
+    "cli.claude":   ["claude", "-p", "--allowedTools", ""],
+    "cli.gemini":   ["gemini", "--prompt", ""],
+    "cli.codex":    ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox",
+                     "-c", "instructions=", "-c", "features.shell_tool=false"],
+    "cli.copilot":  ["copilot", "-p"],
 }
 
 # Seconds to wait for a CLI process before giving up
@@ -284,16 +316,18 @@ async def call_cli_provider(
     sys_prompt: str | None = None,
     messages: list[dict] | None = None,
     timeout: float = _CLI_TIMEOUT,
-) -> tuple[str, int, int]:
+    cli_session_id: str | None = None,
+) -> tuple[str, int, int, str | None]:
     """Spawn a local CLI binary, feed it the full context, and return the response.
 
     Args:
-        cli_model: One of 'cli.claude', 'cli.gemini', 'cli.codex'
+        cli_model: One of 'cli.claude', 'cli.gemini', 'cli.codex', 'cli.copilot'
         full_prompt: Complete flat-text prompt (system + tools + transcript)
         timeout: Seconds before we kill the process and raise LLMError
+        cli_session_id: Existing CLI session ID to resume (passed via --resume).
 
     Returns:
-        (response_text, estimated_input_tokens, estimated_output_tokens)
+        (response_text, estimated_input_tokens, estimated_output_tokens, new_session_id)
 
     Raises:
         LLMError: on timeout, auth failure, binary not found, or empty output
@@ -303,6 +337,7 @@ async def call_cli_provider(
 
     ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
     AUTH_PATTERNS = ["login", "authenticate", "auth", "expired", "sign in", "api key", "unauthorized"]
+    RATE_LIMIT_PATTERNS = ["429", "rate limit", "ratelimit", "quota", "too many requests", "capacity", "resource_exhausted", "ratelimitexceeded"]
 
     parts = cli_model.lower().split(".")
     if len(parts) >= 2:
@@ -316,6 +351,11 @@ async def call_cli_provider(
 
     cmd = base_cmd.copy()
 
+    # ── Session Resume ──
+    # If a previous CLI session ID exists for this agent+session, continue it.
+    if cli_session_id:
+        cmd.extend(["--resume", cli_session_id])
+
     # ── Dynamic Model & Options Parsing ──
     if len(parts) > 2:
         variant = parts[2]
@@ -323,7 +363,7 @@ async def call_cli_provider(
             # Extract base model by removing any thinking suffixes
             clean_variant = variant.replace('-thinking', '').replace('-max', '').replace('-high', '')
             cmd.extend(["--model", clean_variant])
-            
+
             # Thinking / Effort overrides
             if "-thinking" in variant or "-max" in variant:
                 cmd.extend(["--effort", "medium"])
@@ -341,6 +381,10 @@ async def call_cli_provider(
         elif base_cli == "cli.codex":
             # Pass the variant directly as the model name (e.g. o3, o4-mini, gpt-4o)
             cmd.extend(["-m", variant])
+
+        elif base_cli == "cli.copilot":
+            # Pass the variant directly as the model name (e.g. claude-sonnet-4-5, gpt-4o)
+            cmd.extend(["--model", variant])
 
     # codex exec requires "-" as the positional PROMPT arg to signal stdin input.
     # Append it after all option flags are resolved so it stays last.
@@ -363,46 +407,71 @@ async def call_cli_provider(
     os.makedirs(_tmp_dir, exist_ok=True)
 
     try:
-        if base_cli == "cli.claude" and sys_prompt:
-            # Write sys_prompt to a temp file and pass via --system-prompt-file.
-            temp_sys_prompt_file = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".txt", prefix="claude_sys_prompt_", delete=False,
-                encoding="utf-8", dir=_tmp_dir
-            )
-            temp_sys_prompt_file.write(sys_prompt)
-            temp_sys_prompt_file.flush()
-            temp_sys_prompt_file.close()
-            cmd.extend(["--system-prompt-file", temp_sys_prompt_file.name])
-
-            # stdin carries only the content after the sys_prompt (tools + messages).
-            # full_prompt = sys_prompt.strip() + "\n\n" + rest, so strip the prefix.
-            prefix = sys_prompt.strip()
-            stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
+        if base_cli == "cli.copilot":
+            # copilot -p takes the full prompt inline as a CLI argument; stdin is not used.
+            # System prompt is already embedded in full_prompt by _build_cli_prompt().
+            cmd.append(full_prompt)
+            stdin_source = asyncio.subprocess.DEVNULL
         else:
-            stdin_payload = full_prompt
+            if base_cli == "cli.claude" and sys_prompt:
+                # Write sys_prompt to a temp file and pass via --system-prompt-file.
+                # --no-tools (added above) ensures Claude Code's native tools are stripped so
+                # only our XML emulation is active.
+                temp_sys_prompt_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".md", prefix="claude_sys_prompt_", delete=False,
+                    encoding="utf-8", dir=_tmp_dir
+                )
+                temp_sys_prompt_file.write(sys_prompt)
+                temp_sys_prompt_file.flush()
+                temp_sys_prompt_file.close()
+                cmd.extend(["--system-prompt-file", temp_sys_prompt_file.name])
 
-        # Write stdin payload to a temp file and feed it as stdin (like `< file`),
-        # avoiding large string pipes and keeping content out of the process list.
-        temp_input_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", prefix="claude_input_", delete=False,
-            encoding="utf-8", dir=_tmp_dir
-        )
-        temp_input_file.write(stdin_payload)
-        temp_input_file.flush()
-        temp_input_file.close()
+                # stdin carries only the content after the sys_prompt (tools + messages).
+                # full_prompt = sys_prompt.strip() + "\n\n" + rest, so strip the prefix.
+                prefix = sys_prompt.strip()
+                stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
 
-        # codex exec: use -o to capture only the final agent message, avoiding TUI noise
-        if base_cli == "cli.codex":
-            temp_output_file = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".txt", prefix="codex_output_", delete=False,
+            elif base_cli == "cli.gemini" and sys_prompt:
+                # Gemini CLI reads GEMINI_SYSTEM_MD env var as the path to a markdown file
+                # containing the system prompt, overriding its native default system prompt.
+                temp_sys_prompt_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".md", prefix="gemini_sys_prompt_", delete=False,
+                    encoding="utf-8", dir=_tmp_dir
+                )
+                temp_sys_prompt_file.write(sys_prompt)
+                temp_sys_prompt_file.flush()
+                temp_sys_prompt_file.close()
+                env["GEMINI_SYSTEM_MD"] = temp_sys_prompt_file.name
+
+                # stdin carries only the content after the sys_prompt (tools + messages).
+                prefix = sys_prompt.strip()
+                stdin_payload = full_prompt[len(prefix):].lstrip("\n") if full_prompt.startswith(prefix) else full_prompt
+
+            else:
+                stdin_payload = full_prompt
+
+            # Write stdin payload to a temp file and feed it as stdin (like `< file`),
+            # avoiding large string pipes and keeping content out of the process list.
+            temp_input_file = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", prefix="cli_input_", delete=False,
                 encoding="utf-8", dir=_tmp_dir
             )
-            temp_output_file.close()
-            cmd.extend(["-o", temp_output_file.name])
+            temp_input_file.write(stdin_payload)
+            temp_input_file.flush()
+            temp_input_file.close()
 
-        print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(cmd)}", flush=True)
+            # codex exec: use -o to capture only the final agent message, avoiding TUI noise
+            if base_cli == "cli.codex":
+                temp_output_file = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", prefix="codex_output_", delete=False,
+                    encoding="utf-8", dir=_tmp_dir
+                )
+                temp_output_file.close()
+                cmd.extend(["-o", temp_output_file.name])
 
-        stdin_source = open(temp_input_file.name, "rb") if temp_input_file else asyncio.subprocess.PIPE
+            stdin_source = open(temp_input_file.name, "rb")
+
+        print(f"DEBUG: 🖥️  CLI provider '{cli_model}' — spawning subprocess: {' '.join(str(a) for a in cmd)}", flush=True)
 
         process = await asyncio.create_subprocess_exec(
             executable,
@@ -434,7 +503,15 @@ async def call_cli_provider(
 
         stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
         if stderr_text:
-            lower_err = stderr_text.lower()
+            # Scan only the tail of stderr for error patterns — Codex (and some other CLIs)
+            # echo the stdin/banner to stderr, which can contain words like "capacity" that
+            # would falsely trigger rate-limit detection. Real API errors appear at the end.
+            lower_err = stderr_text[-600:].lower()
+            if any(p in lower_err for p in RATE_LIMIT_PATTERNS):
+                raise LLMError(
+                    f"CLI provider '{cli_model}' rate limit / capacity error.\n"
+                    f"Details: {stderr_text[:400]}"
+                )
             if any(p in lower_err for p in AUTH_PATTERNS):
                 raise LLMError(
                     f"CLI provider '{cli_model}' authentication failure detected.\n"
@@ -455,11 +532,39 @@ async def call_cli_provider(
             raw = stdout_b.decode("utf-8", errors="replace")
         clean = ANSI_ESCAPE.sub("", raw).strip()
 
-        # claude CLI writes "Not logged in" to stdout (not stderr) — catch it here
+        # ── Session ID extraction & response unwrapping ──
+        new_session_id: str | None = None
+        if base_cli == "cli.claude":
+            # Claude CLI with --output-format json returns a structured object.
+            # Extract result text and session_id from it.
+            try:
+                import json as _json
+                obj = _json.loads(clean)
+                new_session_id = obj.get("session_id")
+                extracted = obj.get("result", "")
+                if isinstance(extracted, str) and extracted.strip():
+                    clean = extracted.strip()
+                # Propagate JSON-level auth errors before the generic check below
+                if obj.get("is_error") and any(p in str(obj).lower() for p in AUTH_PATTERNS):
+                    raise LLMError(
+                        f"CLI provider '{cli_model}' authentication failure.\n"
+                        f"Run 'claude' in your terminal to re-authenticate.\n"
+                        f"Details: {str(obj)[:300]}"
+                    )
+            except LLMError:
+                raise
+            except Exception:
+                pass  # not JSON or parse error — treat clean as plain text
+        else:
+            # Best-effort session ID extraction for gemini, codex, copilot
+            sid_match = re.search(r"session[_\-]?id[:\s]+([a-zA-Z0-9_\-]{8,})", clean, re.IGNORECASE)
+            new_session_id = sid_match.group(1) if sid_match else None
+
+        # Auth failure check (also catches plain-text "Not logged in" from claude)
         if any(p in clean.lower() for p in AUTH_PATTERNS):
             raise LLMError(
                 f"CLI provider '{cli_model}' is not authenticated.\n"
-                f"Run 'claude' in your terminal and complete the login flow, then retry.\n"
+                f"Run the CLI in your terminal and complete the login flow, then retry.\n"
                 f"Details: {clean[:300]}"
             )
 
@@ -474,7 +579,7 @@ async def call_cli_provider(
 
         input_est = usage_tracker.estimate_tokens_from_text(full_prompt)
         output_est = usage_tracker.estimate_tokens_from_text(clean)
-        return clean, input_est, output_est
+        return clean, input_est, output_est, new_session_id
 
     except LLMError:
         raise
@@ -1148,6 +1253,234 @@ async def call_deepseek(model, messages, system, api_key, tools=None, images=Non
     raise LLMError(error_msg)
 
 
+def _normalize_v1_base_url(base_url: str) -> str:
+    """Normalize a v1-compatible base URL by stripping trailing /v1."""
+    url = base_url.rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    return url
+
+
+async def call_v1_compatible(model, messages, system, base_url, api_key, tools=None, images=None):
+    """Call any OpenAI v1-compatible endpoint with 5-attempt exponential backoff.
+
+    Used for both cloud OpenAI-compatible providers (OpenRouter, Together, etc.)
+    and local v1-compatible servers (vLLM, LM Studio, etc.).
+
+    The model name is expected to have its prefix (oaic. or locv1.) already stripped
+    before calling this function.
+
+    Args:
+        model: Model name as known by the remote API (prefix already stripped)
+        messages: List of {"role": ..., "content": ...} dicts
+        system: System instruction text
+        base_url: Base URL (e.g. https://openrouter.ai/api) — /v1/chat/completions appended
+        api_key: API key (may be empty for local servers with no auth)
+        tools: Ollama-format tool list (forwarded as OpenAI function definitions)
+        images: List of base64 data-URI image strings to attach to the last user message
+
+    Returns:
+        (response_text, input_tokens, output_tokens)
+    """
+    if not base_url or not base_url.strip():
+        raise LLMError("V1-compatible provider: base URL is not configured.")
+
+    V1_TIMEOUT = 180.0
+    MAX_RETRIES = 5
+    BACKOFF_SCHEDULE = [5, 10, 20, 40, 80]
+
+    full_messages = []
+    if system and str(system).strip():
+        full_messages.append({"role": "system", "content": str(system).strip()})
+    full_messages.extend(messages or [])
+
+    if images:
+        for i in range(len(full_messages) - 1, -1, -1):
+            if full_messages[i].get("role") == "user":
+                full_messages[i] = dict(full_messages[i])
+                full_messages[i]["content"] = _build_openai_image_content(
+                    str(full_messages[i].get("content", "")), images
+                )
+                break
+
+    payload: dict = {"model": model, "messages": full_messages}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+
+    endpoint = f"{_normalize_v1_base_url(base_url)}/v1/chat/completions"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        backoff = BACKOFF_SCHEDULE[attempt - 1]
+        try:
+            async with httpx.AsyncClient(timeout=V1_TIMEOUT) as client:
+                resp = await client.post(endpoint, headers=headers, json=payload)
+            if resp.status_code in (429, 499, 500, 502, 503, 529):
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"DEBUG: ⏳ V1-compatible {resp.status_code} on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(backoff)
+                    continue
+            resp.raise_for_status()
+            data = resp.json()
+            usage = data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            choice = data["choices"][0]
+            msg = choice.get("message", {})
+            if msg.get("tool_calls"):
+                tc = msg["tool_calls"][0]
+                text = json.dumps({
+                    "tool": tc["function"]["name"],
+                    "arguments": json.loads(tc["function"].get("arguments", "{}"))
+                })
+                return text, input_tokens, output_tokens
+            print(f"DEBUG: ✅ V1-compatible call complete (attempt {attempt})", flush=True)
+            return msg.get("content", ""), input_tokens, output_tokens
+        except httpx.TimeoutException:
+            last_error = f"Request timed out ({V1_TIMEOUT}s)"
+            print(f"DEBUG: ⏱️ V1-compatible timeout on attempt {attempt}/{MAX_RETRIES}. Retrying in {backoff}s...", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+        except httpx.HTTPStatusError as e:
+            last_error = f"HTTP {e.response.status_code}: {str(e)[:200]}"
+            print(f"DEBUG: ❌ V1-compatible HTTP error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES and e.response.status_code in (429, 499, 500, 502, 503, 529):
+                await asyncio.sleep(backoff)
+                continue
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"DEBUG: ⚠️ V1-compatible error on attempt {attempt}/{MAX_RETRIES}: {e}", flush=True)
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(backoff)
+                continue
+
+    error_msg = f"V1-compatible LLM Error: All {MAX_RETRIES} attempts failed. Last error: {last_error}"
+    print(f"DEBUG: ❌ {error_msg}", flush=True)
+    raise LLMError(error_msg)
+
+
+async def _bedrock_converse_https(
+    region: str, api_key: str, model_id: str,
+    messages: list, system_blocks: list, max_tokens: int,
+) -> dict:
+    """Call Bedrock Converse via direct HTTPS for short-term bedrock-api-key-**** keys.
+
+    Mirrors the working pattern from _bedrock_management_get in routes/data.py.
+    Bypasses boto3 entirely so auth cannot be interfered with.
+    Per AWS docs, the key is sent as-is: Authorization: Bearer {api_key} — no encoding.
+    Image bytes are base64-encoded for JSON serialisation (boto3 does this automatically
+    on its path; we replicate it here manually).
+    """
+    import urllib.request
+    import urllib.error
+
+    url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/converse"
+
+    def _serialize_content(content_blocks: list) -> list:
+        result = []
+        for block in content_blocks:
+            if "text" in block:
+                result.append({"text": block["text"]})
+            elif "image" in block:
+                img = block["image"]
+                raw = (img.get("source") or {}).get("bytes", b"")
+                result.append({
+                    "image": {
+                        "format": img.get("format", "png"),
+                        "source": {
+                            "bytes": base64.b64encode(raw).decode() if isinstance(raw, bytes) else raw
+                        },
+                    }
+                })
+        return result
+
+    payload = {
+        "messages": [
+            {"role": m["role"], "content": _serialize_content(m.get("content") or [])}
+            for m in messages
+        ],
+        "system": system_blocks,
+        "inferenceConfig": {"maxTokens": max_tokens},
+    }
+
+    def _run():
+        body = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=900) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode(errors="replace")
+            raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
+
+    return await asyncio.to_thread(_run)
+
+
+async def _bedrock_converse_direct(
+    region: str, api_key: str, model_id: str,
+    messages: list, system_blocks: list, max_tokens: int,
+) -> dict:
+    """Call Bedrock Converse via boto3 with UNSIGNED auth + before-send bearer injection.
+
+    Used for long-term ABSK keys. boto3's before-send event fires right before urllib3
+    sends the HTTP request; we inject Authorization: Bearer {api_key} so botocore signing
+    (disabled via UNSIGNED) cannot interfere.
+    boto3 handles image-bytes serialisation natively; no manual base64 conversion needed.
+    """
+    def _make_client():
+        session = boto3.session.Session()
+
+        def _inject_auth(request, **kwargs):  # noqa: ARG001
+            request.headers['Authorization'] = f'Bearer {api_key}'
+
+        # Register on the session so it applies to this client only.
+        # before-send fires with AWSPreparedRequest; returning None lets the
+        # call proceed normally with the injected header.
+        session.events.register(
+            'before-send.bedrock-runtime.Converse',
+            _inject_auth,
+        )
+
+        return session.client(
+            'bedrock-runtime',
+            region_name=region,
+            aws_access_key_id='unsigned',
+            aws_secret_access_key='unsigned',
+            config=Config(signature_version=_BEDROCK_UNSIGNED),
+        )
+
+    def _run():
+        client = _make_client()
+        try:
+            return client.converse(
+                modelId=model_id,
+                messages=messages,
+                system=system_blocks,
+                inferenceConfig={'maxTokens': max_tokens},
+            )
+        except botocore.exceptions.ClientError as e:
+            status = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 0)
+            msg = e.response.get('Error', {}).get('Message', str(e))
+            raise RuntimeError(f"HTTP {status}: {msg}") from e
+
+    return await asyncio.to_thread(_run)
+
+
 async def call_bedrock(model_id, messages, system, region, settings, images=None):
     """Call AWS Bedrock with 5-attempt exponential backoff retry loop.
 
@@ -1170,6 +1503,9 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
         invocation_model_id = inference_profile
 
     bedrock = _make_aws_client("bedrock-runtime", region, settings)
+    bedrock_api_key = _normalize_bedrock_api_key(settings)
+    effective_region = (region or settings.get("aws_region") or "us-east-1").strip()
+    max_tokens = int(settings.get("bedrock_max_tokens") or 4096)
 
     # Normalize messages to Bedrock Converse content-block format
     normalized_messages = []
@@ -1219,7 +1555,7 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
                 modelId=invocation_model_id,
                 messages=normalized_messages,
                 system=system_blocks,
-                inferenceConfig={"maxTokens": 4096},
+                inferenceConfig={"maxTokens": max_tokens},
             )
         return await asyncio.to_thread(_run)
 
@@ -1232,7 +1568,7 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
             })
         payload = {
             "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
             "system": str(system or ""),
             "messages": anthropic_messages,
         }
@@ -1250,9 +1586,23 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
         backoff = BACKOFF_SCHEDULE[attempt - 1]
         try:
             print(f"DEBUG: 🔄 Bedrock call start (attempt {attempt}/{MAX_RETRIES})", flush=True)
-            if hasattr(bedrock, "converse"):
+            if hasattr(bedrock, "converse") or bedrock_api_key:
                 try:
-                    resp = await _converse_call()
+                    if bedrock_api_key:
+                        if bedrock_api_key.lower().startswith('bedrock-api-key'):
+                            # Short-term key: direct HTTPS bypasses boto3 entirely
+                            resp = await _bedrock_converse_https(
+                                effective_region, bedrock_api_key, invocation_model_id,
+                                normalized_messages, system_blocks, max_tokens,
+                            )
+                        else:
+                            # ABSK (long-term): boto3 with UNSIGNED + before-send injection
+                            resp = await _bedrock_converse_direct(
+                                effective_region, bedrock_api_key, invocation_model_id,
+                                normalized_messages, system_blocks, max_tokens,
+                            )
+                    else:
+                        resp = await _converse_call()
                     msg = (((resp or {}).get("output") or {}).get("message") or {})
                     content = msg.get("content") or []
                     if content and isinstance(content, list) and isinstance(content[0], dict):
@@ -1261,13 +1611,20 @@ async def call_bedrock(model_id, messages, system, region, settings, images=None
                     return ""
                 except Exception as converse_err:
                     msg_str = str(converse_err)
-                    if "on-demand throughput isn't supported" in msg_str:
+                    if "on-demand throughput" in msg_str:
                         raise LLMError(
                             "Bedrock model requires an inference profile (no on-demand throughput). "
                             "Set Bedrock Inference Profile in settings, or pick a different model."
                         )
+                    # Auth failures: raise immediately — InvokeModel also requires SigV4
+                    # and won't help when bearer token auth fails.
+                    if "AccessDeniedException" in msg_str or "HTTP 403" in msg_str or "Invalid API Key" in msg_str:
+                        raise LLMError(
+                            f"Bedrock authentication failed: {converse_err}. "
+                            "Check your API key or IAM credentials in Settings."
+                        )
                     print(f"DEBUG: Bedrock converse failed (attempt {attempt}), falling back to invoke_model: {converse_err}")
-                    # Fall through to InvokeModel
+                    # Fall through to InvokeModel (for older models not on Converse API)
                     resp = await _invoke_model_call()
                     response_body = json.loads(resp.get("body").read()) if resp and resp.get("body") else {}
                     content = response_body.get("content") or []
@@ -1440,6 +1797,26 @@ async def generate_response(
                     tools=tools,
                     images=images,
                 )
+            elif current_model.startswith("oaic."):
+                result_text, input_tokens, output_tokens = await call_v1_compatible(
+                    current_model[len("oaic."):],
+                    messages,
+                    augmented_system,
+                    current_settings.get("openai_compatible_base_url", ""),
+                    current_settings.get("openai_compatible_key", ""),
+                    tools=tools,
+                    images=images,
+                )
+            elif current_model.startswith("locv1."):
+                result_text, input_tokens, output_tokens = await call_v1_compatible(
+                    current_model[len("locv1."):],
+                    messages,
+                    augmented_system,
+                    current_settings.get("local_compatible_base_url", ""),
+                    current_settings.get("local_compatible_key", ""),
+                    tools=tools,
+                    images=images,
+                )
             else:
                 return "Error: Unknown cloud model selected."
         except LLMError:
@@ -1463,12 +1840,26 @@ async def generate_response(
                 messages=messages_for_cli,
                 tools=tools,
             )
-            result_text, input_tokens, output_tokens = await call_cli_provider(
+
+            # Load the existing CLI session ID for this agent+session (if any)
+            from core.session import get_cli_session_id, save_cli_session_id
+            _provider_key = detect_provider_from_model(current_model)
+            _existing_cli_sid = get_cli_session_id(
+                session_id or "default", agent_id, _provider_key
+            ) if session_id else None
+
+            result_text, input_tokens, output_tokens, new_cli_sid = await call_cli_provider(
                 cli_model=current_model,
                 full_prompt=cli_full_prompt,
                 sys_prompt=augmented_system,
-                messages=messages_for_cli
+                messages=messages_for_cli,
+                cli_session_id=_existing_cli_sid,
             )
+
+            # Persist the CLI session ID so the next turn resumes the same session
+            if new_cli_sid and session_id:
+                save_cli_session_id(session_id, agent_id, _provider_key, new_cli_sid)
+
         except LLMError:
             raise
         except Exception as e:
@@ -1592,6 +1983,12 @@ async def embed_batch(texts: list[str], model: str, settings: dict) -> list[list
 
     if provider == "openai":
         return await _embed_openai(texts, model, settings.get("openai_key", ""))
+    elif provider == "openai_compatible":
+        clean_model = model[len("oaic."):] if model.startswith("oaic.") else model
+        return await _embed_v1_compatible(texts, clean_model, settings.get("openai_compatible_base_url", ""), settings.get("openai_compatible_key", ""))
+    elif provider == "local_compatible":
+        clean_model = model[len("locv1."):] if model.startswith("locv1.") else model
+        return await _embed_v1_compatible(texts, clean_model, settings.get("local_compatible_base_url", ""), settings.get("local_compatible_key", ""))
     elif provider == "gemini":
         kwargs = {} if output_dim is None else {"output_dim": output_dim}
         return await _embed_gemini(texts, model, settings.get("gemini_key", ""), **kwargs)
@@ -1621,6 +2018,24 @@ async def _embed_openai(texts: list[str], model: str, api_key: str) -> list[list
     except Exception as e:
         print(f"ERROR: OpenAI embedding failed: {e}")
         return [[0.0] * 1536 for _ in range(len(texts))]
+
+
+async def _embed_v1_compatible(texts: list[str], model: str, base_url: str, api_key: str, output_dim: int = 768) -> list[list[float]]:
+    """Embed via an OpenAI v1-compatible /v1/embeddings endpoint."""
+    if not base_url:
+        raise LLMError("V1-compatible embedding — base URL not configured")
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    endpoint = f"{_normalize_v1_base_url(base_url)}/v1/embeddings"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(endpoint, headers=headers, json={"model": model, "input": texts})
+            resp.raise_for_status()
+            data = resp.json()
+            return [item["embedding"] for item in data["data"]]
+    except Exception as e:
+        raise LLMError(f"V1-compatible embedding failed: {e}")
 
 
 async def _embed_gemini(

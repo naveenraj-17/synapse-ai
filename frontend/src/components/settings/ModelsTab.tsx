@@ -64,6 +64,14 @@ interface ModelsTabProps {
     onExpandBedrock?: () => void;
     onSave: () => void;
     isSaving?: boolean;
+    openaiCompatibleKey: string; setOpenaiCompatibleKey: (v: string) => void;
+    openaiCompatibleBaseUrl: string; setOpenaiCompatibleBaseUrl: (v: string) => void;
+    openaiCompatibleModels: string; setOpenaiCompatibleModels: (v: string) => void;
+    openaiCompatibleEmbedModels: string; setOpenaiCompatibleEmbedModels: (v: string) => void;
+    localCompatibleBaseUrl: string; setLocalCompatibleBaseUrl: (v: string) => void;
+    localCompatibleKey: string; setLocalCompatibleKey: (v: string) => void;
+    localCompatibleModels: string; setLocalCompatibleModels: (v: string) => void;
+    localCompatibleEmbedModels: string; setLocalCompatibleEmbedModels: (v: string) => void;
     // Backward compat
     mode: string; setMode: (v: string) => void;
     localModels: string[]; cloudModels: string[];
@@ -134,14 +142,29 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
         keyLink: { label: 'Get your key at DeepSeek Platform →', url: 'https://platform.deepseek.com/api_keys' },
         keyNote: 'Note: deepseek-reasoner (R1) does not support tool/function calling.',
     },
+    openai_compatible: {
+        label: 'OpenAI Compatible',
+        icon: OpenAIIcon,
+        color: '#f97316',
+        description: 'Any OpenAI v1-compatible cloud provider (OpenRouter, Together, Fireworks, etc.).',
+        keyPlaceholder: 'sk-...',
+        keyNote: 'Enter your API key, base URL, and model names below.',
+    },
+    local_compatible: {
+        label: 'Local V1 Compatible',
+        icon: OllamaIcon,
+        color: '#06b6d4',
+        description: 'Any local OpenAI v1-compatible server (vLLM, LM Studio, llama.cpp server, etc.).',
+        keyNote: 'Enter your base URL and model names below. API key is optional.',
+    },
     bedrock: {
         label: 'AWS Bedrock',
         icon: AWSIcon,
         color: '#f59e0b',
         description: 'Enterprise-grade models via AWS, including Claude, Llama, and Titan.',
-        keyPlaceholder: 'ABSK...',
+        keyPlaceholder: 'ABSK... or bedrock-api-key...',
         keyLink: { label: 'Set up Bedrock API keys in AWS Console →', url: 'https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-console' },
-        keyNote: 'Paste the raw key (starts with ABSK...). Bearer prefix is auto-normalized.',
+        keyNote: 'Supports long-term keys (ABSK...) and temporary keys (bedrock-api-key...). Bearer prefix is auto-normalized.',
     },
     anthropic_cli: {
         label: 'Claude (CLI)',
@@ -159,7 +182,13 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
         label: 'Codex (CLI)',
         icon: CliIcon,
         color: '#a78bfa',
-        description: 'Use the locally installed GitHub Copilot/Codex CLI. No API key needed — uses your existing terminal session.',
+        description: 'Use the locally installed OpenAI Codex CLI agent. No API key needed — uses your existing terminal session.',
+    },
+    github_copilot_cli: {
+        label: 'GitHub Copilot (CLI)',
+        icon: CliIcon,
+        color: '#8957e5',
+        description: 'Use the locally installed GitHub Copilot CLI. No API key needed — uses your existing GitHub session.',
     },
 };
 
@@ -172,7 +201,15 @@ export const ModelsTab = ({
     bedrockApiKey, setBedrockApiKey,
     awsRegion, setAwsRegion, bedrockInferenceProfile, setBedrockInferenceProfile,
     bedrockInferenceProfiles, loadingInferenceProfiles, inferenceProfilesError, loadingModels,
-    onExpandBedrock, onSave, isSaving, mode, setMode, localModels, cloudModels, filteredModels
+    onExpandBedrock, onSave, isSaving, mode, setMode, localModels, cloudModels, filteredModels,
+    openaiCompatibleKey, setOpenaiCompatibleKey,
+    openaiCompatibleBaseUrl, setOpenaiCompatibleBaseUrl,
+    openaiCompatibleModels, setOpenaiCompatibleModels,
+    openaiCompatibleEmbedModels, setOpenaiCompatibleEmbedModels,
+    localCompatibleBaseUrl, setLocalCompatibleBaseUrl,
+    localCompatibleKey, setLocalCompatibleKey,
+    localCompatibleModels, setLocalCompatibleModels,
+    localCompatibleEmbedModels, setLocalCompatibleEmbedModels,
 }: ModelsTabProps) => {
     const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
@@ -190,6 +227,8 @@ export const ModelsTab = ({
             case 'grok': return grokKey;
             case 'deepseek': return deepseekKey;
             case 'bedrock': return bedrockApiKey;
+            case 'openai_compatible': return openaiCompatibleKey;
+            case 'local_compatible': return localCompatibleKey;
             default: return '';
         }
     };
@@ -202,6 +241,8 @@ export const ModelsTab = ({
             case 'grok': setGrokKey(value); break;
             case 'deepseek': setDeepseekKey(value); break;
             case 'bedrock': setBedrockApiKey(value); break;
+            case 'openai_compatible': setOpenaiCompatibleKey(value); break;
+            case 'local_compatible': setLocalCompatibleKey(value); break;
         }
     };
 
@@ -261,7 +302,7 @@ export const ModelsTab = ({
                                         <p className="text-[10px] text-zinc-500">{meta.description}</p>
 
                                         {/* API Key input (not for Ollama, Bedrock, or CLI — they have their own blocks) */}
-                                        {key !== 'ollama' && key !== 'bedrock' && !key.endsWith('_cli') && (
+                                        {key !== 'ollama' && key !== 'bedrock' && key !== 'openai_compatible' && key !== 'local_compatible' && !key.endsWith('_cli') && (
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
                                                 <input
@@ -295,7 +336,7 @@ export const ModelsTab = ({
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
                                                     <input type="password" value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK..." />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="ABSK... or bedrock-api-key..." />
                                                     {meta.keyNote && (
                                                         <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
                                                     )}
@@ -351,6 +392,64 @@ export const ModelsTab = ({
                                             </div>
                                         )}
 
+                                        {/* OpenAI Compatible fields */}
+                                        {key === 'openai_compatible' && (
+                                            <div className="space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
+                                                    <input type="password" value={openaiCompatibleKey} onChange={e => setOpenaiCompatibleKey(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="sk-..." />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
+                                                    <input type="text" value={openaiCompatibleBaseUrl} onChange={e => setOpenaiCompatibleBaseUrl(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="https://openrouter.ai/api" />
+                                                    <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
+                                                    <input type="text" value={openaiCompatibleModels} onChange={e => setOpenaiCompatibleModels(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. meta-llama/llama-3-70b-instruct, google/gemma-2-27b-it" />
+                                                    <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
+                                                    <input type="text" value={openaiCompatibleEmbedModels} onChange={e => setOpenaiCompatibleEmbedModels(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. hf:nomic-ai/nomic-embed-text-v1.5" />
+                                                    <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Local V1 Compatible fields */}
+                                        {key === 'local_compatible' && (
+                                            <div className="space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">API Key (optional)</label>
+                                                    <input type="password" value={localCompatibleKey} onChange={e => setLocalCompatibleKey(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="Leave blank if not required" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
+                                                    <input type="text" value={localCompatibleBaseUrl} onChange={e => setLocalCompatibleBaseUrl(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="http://localhost:8000" />
+                                                    <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
+                                                    <input type="text" value={localCompatibleModels} onChange={e => setLocalCompatibleModels(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. llama-3-70b, mistral-7b" />
+                                                    <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
+                                                    <input type="text" value={localCompatibleEmbedModels} onChange={e => setLocalCompatibleEmbedModels(e.target.value)}
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. bge-m3" />
+                                                    <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Ollama info */}
                                         {key === 'ollama' && (
                                             <div className="space-y-1.5">
@@ -396,7 +495,12 @@ export const ModelsTab = ({
                                                         </a>
                                                     )}
                                                     {key === 'codex_cli' && (
-                                                        <a href="https://docs.github.com/en/copilot/github-copilot-in-the-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                        <a href="https://github.com/openai/codex" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                            <ExternalLink className="h-2.5 w-2.5" /> Install OpenAI Codex CLI →
+                                                        </a>
+                                                    )}
+                                                    {key === 'github_copilot_cli' && (
+                                                        <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
                                                             <ExternalLink className="h-2.5 w-2.5" /> Install GitHub Copilot CLI →
                                                         </a>
                                                     )}

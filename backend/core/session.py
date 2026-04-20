@@ -46,6 +46,7 @@ def _load_session_file(session_id: str, agent_id: str | None) -> dict:
         "turns": [],
         "last_response": None,
         "last_updated": None,
+        "cli_session_ids": {},
     }
 
 
@@ -94,6 +95,19 @@ def _save_conversation_turn(
     data["last_updated"] = now
     data["session_id"] = session_id
     data["agent_id"] = agent_id or "default"
+    _write_session_file(data, session_id, agent_id)
+
+
+def get_cli_session_id(session_id: str, agent_id: str | None, provider_key: str) -> str | None:
+    """Return the stored CLI session ID for the given provider, or None."""
+    data = _load_session_file(session_id, agent_id)
+    return data.get("cli_session_ids", {}).get(provider_key)
+
+
+def save_cli_session_id(session_id: str, agent_id: str | None, provider_key: str, cli_id: str):
+    """Persist a CLI session ID for this agent+session combination and provider."""
+    data = _load_session_file(session_id, agent_id)
+    data.setdefault("cli_session_ids", {})[provider_key] = cli_id
     _write_session_file(data, session_id, agent_id)
 
 

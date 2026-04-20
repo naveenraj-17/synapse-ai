@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -21,7 +22,7 @@ _SESSION_READ_TIMEOUT = timedelta(seconds=60)
 try:
     from core.memory import MemoryStore
 except ImportError:
-    print("Warning: MemoryStore dependencies not found. Memory disabled.")
+    print("Warning: MemoryStore dependencies not found. Memory disabled.", file=sys.stderr)
     MemoryStore = None
 
 from core.mcp_client import MCPClientManager
@@ -47,6 +48,7 @@ from core.routes.profiling import router as profiling_router
 from core.routes.schedules import router as schedules_router
 from core.routes.import_export import router as import_export_router
 from core.routes.vault import router as vault_router
+from core.routes.builder import router as builder_router
 from core.profiling import TimingMiddleware
 
 # Configuration
@@ -81,6 +83,7 @@ TOOLS_LIST = {
     "vault_sandbox": str(TOOLS_DIR / "sandbox.py"),
     "code_vault_search": str(TOOLS_DIR / "code_search.py"),
     "web_scraper": str(TOOLS_DIR / "web_scraper.py"),
+    "bash": str(TOOLS_DIR / "bash.py"),
 }
 
 REPOS_FILE = DATA_DIR / "repos.json"
@@ -424,6 +427,7 @@ async def lifespan(app: FastAPI):
                     command=cmd,
                     args=mcp_cfg["args"],
                     env=env,
+                    cwd=str(Path.home()),
                 )
                 read, write = await exit_stack.enter_async_context(stdio_client(server_params))
                 session = await exit_stack.enter_async_context(
@@ -483,6 +487,35 @@ async def lifespan(app: FastAPI):
         # Expose server module on app.state for orchestration routes
         import core.server as _self_module
         app.state.server_module = _self_module
+
+        # --- Seed the native builder orchestration (idempotent) ---
+        try:
+            from core.native_builder import seed_native_builder
+            seed_result = seed_native_builder()
+            if (seed_result["agents_added"] or seed_result["agents_updated"]
+                    or seed_result.get("agents_removed")
+                    or seed_result["orchestration"] != "unchanged"):
+                print(f"Native builder seeded: {seed_result}")
+        except Exception as e:
+            print(f"Warning: Failed to seed native builder: {e}")
+
+        # --- Sweep zombie orchestration runs (stale "running" from prior server crash) ---
+        try:
+            from core.orchestration.state import SharedState
+            zombie_runs = [r for r in SharedState.list_runs(limit=200) if r.get("status") == "running"]
+            if zombie_runs:
+                now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                for zr in zombie_runs:
+                    try:
+                        restored = SharedState.restore(zr["run_id"])
+                        restored.run.status = "failed"
+                        restored.run.ended_at = now_str
+                        restored.checkpoint()
+                    except Exception:
+                        pass
+                print(f"Swept {len(zombie_runs)} zombie orchestration run(s) (marked failed)")
+        except Exception as e:
+            print(f"Warning: Zombie run sweep failed: {e}")
 
         # --- Initialize Messaging Manager (if enabled) ---
         if _settings.get("messaging_enabled", False):
@@ -614,6 +647,7 @@ app.include_router(schedules_router)
 app.include_router(profiling_router)
 app.include_router(import_export_router)
 app.include_router(vault_router)
+app.include_router(builder_router)
 
 if __name__ == "__main__":
     import uvicorn

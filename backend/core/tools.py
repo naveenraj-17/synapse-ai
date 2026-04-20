@@ -78,12 +78,16 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     
     allowed_tools = active_agent.get("tools", ["all"])
 
-    # Auto-inject default tools based on agent type
-    agent_type = active_agent.get("type", "conversational")
-    for category in ["all_types", agent_type]:
-        for tool_name in DEFAULT_TOOLS_BY_TYPE.get(category, set()):
-            if tool_name not in allowed_tools:
-                allowed_tools.append(tool_name)
+    # Auto-inject default tools based on agent type.
+    # Agents with `skip_default_tools: true` opt out entirely — their tool list
+    # is exactly what they declared. Used by tightly scoped agents (e.g. builder
+    # savers) where extra tools add Gemini function-selection noise.
+    if not active_agent.get("skip_default_tools", False):
+        agent_type = active_agent.get("type", "conversational")
+        for category in ["all_types", agent_type]:
+            for tool_name in DEFAULT_TOOLS_BY_TYPE.get(category, set()):
+                if tool_name not in allowed_tools:
+                    allowed_tools.append(tool_name)
 
     # Remove search_codebase if embed_code is disabled
     settings = load_settings()
@@ -143,6 +147,18 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     for ct in custom_tools_list:
         if "all" in allowed_tools or ct['name'] in allowed_tools:
             vt = VirtualTool(ct['name'], ct['description'], ct['inputSchema'])
+            all_tools.append(vt)
+            tool_schema_map[vt.name] = vt.inputSchema
+
+    # Native Builder tools — first-class so any agent that declares them in its
+    # `tools` list can call create_orchestration / list_agents / etc. Dispatch
+    # to execute_builder_tool is handled in react_engine and ToolStepExecutor.
+    from core.builder_tools import BUILDER_TOOL_SCHEMAS
+    for bt in BUILDER_TOOL_SCHEMAS:
+        fn = bt["function"]
+        bt_name = fn["name"]
+        if "all" in allowed_tools or bt_name in allowed_tools:
+            vt = VirtualTool(bt_name, fn.get("description", ""), fn.get("parameters", {"type": "object"}))
             all_tools.append(vt)
             tool_schema_map[vt.name] = vt.inputSchema
 

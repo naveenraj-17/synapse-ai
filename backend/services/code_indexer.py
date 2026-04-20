@@ -10,7 +10,7 @@ import threading
 import traceback
 from datetime import datetime
 from typing import Annotated, Any
-from core.config import load_settings
+from core.config import load_settings, sanitize_db_url
 
 try:
     import cocoindex
@@ -39,8 +39,11 @@ _stop_events: dict[str, threading.Event] = {}
 _active_threads: dict[str, threading.Thread] = {}
 
 def _get_db_url() -> str:
-    """Always read the database URL from settings.json (never from the environment)."""
-    return load_settings().get("sql_connection_string", "")
+    """Always read the database URL from settings.json (never from the environment).
+    Sanitizes the URL so that an empty password (e.g. user:@host) is rewritten
+    to the form psycopg can parse (user@host)."""
+    raw = load_settings().get("sql_connection_string", "")
+    return sanitize_db_url(raw)
 
 # Known output dimensions for popular embedding models.
 # Only base model IDs are listed here — provisioned-throughput suffixes

@@ -59,9 +59,10 @@ Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you 
 - **Import & Export** — portably share orchestrations, agents, and MCP server configs
 - **Plug in any MCP server** — local stdio or remote HTTP, added in seconds via the UI
 - **Build custom tools with Webhooks and Python** — instantly convert any webhook (zero-code) or Python script into an agent tool.
+- **AI Builder** — a built-in multi-agent orchestration that designs, plans, and creates other orchestrations through natural language conversation, with a human approval gate before anything is written
 - **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
 - **Persistent vault** — agents save and share files across sessions and runs
-- **Local-first** — runs entirely on your machine with Ollama or CLI providers (Claude, Gemini, Codex), or connect any cloud LLM
+- **Local-first** — runs entirely on your machine with Ollama, local v1-compatible servers (vLLM, LM Studio), or CLI providers (Claude, Gemini, Codex), or connect any cloud LLM
 
 ---
 
@@ -196,6 +197,25 @@ Create specialized agents in **Settings → Agents**. Each agent is an independe
   "system_prompt": "You are a senior backend engineer. Write robust, functional code, execute it using the Python tool to verify logic, and save the final output to the vault."
 }
 ```
+
+---
+
+## AI Builder
+
+The **Synapse AI Builder** is a native multi-agent orchestration that helps you design, review, and create new orchestrations through a guided conversation — no canvas required.
+
+Describe what you want to build in plain language. The builder will:
+
+1. **Understand** your requirements (and ask clarifying questions if needed)
+2. **Draft a plan** — structured markdown with a step-by-step breakdown and an ASCII flow diagram
+3. **Present the plan** for your review — approve it or request revisions in plain text
+4. **Create any new sub-agents** the orchestration needs (if enabled)
+5. **Materialise the orchestration** by calling `create_orchestration` or `update_orchestration`
+6. **Confirm** with a friendly summary and the new orchestration ID
+
+The Builder can also **edit existing orchestrations** — point it at an orchestration you are viewing and describe your changes.
+
+The builder is seeded automatically at startup and is always available in the orchestration picker.
 
 ---
 
@@ -355,19 +375,30 @@ The **Vault** is a persistent file directory (`data/vault/`) that acts as shared
 
 ### Supported LLM Providers
 
-| Provider | Mode | Notes |
-|---|---|---|
-| **Ollama** | Local | Any model pulled via `ollama pull`. Default: `mistral-nemo` |
-| **Anthropic** | Cloud | Claude 3.5, Claude 3 Opus, Claude 3.7 Sonnet, etc. |
-| **OpenAI** | Cloud | GPT-4o, GPT-4 Turbo, o1, o3-mini, etc. |
-| **Gemini** | Cloud | Gemini 1.5 Pro, Gemini 2.0 Flash, etc. |
-| **xAI (Grok)** | Cloud | Grok-2, Grok-3, Grok-3 Mini. Base URL: `https://api.x.ai/v1`. Set `XAI_API_KEY`. |
-| **DeepSeek** | Cloud | DeepSeek-V3, DeepSeek-R1 (reasoning model). Base URL: `https://api.deepseek.com`. Set `DEEPSEEK_API_KEY`. |
-| **Claude CLI** | CLI | Requires the [Claude Code](https://claude.ai/code) CLI (`claude`) installed and authenticated. No API key needed — uses your existing Claude subscription. |
-| **Gemini CLI** | CLI | Requires the [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`) installed and authenticated. Supports `pro` and `flash` variants. |
-| **Codex CLI** | CLI | Requires the [Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated. No API key needed — uses your existing OpenAI subscription. |
+| Provider | Mode | Model prefix | Notes |
+|---|---|---|---|
+| **Ollama** | Local | *(none — bare model name)* | Any model pulled via `ollama pull`. Default: `mistral-nemo` |
+| **Anthropic** | Cloud | `claude-` | Claude 3.5, Claude 3 Opus, Claude 3.7 Sonnet, etc. |
+| **OpenAI** | Cloud | `gpt-` | GPT-4o, GPT-4 Turbo, o1, o3-mini, etc. |
+| **Gemini** | Cloud | `gemini-` / `gemma-` | Gemini 1.5 Pro, Gemini 2.0 Flash, etc. |
+| **xAI (Grok)** | Cloud | `grok-` | Grok-2, Grok-3, Grok-3 Mini. Set `XAI_API_KEY`. |
+| **DeepSeek** | Cloud | `deepseek-` | DeepSeek-V3, DeepSeek-R1 (reasoning). Set `DEEPSEEK_API_KEY`. |
+| **AWS Bedrock** | Cloud | `bedrock.` | Any Bedrock model (Converse API). Set AWS credentials or a Bedrock API key in Settings. |
+| **Ollama v1 Compatible** | Cloud | `oaic.<model>` | Any cloud OpenAI-compatible endpoint (OpenRouter, Together AI, Fireworks, etc.). Configure Base URL + API key in Settings → Model. |
+| **Local v1 Compatible** | Local | `locv1.<model>` | Any local OpenAI-compatible server (vLLM, LM Studio, Jan, Ollama `/v1`, etc.). Configure Base URL (and optional key) in Settings → Model. |
+| **Claude CLI** | CLI | `cli.claude` | Requires the [Claude Code](https://claude.ai/code) CLI (`claude`) installed and authenticated. No API key needed — uses your existing Claude subscription. |
+| **Gemini CLI** | CLI | `cli.gemini` | Requires the [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`) installed and authenticated. Supports `pro` and `flash` variants. |
+| **Codex CLI** | CLI | `cli.codex` | Requires the [Codex CLI](https://github.com/openai/codex) (`codex`) installed and authenticated. No API key needed — uses your existing OpenAI subscription. |
+| **GitHub Copilot CLI** | CLI | `cli.copilot` | Requires the [GitHub Copilot CLI extension](https://docs.github.com/en/copilot/github-copilot-in-the-cli) (`copilot`) installed and authenticated. No API key needed — uses your GitHub Copilot subscription. |
 
 Switch providers per-agent or globally in **Settings → Model**.
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=naveenraj-17/synapse-ai&type=date&legend=top-left)](https://www.star-history.com/#naveenraj-17/synapse-ai&type=date&legend=top-left)
+
+---
 
 ### Environment Variables
 
@@ -415,7 +446,6 @@ Open `http://localhost:<SYNAPSE_FRONTEND_PORT>` (default: `http://localhost:3000
 
 We are constantly improving Synapse AI. Here are a few features currently in the pipeline:
 
-- **AI Builder Agent:** A native agent that can dynamically design workflows, orchestrations, and build other agents on the fly based on your prompts.
 - **Spawn Sub-Agent Tool:** Allow agents to natively spawn and delegate tasks to temporary sub-agents mid-execution.
 - **Compact Conversations:** A conversation option optimized to handle large contexts smoothly, compressing message history automatically.
 - **Global Variable:** Support for defining global variables that can be dynamically injected into agent prompts, orchestrations, custom tools, and MCP server environments.
