@@ -434,7 +434,7 @@ export function BuilderPanel({
             </div>
 
             {/* ── Chat area ───────────────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 font-sans">
                 {(() => {
                     // Group consecutive activity messages; non-activity messages stay as singletons
                     type Group = { type: 'activity'; events: ChatMessage[] } | { type: 'single'; msg: ChatMessage; idx: number };
@@ -646,7 +646,7 @@ export function BuilderPanel({
                         placeholder={pendingRun ? 'Answer the question above…' : 'Describe what you want to build…'}
                         rows={2}
                         disabled={streaming}
-                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-purple-500/60 resize-none disabled:opacity-50 transition-colors"
+                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-purple-500/60 resize-none disabled:opacity-50 transition-colors font-sans"
                     />
                     <button
                         onClick={sendMessage}
