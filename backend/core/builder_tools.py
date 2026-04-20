@@ -25,6 +25,46 @@ def _random_id(prefix: str, length: int = 7) -> str:
     return prefix + ''.join(random.choices(chars, k=length))
 
 
+# ─── JSON-string boundary ────────────────────────────────────────────────────
+# Gemini's function-calling layer hangs on deeply-nested object schemas (even
+# typed ones). The saver's step objects have ~25 optional fields and appear as
+# array items of `steps`/`patch` — this consistently stalls turn 1. The fix is
+# to pass steps AND state_schema across the tool boundary as JSON-encoded
+# STRINGS, not nested objects. Gemini generates strings natively and reliably;
+# Python parses them server-side before persistence. All complexity lives in
+# the system prompt's examples, not the schema itself.
+
+STEPS_JSON_DESCRIPTION = (
+    "JSON-encoded array of step objects. Each step is an object with "
+    "{id, name, type, ...type-specific fields}. See the step-type palette "
+    "in your system prompt for the full field list per type. Keep each step "
+    "lean — include only fields that differ from zero-defaults.\n"
+    "Sub-structures MUST be JSON strings inside each step: route_map_json, "
+    "route_descriptions_json, parallel_branches_json, human_fields_json.\n"
+    "Minimal example (2 agent steps):\n"
+    "'[{\"id\":\"step_abc1234\",\"name\":\"Analyse\",\"type\":\"agent\","
+    "\"agent_id\":\"agent_123\",\"prompt_template\":\"Summarise {state.user_input}\","
+    "\"input_keys\":[\"user_input\"],\"output_key\":\"summary\","
+    "\"next_step_id\":\"step_def5678\"},"
+    "{\"id\":\"step_def5678\",\"name\":\"Done\",\"type\":\"end\"}]'"
+)
+
+PATCH_JSON_DESCRIPTION = (
+    "JSON-encoded object with the step fields you want to change. Omit any "
+    "field you don't want touched. Use *_json string keys for sub-structures "
+    "(route_map_json, parallel_branches_json, human_fields_json, "
+    "route_descriptions_json). "
+    "Example: '{\"prompt_template\":\"New prompt\",\"next_step_id\":\"step_xyz7890\"}'"
+)
+
+STATE_SCHEMA_JSON_DESCRIPTION = (
+    "JSON-encoded state-schema object mapping each state key to "
+    "{type, default, description}. Allowed types: str, int, float, bool, list, dict. "
+    "Example: '{\"user_input\":{\"type\":\"str\",\"default\":\"\",\"description\":\"Initial user message\"}}'. "
+    "Pass '{}' (empty object JSON) when the orchestration has no upfront state keys."
+)
+
+
 # ─── Tool Schemas ─────────────────────────────────────────────────────────────
 
 BUILDER_TOOL_SCHEMAS = [
@@ -120,8 +160,27 @@ BUILDER_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "list_all_tools",
-            "description": "List all tools available across all connected MCP servers and custom tools. Use this before assigning tools to agents or deciding if a capability exists.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+            "description": (
+                "List available tools across MCP servers and custom tools. "
+                "Pass server_name to scope the results to a single server (e.g. 'Google Workspace', 'ext_mcp_github') — "
+                "use list_tool_servers first to find exact server names. "
+                "Pass limit to cap the number of results (default 50). "
+                "Prefer scoped calls (server_name + small limit) over unscoped calls to avoid flooding context."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "Optional: return only tools from this server. Use names from list_tool_servers.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max tools to return (default 50). Use 20-30 for browsing a single server.",
+                    },
+                },
+                "required": [],
+            },
         },
     },
     {
@@ -149,8 +208,29 @@ BUILDER_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "list_tool_servers",
-            "description": "List all configured MCP tool servers with their names, types, and connection status.",
+            "description": "List all MCP tool servers (native and externally configured) with their names, types, connection status, and tool count. Call this first to discover what integrations are available before using list_server_tools.",
             "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_server_tools",
+            "description": (
+                "List all tools provided by a specific MCP server by name (use list_tool_servers first to find names). "
+                "Returns tool names and short descriptions. Use this for targeted tool discovery before calling "
+                "get_tools_detail for exact parameter schemas."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {
+                        "type": "string",
+                        "description": "Server name as returned by list_tool_servers (e.g. 'Google Workspace')",
+                    }
+                },
+                "required": ["server_name"],
+            },
         },
     },
     {
@@ -196,40 +276,29 @@ BUILDER_TOOL_SCHEMAS = [
         "function": {
             "name": "create_orchestration",
             "description": (
-                "Create a complete orchestration workflow and save it. Returns the saved orchestration with its ID. "
-                "Each step must have: id (use step_XXXXXXX format), name, type, next_step_id (or null), "
-                "and type-specific fields. Always set entry_step_id. "
-                "Step types: agent (needs agent_id, prompt_template, input_keys, output_key), "
-                "llm (needs prompt_template, model, output_key), "
-                "tool (needs forced_tool, output_key), "
-                "evaluator (needs route_map, route_descriptions, evaluator_prompt, input_keys), "
-                "parallel (needs parallel_branches as list of step-id lists, next_step_id is convergence), "
-                "merge (needs input_keys, merge_strategy, output_key), "
-                "loop (needs loop_step_ids, loop_count), "
-                "human (needs human_prompt, output_key), "
-                "transform (needs transform_code), "
-                "end (no extra fields). "
-                "All steps need: max_turns (15), timeout_seconds (300), max_iterations (3)."
+                "Create a complete orchestration workflow in ONE call. Returns the saved orchestration with its id. "
+                "Prefer create_orchestration_skeleton + add_steps for plans with more than 3 steps — "
+                "splitting the build avoids giant tool-call payloads. Use this single-shot form only for "
+                "trivial orchestrations (≤3 steps). Steps are passed as a JSON-encoded string."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
                     "description": {"type": "string"},
-                    "steps": {
-                        "type": "array",
-                        "items": {"type": "object"},
-                        "description": "Complete list of StepConfig objects",
+                    "steps_json": {
+                        "type": "string",
+                        "description": STEPS_JSON_DESCRIPTION,
                     },
                     "entry_step_id": {"type": "string", "description": "ID of the first step to execute"},
-                    "state_schema": {
-                        "type": "object",
-                        "description": "Optional: define named state variables. Each key maps to {type, default, description}",
+                    "state_schema_json": {
+                        "type": "string",
+                        "description": STATE_SCHEMA_JSON_DESCRIPTION,
                     },
                     "max_total_turns": {"type": "integer", "description": "Global turn limit (default 100)"},
                     "timeout_minutes": {"type": "integer", "description": "Overall timeout (default 30)"},
                 },
-                "required": ["name", "steps", "entry_step_id"],
+                "required": ["name", "steps_json", "entry_step_id"],
             },
         },
     },
@@ -237,17 +306,288 @@ BUILDER_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "update_orchestration",
-            "description": "Update fields of an existing orchestration. Provide orch_id and the fields to change.",
+            "description": (
+                "Replace an existing orchestration's fields. Prefer set_orchestration_meta / "
+                "add_steps / update_step / remove_step for targeted diffs — this full-replace form is the "
+                "fallback for sweeping rewrites only. steps_json REPLACES the entire step list when supplied."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "orch_id": {"type": "string"},
-                    "fields": {
-                        "type": "object",
-                        "description": "Fields to update: name, description, steps, entry_step_id, state_schema, max_total_turns, timeout_minutes",
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "entry_step_id": {"type": "string"},
+                    "steps_json": {
+                        "type": "string",
+                        "description": "Optional. " + STEPS_JSON_DESCRIPTION,
+                    },
+                    "state_schema_json": {
+                        "type": "string",
+                        "description": STATE_SCHEMA_JSON_DESCRIPTION,
+                    },
+                    "max_total_turns": {"type": "integer"},
+                    "timeout_minutes": {"type": "integer"},
+                },
+                "required": ["orch_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_orchestration_skeleton",
+            "description": (
+                "Create an empty orchestration (no steps yet) and return its orch_id. "
+                "Follow up with add_steps calls to populate steps incrementally — this is the preferred "
+                "pattern for any orchestration with more than ~3 steps because each tool call stays small "
+                "and well-typed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "entry_step_id": {
+                        "type": "string",
+                        "description": "Step id of the first step that will be added. May be set before the step itself exists.",
+                    },
+                    "state_schema_json": {
+                        "type": "string",
+                        "description": STATE_SCHEMA_JSON_DESCRIPTION,
+                    },
+                    "max_total_turns": {"type": "integer"},
+                    "timeout_minutes": {"type": "integer"},
+                },
+                "required": ["name", "entry_step_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_steps",
+            "description": (
+                "Append a batch of steps to an existing orchestration. Keep batches small (≤5 steps) so "
+                "each tool-call payload stays lean. Existing step ids in the orchestration are preserved "
+                "— this is additive only. Duplicate step ids are rejected. Steps are passed as a "
+                "JSON-encoded string."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string"},
+                    "steps_json": {
+                        "type": "string",
+                        "description": STEPS_JSON_DESCRIPTION,
                     },
                 },
-                "required": ["orch_id", "fields"],
+                "required": ["orch_id", "steps_json"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_orchestration_meta",
+            "description": (
+                "Patch top-level orchestration metadata only. Does NOT touch the steps list. Use this for "
+                "renames, description edits, entry_step_id changes, state_schema updates, or turn/timeout "
+                "budget changes. Pass only the fields you want to change."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "entry_step_id": {"type": "string"},
+                    "state_schema_json": {
+                        "type": "string",
+                        "description": STATE_SCHEMA_JSON_DESCRIPTION,
+                    },
+                    "max_total_turns": {"type": "integer"},
+                    "timeout_minutes": {"type": "integer"},
+                },
+                "required": ["orch_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_step",
+            "description": (
+                "Merge a partial step patch into an existing step. Only fields present in patch_json are "
+                "changed; all other step fields are preserved. Use this for small edits like changing a "
+                "prompt_template, adjusting an evaluator's route_map, or retargeting next_step_id."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string"},
+                    "step_id": {"type": "string"},
+                    "patch_json": {
+                        "type": "string",
+                        "description": PATCH_JSON_DESCRIPTION,
+                    },
+                },
+                "required": ["orch_id", "step_id", "patch_json"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_step",
+            "description": "Delete a single step from an orchestration by its step_id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string"},
+                    "step_id": {"type": "string"},
+                },
+                "required": ["orch_id", "step_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_orchestration",
+            "description": (
+                "Run wiring checks on an orchestration and return {ok, issues}. Checks: entry_step_id "
+                "resolves, no duplicate ids, every route_map target + next_step_id + loop_step_ids + "
+                "parallel_branches element resolves to an existing step (empty string = end), every "
+                "reachable path terminates at an `end` step, and every step's input_keys are either "
+                "`user_input` / `user_query` or the `output_key` of some step in the orchestration. Call "
+                "this after adding/updating steps; fix any reported issues with update_step/add_steps/"
+                "remove_step, then re-validate."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string"},
+                },
+                "required": ["orch_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_single_step",
+            "description": (
+                "Add ONE step to an orchestration using flat parameters — no JSON encoding needed "
+                "for most fields. Only route_map_json, route_descriptions_json, parallel_branches_json, "
+                "and human_fields_json are JSON strings. Preferred over add_steps for reliability."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string", "description": "Orchestration ID from create_orchestration_skeleton"},
+                    "step_id": {"type": "string", "description": "Unique step ID (step_ + 7 alphanumeric chars)"},
+                    "name": {"type": "string", "description": "Human-readable step name"},
+                    "type": {
+                        "type": "string",
+                        "enum": ["agent", "llm", "evaluator", "parallel", "merge", "human", "tool", "loop", "transform", "end"],
+                        "description": "Step type",
+                    },
+                    "agent_id": {"type": "string", "description": "Agent ID (required for agent/tool steps)"},
+                    "prompt_template": {"type": "string", "description": "Prompt with {state.key} placeholders (for agent/llm steps)"},
+                    "input_keys": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "State keys this step reads",
+                    },
+                    "output_key": {"type": "string", "description": "State key this step writes to"},
+                    "next_step_id": {"type": "string", "description": "Next step ID. NOT used for evaluator steps (routing via route_map)."},
+                    "evaluator_prompt": {"type": "string", "description": "Routing instructions for evaluator steps"},
+                    "route_map_json": {
+                        "type": "string",
+                        "description": "JSON string mapping route labels to step IDs. Example: '{\"approved\":\"step_abc\",\"rejected\":\"step_def\"}'",
+                    },
+                    "route_descriptions_json": {
+                        "type": "string",
+                        "description": "JSON string mapping route labels to descriptions. Example: '{\"approved\":\"Ready to go\",\"rejected\":\"Needs work\"}'",
+                    },
+                    "parallel_branches_json": {
+                        "type": "string",
+                        "description": "JSON string of branch arrays. Example: '[[\"step_a\"],[\"step_b\"]]'",
+                    },
+                    "human_prompt": {"type": "string", "description": "Prompt shown to user (human steps)"},
+                    "human_fields_json": {
+                        "type": "string",
+                        "description": "JSON string of field definitions. Example: '[{\"name\":\"feedback\",\"type\":\"textarea\",\"label\":\"Your feedback\"}]'",
+                    },
+                    "forced_tool": {"type": "string", "description": "Tool name for tool steps"},
+                    "merge_strategy": {
+                        "type": "string", "enum": ["concat", "list", "dict"],
+                        "description": "How to combine inputs (merge steps)",
+                    },
+                    "loop_step_ids": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "Step IDs in loop body (loop steps)",
+                    },
+                    "loop_count": {"type": "integer", "description": "Number of loop iterations"},
+                    "transform_code": {"type": "string", "description": "Python code: reads `state`, assigns `result` (transform steps)"},
+                    "max_turns": {"type": "integer", "description": "Max agent turns (default 15)"},
+                    "timeout_seconds": {"type": "integer", "description": "Step timeout (default 300)"},
+                    "model": {"type": "string", "description": "LLM model override for this step"},
+                },
+                "required": ["orch_id", "step_id", "name", "type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_multiple_steps",
+            "description": (
+                "Add multiple steps to an orchestration in one call. Each step uses flat fields "
+                "(same as add_single_step). Batch up to 5 plain steps (agent, llm, end, merge) per "
+                "call. For evaluator/parallel/human steps, prefer add_single_step (one at a time)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "orch_id": {"type": "string", "description": "Orchestration ID"},
+                    "steps": {
+                        "type": "array",
+                        "description": "Array of step objects. Each has the same fields as add_single_step.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "step_id": {"type": "string", "description": "Unique step ID (step_ + 7 alphanumeric)"},
+                                "name": {"type": "string", "description": "Step name"},
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["agent", "llm", "evaluator", "parallel", "merge", "human", "tool", "loop", "transform", "end"],
+                                },
+                                "agent_id": {"type": "string"},
+                                "prompt_template": {"type": "string"},
+                                "input_keys": {"type": "array", "items": {"type": "string"}},
+                                "output_key": {"type": "string"},
+                                "next_step_id": {"type": "string"},
+                                "evaluator_prompt": {"type": "string"},
+                                "route_map_json": {"type": "string", "description": "JSON string: '{\"label\":\"step_id\"}'"},
+                                "route_descriptions_json": {"type": "string", "description": "JSON string: '{\"label\":\"desc\"}'"},
+                                "parallel_branches_json": {"type": "string", "description": "JSON string: '[[\"step_a\"],[\"step_b\"]]'"},
+                                "human_prompt": {"type": "string"},
+                                "human_fields_json": {"type": "string"},
+                                "forced_tool": {"type": "string"},
+                                "merge_strategy": {"type": "string", "enum": ["concat", "list", "dict"]},
+                                "loop_step_ids": {"type": "array", "items": {"type": "string"}},
+                                "loop_count": {"type": "integer"},
+                                "transform_code": {"type": "string"},
+                                "max_turns": {"type": "integer"},
+                                "timeout_seconds": {"type": "integer"},
+                                "model": {"type": "string"},
+                            },
+                            "required": ["step_id", "name", "type"],
+                        },
+                    },
+                },
+                "required": ["orch_id", "steps"],
             },
         },
     },
@@ -330,23 +670,40 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         return {"status": "updated", "agent": agents[idx]}
 
     elif tool_name == "list_all_tools":
+        server_filter = (args.get("server_name") or "").strip()
+        limit = int(args.get("limit") or 50)
         try:
-            from core.tools import aggregate_all_tools
-            from core.routes.tools import load_custom_tools
-            from core.routes.agents import load_user_agents as _lau
-            _agents = _lau()
-            active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
-            custom_tools = load_custom_tools()
-            all_tools, _, _, _ = await aggregate_all_tools(
-                server_module.agent_sessions, active_agent, custom_tools
-            )
-            return [
-                {
-                    "name": t.name,
-                    "description": (t.description or "")[:120],
-                }
-                for t in all_tools
-            ]
+            if server_filter:
+                # Scoped: query the specific server's session directly
+                session = server_module.agent_sessions.get(server_filter) or \
+                          server_module.agent_sessions.get(f"ext_mcp_{server_filter}")
+                if not session:
+                    lowered = server_filter.lower().replace(" ", "_")
+                    for key in server_module.agent_sessions:
+                        if lowered in key.lower():
+                            session = server_module.agent_sessions[key]
+                            break
+                if not session:
+                    return {"error": f"Server '{server_filter}' not found. Call list_tool_servers to see available names."}
+                tools_result = await session.list_tools()
+                return [
+                    {"name": t.name, "description": (t.description or "")[:120]}
+                    for t in tools_result.tools[:limit]
+                ]
+            else:
+                from core.tools import aggregate_all_tools
+                from core.routes.tools import load_custom_tools
+                from core.routes.agents import load_user_agents as _lau
+                _agents = _lau()
+                active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
+                custom_tools = load_custom_tools()
+                all_tools, _, _, _ = await aggregate_all_tools(
+                    server_module.agent_sessions, active_agent, custom_tools
+                )
+                return [
+                    {"name": t.name, "description": (t.description or "")[:120]}
+                    for t in all_tools[:limit]
+                ]
         except Exception as e:
             return {"error": f"Could not list tools: {e}"}
 
@@ -378,18 +735,59 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             return {"error": f"Could not fetch tool details: {e}"}
 
     elif tool_name == "list_tool_servers":
-        servers = _mcp_store.load()
-        if not isinstance(servers, list):
-            servers = []
-        return [
+        ext_servers = _mcp_store.load()
+        if not isinstance(ext_servers, list):
+            ext_servers = []
+        result = [
             {
                 "name": s.get("name"),
                 "label": s.get("label", s.get("name")),
                 "type": s.get("server_type", "stdio"),
                 "status": s.get("status", "unknown"),
+                "tool_count": None,
             }
-            for s in servers
+            for s in ext_servers
         ]
+        # Also include native MCP sessions (e.g. Google Workspace, filesystem)
+        # that are started programmatically and not stored in mcp_store.json
+        ext_keys = {f"ext_mcp_{s.get('name')}" for s in ext_servers}
+        for sess_name, session in server_module.agent_sessions.items():
+            if sess_name in ext_keys:
+                continue
+            try:
+                tools_result = await session.list_tools()
+                tool_count = len(tools_result.tools)
+            except Exception:
+                tool_count = 0
+            result.append({
+                "name": sess_name,
+                "label": sess_name.replace("_", " ").title(),
+                "type": "native_mcp",
+                "status": "running",
+                "tool_count": tool_count,
+            })
+        return result
+
+    elif tool_name == "list_server_tools":
+        server_name = args.get("server_name", "")
+        session = server_module.agent_sessions.get(server_name) or \
+                  server_module.agent_sessions.get(f"ext_mcp_{server_name}")
+        if not session:
+            lowered = server_name.lower().replace(" ", "_")
+            for key in server_module.agent_sessions:
+                if lowered in key.lower():
+                    session = server_module.agent_sessions[key]
+                    break
+        if not session:
+            return {"error": f"Server '{server_name}' not found. Call list_tool_servers to see available names."}
+        try:
+            tools_result = await session.list_tools()
+            return [
+                {"name": t.name, "description": (t.description or "")[:150]}
+                for t in tools_result.tools
+            ]
+        except Exception as e:
+            return {"error": f"Could not list tools for server '{server_name}': {e}"}
 
     elif tool_name == "list_repos":
         repos = _repos_store.load()
@@ -433,8 +831,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         orch_id = _random_id("orch_")
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+        _normalize_state_schema_arg(args)
+        _normalize_steps_arg(args)
         steps = args.get("steps", [])
-        # Fill defaults for any step missing required fields
+        if not isinstance(steps, list) or not steps:
+            return {"error": "steps_json must decode to a non-empty JSON array of step objects"}
         steps = _fill_step_defaults(steps)
 
         orch = {
@@ -461,23 +862,464 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
-        fields = args.get("fields", {})
-        if "steps" in fields:
+        # update_orchestration now accepts flat top-level fields (like the other
+        # builder tools), falling back to legacy `fields` for back-compat.
+        legacy_fields = args.get("fields") or {}
+        fields = dict(legacy_fields)
+        for key in ("name", "description", "entry_step_id", "state_schema_json",
+                    "steps_json", "max_total_turns", "timeout_minutes"):
+            if key in args and args[key] is not None:
+                fields[key] = args[key]
+        _normalize_state_schema_arg(fields)
+        _normalize_steps_arg(fields)
+        if "steps" in fields and isinstance(fields["steps"], list):
             fields["steps"] = _fill_step_defaults(fields["steps"])
+        if not fields or set(fields.keys()) - {"orch_id"} == set():
+            return {"error": "no updatable fields supplied"}
+        # Drop orch_id if it snuck in
+        fields.pop("orch_id", None)
         orchs[idx].update(fields)
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_orchestrations(orchs)
         return {"status": "updated", "orchestration": orchs[idx]}
 
+    elif tool_name == "create_orchestration_skeleton":
+        orchs = load_orchestrations()
+        orch_id = _random_id("orch_")
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _normalize_state_schema_arg(args)
+        orch = {
+            "id": orch_id,
+            "name": args["name"],
+            "description": args.get("description", ""),
+            "avatar": "default",
+            "steps": [],
+            "entry_step_id": args["entry_step_id"],
+            "state_schema": args.get("state_schema", {}),
+            "max_total_turns": args.get("max_total_turns", 100),
+            "max_total_cost_usd": None,
+            "timeout_minutes": args.get("timeout_minutes", 30),
+            "trigger": "manual",
+            "created_at": now,
+            "updated_at": now,
+        }
+        orchs.append(orch)
+        save_orchestrations(orchs)
+        return {"status": "created", "orchestration": orch}
+
+    elif tool_name == "add_steps":
+        orchs = load_orchestrations()
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
+        if idx is None:
+            return {"error": f"Orchestration '{args['orch_id']}' not found"}
+        raw_steps = args.get("steps_json", args.get("steps", ""))
+        _normalize_steps_arg(args)
+        new_steps = args.get("steps", []) or []
+        if not isinstance(new_steps, list) or not new_steps:
+            # Give the LLM a preview of what it sent so it can self-correct
+            preview = str(raw_steps)[:300] if raw_steps else "(empty)"
+            return {
+                "error": f"steps_json must decode to a non-empty JSON array of step objects. "
+                         f"Received: {preview}... "
+                         f"Hint: ensure all inner quotes are escaped as \\\" and inner *_json values use \\\\\\\" for their quotes."
+            }
+        existing = orchs[idx].get("steps", []) or []
+        existing_ids = {s.get("id") for s in existing}
+        incoming_ids = [s.get("id") for s in new_steps if s.get("id")]
+        dup = existing_ids.intersection(incoming_ids)
+        if dup:
+            return {"error": f"Duplicate step ids: {sorted(dup)}"}
+        # Offset canvas positions so newly-added steps land to the right of existing ones
+        base_x = -600 + len(existing) * 350
+        filled = _fill_step_defaults(new_steps)
+        for i, s in enumerate(filled):
+            s["position_x"] = base_x + i * 350
+        orchs[idx]["steps"] = existing + filled
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {
+            "status": "appended",
+            "added_step_ids": [s["id"] for s in filled],
+            "total_steps": len(orchs[idx]["steps"]),
+        }
+
+    elif tool_name == "add_single_step":
+        # Flat-parameter tool: assemble a step dict from individual args,
+        # then reuse the same pipeline as add_steps.
+        orchs = load_orchestrations()
+        orch_id = args.get("orch_id")
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == orch_id), None)
+        if idx is None:
+            return {"error": f"Orchestration '{orch_id}' not found"}
+
+        step_id = args.get("step_id")
+        if not step_id:
+            return {"error": "step_id is required"}
+        step_name = args.get("name")
+        step_type = args.get("type")
+        if not step_name or not step_type:
+            return {"error": "name and type are required"}
+
+        # Check duplicate
+        existing = orchs[idx].get("steps", []) or []
+        if any(s.get("id") == step_id for s in existing):
+            return {"error": f"Duplicate step id: {step_id}"}
+
+        # Build step dict from flat args (skip orch_id)
+        step = {}
+        for k, v in args.items():
+            if k == "orch_id" or v is None:
+                continue
+            step[k] = v
+        # Rename flat keys to match internal format
+        step["id"] = step.pop("step_id", step_id)
+
+        # Normalize *_json fields (route_map_json → route_map, etc.)
+        step = _normalize_step_inputs(step)
+        filled = _fill_step_defaults([step])
+        # Position to the right of existing steps
+        base_x = -600 + len(existing) * 350
+        filled[0]["position_x"] = base_x
+        orchs[idx]["steps"] = existing + filled
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {
+            "status": "step_added",
+            "step_id": filled[0]["id"],
+            "total_steps": len(orchs[idx]["steps"]),
+        }
+
+    elif tool_name == "add_multiple_steps":
+        # Batch version of add_single_step — takes a native array of step objects.
+        orchs = load_orchestrations()
+        orch_id = args.get("orch_id")
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == orch_id), None)
+        if idx is None:
+            return {"error": f"Orchestration '{orch_id}' not found"}
+
+        raw_steps = args.get("steps") or []
+        if not isinstance(raw_steps, list) or not raw_steps:
+            return {"error": "steps must be a non-empty array of step objects"}
+
+        existing = orchs[idx].get("steps", []) or []
+        existing_ids = {s.get("id") for s in existing}
+
+        processed = []
+        for raw in raw_steps:
+            if not isinstance(raw, dict):
+                return {"error": f"Each step must be an object, got {type(raw).__name__}"}
+            sid = raw.get("step_id")
+            if not sid or not raw.get("name") or not raw.get("type"):
+                return {"error": f"Each step needs step_id, name, and type. Got: {raw}"}
+            if sid in existing_ids:
+                return {"error": f"Duplicate step id: {sid}"}
+            existing_ids.add(sid)
+            # Build step dict (rename step_id → id, drop None values)
+            step = {k: v for k, v in raw.items() if v is not None}
+            step["id"] = step.pop("step_id", sid)
+            step = _normalize_step_inputs(step)
+            processed.append(step)
+
+        filled = _fill_step_defaults(processed)
+        base_x = -600 + len(existing) * 350
+        for i, s in enumerate(filled):
+            s["position_x"] = base_x + i * 350
+        orchs[idx]["steps"] = existing + filled
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {
+            "status": "steps_added",
+            "added_step_ids": [s["id"] for s in filled],
+            "total_steps": len(orchs[idx]["steps"]),
+        }
+
+    elif tool_name == "set_orchestration_meta":
+        orchs = load_orchestrations()
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
+        if idx is None:
+            return {"error": f"Orchestration '{args['orch_id']}' not found"}
+        # Accept flat top-level fields (preferred); legacy `fields` wrapper still
+        # works for callers that haven't migrated yet.
+        raw_fields = dict(args.get("fields") or {})
+        for key in ("name", "description", "entry_step_id", "state_schema_json",
+                    "max_total_turns", "timeout_minutes"):
+            if key in args and args[key] is not None:
+                raw_fields[key] = args[key]
+        _normalize_state_schema_arg(raw_fields)
+        allowed = {"name", "description", "entry_step_id", "state_schema", "max_total_turns", "timeout_minutes"}
+        fields = {k: v for k, v in raw_fields.items() if k in allowed}
+        if not fields:
+            return {"error": f"No allowed meta fields to set. Allowed: {sorted(allowed)}"}
+        orchs[idx].update(fields)
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {"status": "meta_updated", "fields": list(fields.keys())}
+
+    elif tool_name == "update_step":
+        orchs = load_orchestrations()
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
+        if idx is None:
+            return {"error": f"Orchestration '{args['orch_id']}' not found"}
+        step_id = args["step_id"]
+        patch = _normalize_patch_arg(args)
+        if not isinstance(patch, dict) or not patch:
+            return {"error": "patch_json must decode to a non-empty JSON object of step fields"}
+        steps = orchs[idx].get("steps", []) or []
+        sidx = next((i for i, s in enumerate(steps) if s.get("id") == step_id), None)
+        if sidx is None:
+            return {"error": f"Step '{step_id}' not found in orchestration '{args['orch_id']}'"}
+        merged = {**steps[sidx], **patch}
+        merged["id"] = step_id  # id is immutable via patch
+        steps[sidx] = _fill_step_defaults([merged])[0]
+        orchs[idx]["steps"] = steps
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {"status": "step_updated", "step": steps[sidx]}
+
+    elif tool_name == "remove_step":
+        orchs = load_orchestrations()
+        idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
+        if idx is None:
+            return {"error": f"Orchestration '{args['orch_id']}' not found"}
+        step_id = args["step_id"]
+        steps = orchs[idx].get("steps", []) or []
+        before = len(steps)
+        steps = [s for s in steps if s.get("id") != step_id]
+        if len(steps) == before:
+            return {"error": f"Step '{step_id}' not found in orchestration '{args['orch_id']}'"}
+        orchs[idx]["steps"] = steps
+        orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_orchestrations(orchs)
+        return {"status": "step_removed", "step_id": step_id, "remaining_steps": len(steps)}
+
+    elif tool_name == "validate_orchestration":
+        orchs = load_orchestrations()
+        orch = next((o for o in orchs if o["id"] == args["orch_id"]), None)
+        if not orch:
+            return {"error": f"Orchestration '{args['orch_id']}' not found"}
+        return _validate_orchestration(orch)
+
     else:
         return {"error": f"Unknown tool: {tool_name}"}
+
+
+def _validate_orchestration(orch: dict) -> dict:
+    """Return {"ok": bool, "issues": [str, ...]} describing wiring problems.
+
+    Checks (matches the engine's expectations in core.orchestration.engine):
+      - entry_step_id resolves to a real step
+      - no duplicate step ids
+      - every next_step_id / route_map target / loop_step_ids entry /
+        parallel_branches element resolves to a real step (empty string = end)
+      - every reachable path terminates at an `end`-type step
+      - every step's input_keys are either `user_input` / `user_query` or the
+        `output_key` of some step in the orchestration (a key with no writer
+        anywhere is meaningless — it can only ever be its schema default)
+    """
+    issues: list[str] = []
+    steps = orch.get("steps", []) or []
+    if not steps:
+        return {"ok": False, "issues": ["Orchestration has no steps."]}
+
+    by_id: dict[str, dict] = {}
+    for s in steps:
+        sid = s.get("id") or ""
+        if not sid:
+            issues.append("Found a step with no id.")
+            continue
+        if sid in by_id:
+            issues.append(f"Duplicate step id '{sid}'.")
+        by_id[sid] = s
+
+    entry = orch.get("entry_step_id") or ""
+    if not entry:
+        issues.append("entry_step_id is empty.")
+    elif entry not in by_id:
+        issues.append(f"entry_step_id '{entry}' does not match any step.")
+
+    def _ref_ok(ref: str | None) -> bool:
+        # Empty string / None means "end of orchestration" — acceptable.
+        return not ref or ref in by_id
+
+    for s in steps:
+        sid = s.get("id", "?")
+        stype = s.get("type")
+        nxt = s.get("next_step_id")
+        if nxt and not _ref_ok(nxt):
+            issues.append(f"Step '{sid}' next_step_id '{nxt}' points to unknown step.")
+        for label, target in (s.get("route_map") or {}).items():
+            if target and not _ref_ok(target):
+                issues.append(
+                    f"Step '{sid}' route_map[{label!r}] → '{target}' points to unknown step."
+                )
+        for lsid in s.get("loop_step_ids") or []:
+            if not _ref_ok(lsid):
+                issues.append(f"Step '{sid}' loop body references unknown step '{lsid}'.")
+        for branch in s.get("parallel_branches") or []:
+            for bsid in branch:
+                if not _ref_ok(bsid):
+                    issues.append(
+                        f"Step '{sid}' parallel branch references unknown step '{bsid}'."
+                    )
+        if stype == "agent" and not s.get("agent_id"):
+            issues.append(f"Agent step '{sid}' has no agent_id.")
+        if stype == "evaluator" and not (s.get("route_map") or {}):
+            issues.append(f"Evaluator step '{sid}' has an empty route_map.")
+        if stype == "tool" and not s.get("forced_tool"):
+            issues.append(f"Tool step '{sid}' has no forced_tool.")
+        if stype == "human" and not s.get("human_prompt"):
+            issues.append(f"Human step '{sid}' has no human_prompt.")
+        if stype == "transform" and not s.get("transform_code"):
+            issues.append(f"Transform step '{sid}' has no transform_code.")
+
+    # Writer-membership check: every input_key must be `user_input` /
+    # `user_query` (engine-seeded) or the `output_key` of some step. Branch
+    # conditioning is not the validator's concern — the engine falls back to
+    # the schema default on unset reads, which is the intended pattern for
+    # optional branch outputs and iterative refinement loops.
+    FREE_KEYS = {"user_input", "user_query"}
+    writable: set[str] = set(FREE_KEYS)
+    for s in steps:
+        ok = s.get("output_key")
+        if ok:
+            writable.add(ok)
+    for s in steps:
+        sid = s.get("id", "?")
+        for k in s.get("input_keys") or []:
+            if k not in writable:
+                issues.append(
+                    f"Step '{sid}' reads input_key '{k}' but no step writes it — either use an existing output_key or delete the read."
+                )
+
+    # Reachability walk: every reachable step must be able to hit an `end`.
+    # Dead-end non-end steps (no next_step_id / routes / branches) are bugs.
+    if entry in by_id:
+        from collections import deque
+        visited: set[str] = set()
+        queue = deque([entry])
+        while queue:
+            cur = queue.popleft()
+            if cur in visited:
+                continue
+            visited.add(cur)
+            s = by_id.get(cur)
+            if not s:
+                continue
+            if s.get("type") == "end":
+                continue
+            successors: list[str] = []
+            nxt = s.get("next_step_id")
+            if nxt and nxt in by_id:
+                successors.append(nxt)
+            for target in (s.get("route_map") or {}).values():
+                if target and target in by_id:
+                    successors.append(target)
+            for lsid in s.get("loop_step_ids") or []:
+                if lsid in by_id:
+                    successors.append(lsid)
+            for branch in s.get("parallel_branches") or []:
+                for bsid in branch:
+                    if bsid in by_id:
+                        successors.append(bsid)
+            if not successors:
+                issues.append(
+                    f"Step '{cur}' (type={s.get('type')}) has no next_step_id / routes / branches — path dead-ends without reaching an `end` step."
+                )
+                continue
+            for nxt_id in successors:
+                if nxt_id not in visited:
+                    queue.append(nxt_id)
+
+    return {"ok": not issues, "issues": issues}
+
+
+def _parse_json_field(value: Any, fallback: Any) -> Any:
+    """Parse a JSON-encoded string (as emitted by Gemini via *_json fields).
+    Falls back to `fallback` on empty / malformed input so the saver
+    doesn't stall on a stray trailing comma. Tries common LLM JSON repairs
+    before giving up."""
+    if value is None:
+        return fallback
+    if not isinstance(value, str):
+        return value  # already parsed (e.g. passed natively by tests)
+    s = value.strip()
+    if not s:
+        return fallback
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # ── Common LLM JSON repairs ──────────────────────────────────────────
+    repaired = s
+    # 1. Trailing commas before } or ]
+    import re
+    repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
+    # 2. Single quotes → double quotes (only for simple cases)
+    if '"' not in repaired and "'" in repaired:
+        repaired = repaired.replace("'", '"')
+    if repaired != s:
+        try:
+            result = json.loads(repaired)
+            print(f"DEBUG _parse_json_field: 🔧 repaired JSON (trailing commas / quotes)", flush=True)
+            return result
+        except json.JSONDecodeError:
+            pass
+    print(f"DEBUG _parse_json_field: ❌ JSON parse failed, using fallback. Input preview: {s[:200]}", flush=True)
+    return fallback
+
+
+def _normalize_step_inputs(step: dict) -> dict:
+    """Convert `*_json` string fields emitted by the LLM into their native
+    dict/list form, so downstream code (and `_fill_step_defaults`) sees a
+    uniform shape. Idempotent — keys without a `*_json` sibling pass through."""
+    s = dict(step)
+    if "route_map_json" in s:
+        s["route_map"] = _parse_json_field(s.pop("route_map_json"), {})
+    if "route_descriptions_json" in s:
+        s["route_descriptions"] = _parse_json_field(s.pop("route_descriptions_json"), {})
+    if "parallel_branches_json" in s:
+        s["parallel_branches"] = _parse_json_field(s.pop("parallel_branches_json"), [])
+    if "human_fields_json" in s:
+        s["human_fields"] = _parse_json_field(s.pop("human_fields_json"), [])
+    return s
+
+
+def _normalize_state_schema_arg(args: dict) -> None:
+    """In-place: if `state_schema_json` is present, parse it into `state_schema`."""
+    if "state_schema_json" in args:
+        args["state_schema"] = _parse_json_field(args.pop("state_schema_json"), {})
+
+
+def _normalize_steps_arg(args: dict) -> None:
+    """In-place: if `steps_json` is present, parse it into `steps`. Accepts
+    either a JSON-encoded string (preferred — keeps Gemini's tool boundary
+    flat) or an already-decoded list (back-compat with tests)."""
+    if "steps_json" in args:
+        raw = args["steps_json"]
+        parsed = _parse_json_field(args.pop("steps_json"), [])
+        if isinstance(parsed, list):
+            args["steps"] = parsed
+        else:
+            print(f"DEBUG _normalize_steps_arg: ❌ steps_json decoded to {type(parsed).__name__}, not list. Raw preview: {str(raw)[:300]}", flush=True)
+            args["steps"] = []
+
+
+def _normalize_patch_arg(args: dict) -> dict:
+    """Extract and parse a step patch. Prefers `patch_json` (JSON string),
+    falls back to legacy `patch` (already-decoded dict). Returns the patch
+    dict (possibly empty)."""
+    if "patch_json" in args:
+        parsed = _parse_json_field(args.pop("patch_json"), {})
+        return parsed if isinstance(parsed, dict) else {}
+    legacy = args.get("patch") or {}
+    return legacy if isinstance(legacy, dict) else {}
 
 
 def _fill_step_defaults(steps: list) -> list:
     """Ensure every step has the required default fields."""
     result = []
     for i, step in enumerate(steps):
-        s = dict(step)
+        s = _normalize_step_inputs(step)
         # Generate ID if missing
         if not s.get("id"):
             s["id"] = _random_id("step_")

@@ -11,11 +11,15 @@ import type { Orchestration } from '@/types/orchestration';
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
-    kind?: 'text' | 'banner_orch' | 'banner_agent' | 'step_progress' | 'human_prompt';
+    kind?: 'text' | 'banner_orch' | 'banner_agent' | 'step_progress' | 'human_prompt' | 'tool_call' | 'tool_result' | 'routing';
     bannerText?: string;
     orchestration?: Orchestration;
     stepName?: string;
     stepStatus?: 'running' | 'complete';
+    toolName?: string;
+    toolArgs?: Record<string, any>;
+    toolPreview?: string;
+    routingDecision?: string;
 }
 
 interface BuilderPanelProps {
@@ -30,6 +34,90 @@ interface BuilderPanelProps {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isActivity(msg: ChatMessage): boolean {
+    return msg.kind === 'step_progress' || msg.kind === 'tool_call' || msg.kind === 'tool_result' || msg.kind === 'routing';
+}
+
+interface ActivityGroupProps {
+    events: ChatMessage[];
+    isLive: boolean;
+}
+
+function ActivityGroup({ events, isLive }: ActivityGroupProps) {
+    const [expanded, setExpanded] = useState(false);
+    const earlier = events.slice(0, -1);
+    const latest = events[events.length - 1];
+
+    const renderEvent = (msg: ChatMessage, i: number) => {
+        if (msg.kind === 'step_progress') {
+            const done = msg.stepStatus === 'complete';
+            return (
+                <div key={i} className="flex items-center gap-2 pl-1 py-0.5">
+                    {done ? (
+                        <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
+                    ) : (
+                        <Loader2 size={12} className="animate-spin text-purple-400 shrink-0" />
+                    )}
+                    <span className={`text-[11px] font-mono truncate ${done ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                        {msg.stepName}
+                    </span>
+                </div>
+            );
+        }
+        if (msg.kind === 'tool_call') {
+            return (
+                <div key={i} className="flex items-start gap-2 pl-1 py-0.5">
+                    <span className="text-violet-400 text-[10px] shrink-0 mt-0.5">🔧</span>
+                    <details className="flex-1 min-w-0">
+                        <summary className="text-[11px] text-violet-400 cursor-pointer list-none font-mono truncate">
+                            {msg.toolName?.replace(/_/g, ' ')}
+                        </summary>
+                        <pre className="bg-zinc-800/60 rounded p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
+                            {JSON.stringify(msg.toolArgs, null, 2)}
+                        </pre>
+                    </details>
+                </div>
+            );
+        }
+        if (msg.kind === 'tool_result') {
+            const preview = (msg.toolPreview || '').slice(0, 180);
+            const truncated = (msg.toolPreview || '').length > 180;
+            return (
+                <div key={i} className="pl-7 text-[10px] text-zinc-600 py-0.5 font-mono truncate">
+                    ↳ {preview}{truncated ? '…' : ''}
+                </div>
+            );
+        }
+        if (msg.kind === 'routing') {
+            if (!msg.routingDecision) return null;
+            return (
+                <div key={i} className="flex items-center gap-1.5 pl-1 py-0.5">
+                    <span className="text-[10px] text-zinc-600">→</span>
+                    <span className="text-[10px] font-mono text-amber-500">{msg.routingDecision}</span>
+                </div>
+            );
+        }
+        return null;
+    };
+
+    return (
+        <div className="space-y-0.5">
+            {(isLive || expanded) && earlier.map((msg, i) => renderEvent(msg, i))}
+            {!isLive && earlier.length > 0 && (
+                <button
+                    onClick={() => setExpanded(v => !v)}
+                    className="flex items-center gap-1 pl-1 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                    {expanded
+                        ? <><ChevronUp size={10} /> hide</>
+                        : <><ChevronDown size={10} /> {earlier.length} earlier step{earlier.length !== 1 ? 's' : ''}</>}
+                </button>
+            )}
+            {latest && renderEvent(latest, earlier.length)}
+        </div>
+    );
+}
 
 const TYPE_COLORS: Record<string, string> = {
     code: 'bg-sky-900/60 text-sky-400 border-sky-700/40',
@@ -222,11 +310,38 @@ export function BuilderPanel({
                         }
 
                         case 'tool_call':
+                            setMessages((prev) => [...prev, {
+                                role: 'assistant',
+                                kind: 'tool_call',
+                                content: '',
+                                toolName: event.tool_name as string,
+                                toolArgs: (event.args || {}) as Record<string, any>,
+                            }]);
                             setStreamingStatus(`🔧 ${(event.tool_name as string).replace(/_/g, ' ')}…`);
                             break;
 
                         case 'tool_result':
+                            setMessages((prev) => [...prev, {
+                                role: 'assistant',
+                                kind: 'tool_result',
+                                content: '',
+                                toolName: event.tool_name as string,
+                                toolPreview: (event.result || event.preview || '') as string,
+                            }]);
                             setStreamingStatus(`✓ ${((event.tool_name as string | undefined) ?? 'tool').replace(/_/g, ' ')}`);
+                            break;
+
+                        case 'step_complete':
+                            setMessages((prev) => markLastRunningComplete(prev));
+                            break;
+
+                        case 'routing_decision':
+                            setMessages((prev) => [...prev, {
+                                role: 'assistant',
+                                kind: 'routing',
+                                content: '',
+                                routingDecision: event.decision as string,
+                            }]);
                             break;
 
                         case 'orchestration_saved':
@@ -320,86 +435,97 @@ export function BuilderPanel({
 
             {/* ── Chat area ───────────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                {messages.map((msg, i) => {
-                    /* Step progress — compact single line */
-                    if (msg.kind === 'step_progress') {
-                        const done = msg.stepStatus === 'complete';
-                        return (
-                            <div key={i} className="flex items-center gap-2 pl-1 py-0.5">
-                                {done ? (
-                                    <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
-                                ) : (
-                                    <Loader2 size={12} className="animate-spin text-purple-400 shrink-0" />
-                                )}
-                                <span className={`text-[11px] font-mono truncate ${done ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                                    {msg.stepName}
-                                </span>
-                            </div>
-                        );
-                    }
+                {(() => {
+                    // Group consecutive activity messages; non-activity messages stay as singletons
+                    type Group = { type: 'activity'; events: ChatMessage[] } | { type: 'single'; msg: ChatMessage; idx: number };
+                    const groups: Group[] = [];
+                    let actBuf: ChatMessage[] = [];
+                    messages.forEach((msg, idx) => {
+                        if (isActivity(msg)) {
+                            actBuf.push(msg);
+                        } else {
+                            if (actBuf.length > 0) {
+                                groups.push({ type: 'activity', events: [...actBuf] });
+                                actBuf = [];
+                            }
+                            groups.push({ type: 'single', msg, idx });
+                        }
+                    });
+                    if (actBuf.length > 0) groups.push({ type: 'activity', events: actBuf });
 
-                    /* Orchestration success card */
-                    if (msg.kind === 'banner_orch') {
-                        return (
-                            <div key={i} className="rounded-xl border border-emerald-700/50 bg-emerald-900/20 overflow-hidden">
-                                <div className="flex items-center gap-2.5 px-4 py-3 border-b border-emerald-700/30">
-                                    <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-semibold text-emerald-300">Orchestration built!</p>
-                                        <p className="text-[11px] text-emerald-600 truncate">
-                                            &ldquo;{msg.bannerText}&rdquo; is ready in the canvas
-                                        </p>
+                    const lastGroupIdx = groups.length - 1;
+
+                    return groups.map((group, gi) => {
+                        if (group.type === 'activity') {
+                            const isLive = streaming && gi === lastGroupIdx;
+                            return <ActivityGroup key={`ag-${gi}`} events={group.events} isLive={isLive} />;
+                        }
+
+                        const { msg, idx } = group;
+
+                        /* Orchestration success card */
+                        if (msg.kind === 'banner_orch') {
+                            return (
+                                <div key={idx} className="rounded-xl border border-emerald-700/50 bg-emerald-900/20 overflow-hidden">
+                                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-emerald-700/30">
+                                        <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-semibold text-emerald-300">Orchestration built!</p>
+                                            <p className="text-[11px] text-emerald-600 truncate">
+                                                &ldquo;{msg.bannerText}&rdquo; is ready in the canvas
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="px-4 py-2.5">
+                                        <button
+                                            onClick={onClose}
+                                            className="flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+                                        >
+                                            View in Canvas <ArrowRight size={11} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="px-4 py-2.5">
-                                    <button
-                                        onClick={onClose}
-                                        className="flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
-                                    >
-                                        View in Canvas <ArrowRight size={11} />
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    }
+                            );
+                        }
 
-                    /* Agent saved — compact pill */
-                    if (msg.kind === 'banner_agent') {
+                        /* Agent saved — compact pill */
+                        if (msg.kind === 'banner_agent') {
+                            return (
+                                <div key={idx} className="flex justify-center">
+                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/40 text-zinc-500 text-[10px]">
+                                        <CheckCircle2 size={10} className="text-emerald-500" />
+                                        {msg.bannerText}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        /* Human prompt from evaluator — collapsible for long content */
+                        if (msg.kind === 'human_prompt') {
+                            return <HumanPromptCard key={idx} content={msg.content} />;
+                        }
+
+                        /* User bubble */
+                        if (msg.role === 'user') {
+                            return (
+                                <div key={idx} className="flex justify-end">
+                                    <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-br-sm bg-blue-600 text-white text-sm whitespace-pre-wrap">
+                                        {msg.content}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        /* Assistant text (final summary etc.) */
                         return (
-                            <div key={i} className="flex justify-center">
-                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/40 text-zinc-500 text-[10px]">
-                                    <CheckCircle2 size={10} className="text-emerald-500" />
-                                    {msg.bannerText}
+                            <div key={idx} className="flex justify-start">
+                                <div className="max-w-[88%] px-4 py-3 rounded-2xl rounded-bl-sm bg-zinc-800/80 text-zinc-200 text-sm prose prose-invert prose-sm max-w-none">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                 </div>
                             </div>
                         );
-                    }
-
-                    /* Human prompt from evaluator — collapsible for long content */
-                    if (msg.kind === 'human_prompt') {
-                        return <HumanPromptCard key={i} content={msg.content} />;
-                    }
-
-                    /* User bubble */
-                    if (msg.role === 'user') {
-                        return (
-                            <div key={i} className="flex justify-end">
-                                <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-br-sm bg-blue-600 text-white text-sm whitespace-pre-wrap">
-                                    {msg.content}
-                                </div>
-                            </div>
-                        );
-                    }
-
-                    /* Assistant text (final summary etc.) */
-                    return (
-                        <div key={i} className="flex justify-start">
-                            <div className="max-w-[88%] px-4 py-3 rounded-2xl rounded-bl-sm bg-zinc-800/80 text-zinc-200 text-sm prose prose-invert prose-sm max-w-none">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                            </div>
-                        </div>
-                    );
-                })}
+                    });
+                })()}
 
                 {/* ── Live status indicator ── */}
                 {streaming && streamingStatus && (

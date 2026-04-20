@@ -155,6 +155,16 @@ async def _translate_engine_events(event_source, run_id: str):
             final_text = _summarize_final(response, final_state, orchestration_saved_emitted)
             yield {"type": "final", "response": final_text}
 
+        elif etype == "step_complete":
+            yield {"type": "step_complete", "step_name": event.get("step_name", "")}
+
+        elif etype == "routing_decision":
+            yield {
+                "type": "routing_decision",
+                "decision": event.get("decision", ""),
+                "step_name": event.get("step_name", ""),
+            }
+
         elif etype in ("orchestration_error", "step_error"):
             yield {"type": "error", "message": event.get("error", "Unknown error")}
 
@@ -231,6 +241,7 @@ async def run_builder_resume_stream(
     from core.routes.orchestrations import load_orchestrations
 
     async def _event_source():
+        yield {"type": "thinking", "message": "Resuming..."}
         restored = SS.restore(run_id)
         run = restored.run
 
