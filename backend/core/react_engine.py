@@ -98,6 +98,7 @@ def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
             # later '{' positions are nested fields of this same object and
             # matching them risks treating `{"agents":[{"tool":"..."}]}` as a
             # real call. Treat this turn as a final text response.
+            print(f"DEBUG parse_tool_call: ✅ non-tool JSON at pos={pos}, keys={list(obj.keys())[:5]} → returning (None, None)", flush=True)
             return None, None
 
     return None, None
