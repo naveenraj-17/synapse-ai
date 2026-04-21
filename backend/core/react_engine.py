@@ -49,13 +49,19 @@ def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
     """
     cleaned = llm_output.replace("```json", "").replace("```", "").strip()
 
+    def _is_tool_call(obj) -> bool:
+        if not isinstance(obj, dict):
+            return False
+        name = obj.get("tool")
+        return isinstance(name, str) and bool(name.strip())
+
     # ── Fast path: <tool_call> XML wrapper (CLI providers) ──────────────────────
     import re as _re
     _tc_match = _re.search(r"<tool_call>(.*?)</tool_call>", cleaned, _re.DOTALL)
     if _tc_match:
         try:
             obj = json.loads(_tc_match.group(1).strip())
-            if isinstance(obj, dict) and "tool" in obj:
+            if _is_tool_call(obj):
                 return obj, None
         except json.JSONDecodeError:
             pass  # Fall through to bare-JSON detection
@@ -73,25 +79,26 @@ def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
     for pos in brace_positions:
         try:
             obj, _ = decoder.raw_decode(cleaned[pos:])
-            if isinstance(obj, dict) and "tool" in obj:
-                if pos > 0:
-                    # LLM prefixed the JSON with preamble text — log it so we
-                    # can monitor how often this happens.
-                    preamble_preview = cleaned[:min(pos, 120)].replace("\n", " ")
-                    print(
-                        f"DEBUG parse_tool_call: ⚠️  JSON tool call found after "
-                        f"{pos} chars of preamble: «{preamble_preview}…»",
-                        flush=True,
-                    )
-                return obj, None
         except json.JSONDecodeError:
             continue
-
-    # No valid tool-call JSON found anywhere in the output.
-    # If the output starts with '{' it looks like the LLM tried to produce
-    # JSON but got the syntax wrong — surface that as a parse error.
-    if brace_positions and brace_positions[0] == 0:
-        return None, "Output starts with '{' but is not a valid tool call JSON"
+        if _is_tool_call(obj):
+            if pos > 0:
+                # LLM prefixed the JSON with preamble text — log it so we
+                # can monitor how often this happens.
+                preamble_preview = cleaned[:min(pos, 120)].replace("\n", " ")
+                print(
+                    f"DEBUG parse_tool_call: ⚠️  JSON tool call found after "
+                    f"{pos} chars of preamble: «{preamble_preview}…»",
+                    flush=True,
+                )
+            return obj, None
+        if isinstance(obj, dict):
+            # Well-formed top-level JSON object but not a tool call (e.g. the
+            # LLM echoed a previous tool *result* as text). Stop scanning —
+            # later '{' positions are nested fields of this same object and
+            # matching them risks treating `{"agents":[{"tool":"..."}]}` as a
+            # real call. Treat this turn as a final text response.
+            return None, None
 
     return None, None
 
@@ -427,6 +434,9 @@ async def run_agent_step(
                     current_context_text += f"\nAssistant Thought: {llm_output}\n"
 
                 tool_name = tool_call.get("tool", "")
+                if not isinstance(tool_name, str) or not tool_name.strip():
+                    final_response = llm_output
+                    break
                 tool_args = tool_call.get("arguments", {})
                 last_tool_logged = tool_name  # record for next turn's log entry
 
