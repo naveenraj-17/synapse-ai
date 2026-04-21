@@ -851,8 +851,10 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             }
             for s in ext_servers
         ]
-        # Also include native MCP sessions (e.g. Google Workspace, filesystem)
-        # that are started programmatically and not stored in mcp_store.json
+        # Also include MCP sessions started programmatically (not in mcp_store.json).
+        # Sessions keyed as "ext_mcp_<name>" are external — strip the prefix and
+        # mark them as external so callers know to use "name__tool_name" format.
+        # Sessions without that prefix are native (no tool-name prefix needed).
         ext_keys = {f"ext_mcp_{s.get('name')}" for s in ext_servers}
         for sess_name, session in server_module.agent_sessions.items():
             if sess_name in ext_keys:
@@ -862,10 +864,12 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
                 tool_count = len(tools_result.tools)
             except Exception:
                 tool_count = 0
+            is_ext = sess_name.startswith("ext_mcp_")
+            display_name = sess_name[len("ext_mcp_"):] if is_ext else sess_name
             result.append({
-                "name": sess_name,
-                "label": sess_name.replace("_", " ").title(),
-                "type": "native_mcp",
+                "name": display_name,
+                "label": display_name.replace("_", " ").title(),
+                "type": "external_mcp" if is_ext else "native_mcp",
                 "status": "running",
                 "tool_count": tool_count,
             })
