@@ -28,6 +28,57 @@ from datetime import timedelta
 MAX_TURNS = 30
 
 
+def parse_all_tool_calls(llm_output: str) -> list[dict]:
+    """Extract ALL tool-call JSON objects from one LLM response, in order.
+
+    Unlike parse_tool_call, non-tool JSON objects are skipped (not an early-exit
+    trigger), so every tool-call found is returned.  The caller executes them
+    sequentially before making the next LLM call.
+    """
+    cleaned = llm_output.replace("```json", "").replace("```", "").strip()
+
+    def _is_tool_call(obj) -> bool:
+        if not isinstance(obj, dict):
+            return False
+        name = obj.get("tool")
+        return isinstance(name, str) and bool(name.strip())
+
+    import re as _re
+
+    # XML <tool_call> wrappers (CLI providers) — collect ALL matches in order
+    xml_calls: list[dict] = []
+    for _m in _re.finditer(r"<tool_call>(.*?)</tool_call>", cleaned, _re.DOTALL):
+        try:
+            obj = json.loads(_m.group(1).strip())
+            if _is_tool_call(obj):
+                xml_calls.append(obj)
+        except json.JSONDecodeError:
+            pass
+    if xml_calls:
+        return xml_calls
+
+    if "{" not in cleaned:
+        return []
+
+    decoder = json.JSONDecoder()
+    tool_calls: list[dict] = []
+    used_end = -1  # end byte of the last decoded JSON blob (skip nested braces inside it)
+
+    for pos in [i for i, ch in enumerate(cleaned) if ch == "{"]:
+        if pos < used_end:
+            continue  # position is inside a previously consumed JSON object
+        try:
+            obj, end_offset = decoder.raw_decode(cleaned[pos:])
+            used_end = pos + end_offset
+        except json.JSONDecodeError:
+            continue
+        if _is_tool_call(obj):
+            tool_calls.append(obj)
+        # Non-tool JSON: advance used_end but keep scanning (do NOT stop early)
+
+    return tool_calls
+
+
 def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
     """Extract a tool call JSON from LLM text output.
 
@@ -416,28 +467,24 @@ async def run_agent_step(
             if llm_output.strip():
                 yield {"type": "llm_thought", "thought": llm_output, "turn": turn + 1}
 
-            # Parse tool call
-            tool_call, json_error = parse_tool_call(llm_output)
+            # Parse every tool call the LLM emitted in this response and execute
+            # them sequentially before the next LLM turn.  This prevents partial
+            # saves when a provider batches multiple calls into one response.
+            tool_calls = parse_all_tool_calls(llm_output)
 
-            if json_error:
-                current_context_text += f"\nSystem: JSON Parsing Error: {json_error}. Please Try Again with valid JSON.\n"
-                continue
-
-            if tool_call is None:
+            if not tool_calls:
                 final_response = llm_output
                 break
 
-            if tool_call and isinstance(tool_call, dict):
-                # Persist the LLM's reasoning into context so it carries across turns.
-                # This gives the agent full visibility into its own chain-of-thought
-                # (including the tool-call JSON) when building the next turn's prompt.
-                if llm_output.strip():
-                    current_context_text += f"\nAssistant Thought: {llm_output}\n"
+            # Append the LLM's full reasoning to context once, before any execution,
+            # so the next turn has the chain-of-thought (including the tool-call JSON).
+            if llm_output.strip():
+                current_context_text += f"\nAssistant Thought: {llm_output}\n"
 
+            for tool_call in tool_calls:
                 tool_name = tool_call.get("tool", "")
                 if not isinstance(tool_name, str) or not tool_name.strip():
-                    final_response = llm_output
-                    break
+                    continue
                 tool_args = tool_call.get("arguments", {})
                 last_tool_logged = tool_name  # record for next turn's log entry
 
@@ -831,11 +878,6 @@ async def run_agent_step(
                     print(f"DEBUG: ❌ Tool '{tool_name}' failed: {error_msg}", flush=True)
                     current_context_text += f"\nSystem: Error executing tool {tool_name}: {error_msg}\n"
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Error: {error_msg}"}
-
-            else:
-                # No tool call, final answer
-                final_response = llm_output
-                break
 
     if not final_response:
         final_response = "I completed the requested actions."
