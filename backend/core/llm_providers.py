@@ -123,6 +123,8 @@ def detect_mode_from_model(model_name: str) -> str:
         return "cloud"
     if m.startswith("locv1."):
         return "local"
+    if m.startswith("ollama."):
+        return "local"
     return "local"
 
 
@@ -158,6 +160,8 @@ def detect_provider_from_model(model_name: str) -> str:
         return "openai_compatible"
     if m.startswith("locv1."):
         return "local_compatible"
+    if m.startswith("ollama."):
+        return "ollama"
     return "ollama"
 
 
@@ -1795,6 +1799,8 @@ async def generate_response(
     
     else:
         # Local Ollama
+        # Strip the ollama. prefix — the Ollama API expects bare model names
+        _ollama_model = current_model[len("ollama."):] if current_model.startswith("ollama.") else current_model
         async with httpx.AsyncClient() as client:
             try:
                 # Try specific Ollama Tool Call format if tools are provided
@@ -1819,7 +1825,7 @@ async def generate_response(
                     response = await client.post(
                         f"{_ollama_base_url()}/api/chat",
                         json={
-                            "model": current_model,
+                            "model": _ollama_model,
                             "messages": messages,
                             "tools": tools,
                             "stream": False
@@ -1859,7 +1865,7 @@ async def generate_response(
                     response = await client.post(
                         f"{_ollama_base_url()}/api/generate",
                         json={
-                            "model": current_model,
+                            "model": _ollama_model,
                             "prompt": prompt_for_generate,
                             "system": augmented_system,
                             "stream": False
@@ -2061,6 +2067,7 @@ async def _embed_bedrock(texts: list[str], model: str, settings: dict) -> list[l
 
 
 async def _embed_ollama(texts: list[str], model: str) -> list[list[float]]:
+    model = model[len("ollama."):] if model.startswith("ollama.") else model
     url = f"{_ollama_base_url()}/api/embed"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:

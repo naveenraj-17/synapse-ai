@@ -587,9 +587,24 @@ export default function Home() {
 
     const userMessage = input.trim() || (attachedImages.length > 0 ? '[Images attached]' : '');
     const imagesToSend = attachedImages.map(img => img.base64);
+
+    // Route to human-step resume if there's an unanswered human_input_required in history
+    const lastHumanIdx = messages.findLastIndex(m => m.msgType === 'human_input_required');
+    if (lastHumanIdx !== -1) {
+      const hasReplyAfter = messages.slice(lastHumanIdx + 1).some(m => m.role === 'user');
+      if (!hasReplyAfter) {
+        const pendingStep = messages[lastHumanIdx];
+        if (pendingStep.data?.run_id) {
+          setInput('');
+          if (textareaRef.current) textareaRef.current.style.height = 'auto';
+          await handleHumanInputSubmit(pendingStep.data.run_id, pendingStep.data.orch_step_id, { response: userMessage });
+          return;
+        }
+      }
+    }
+
     setInput('');
     setAttachedImages([]);
-    // Reset textarea height
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setMessages(prev => [...prev, { role: 'user', content: userMessage, images: imagesToSend.length > 0 ? imagesToSend : undefined }]);
 
@@ -642,12 +657,192 @@ export default function Home() {
     }
   };
 
+  // ── Shared SSE event processor ────────────────────────────────────────────
+  // Handles every event type emitted by /api/chat/stream and the orchestration
+  // resume endpoint. Mutates stepState in place for per-stream thought tracking.
+  const handleSSEEvent = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: Record<string, any>,
+    stepState: { thoughts: string[]; orchStepId: string | null }
+  ): { done: boolean; error?: Error } => {
+    switch (data.type) {
+
+      // ── Standard events ────────────────────────────────────────────────────
+      case 'status':
+        setStreamingActivity(data.message);
+        setIsThinking(false);
+        break;
+
+      case 'thinking':
+        setIsThinking(true);
+        break;
+
+      case 'tool_execution': {
+        const toolDisplayName = (data.tool_name as string)
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (l: string) => l.toUpperCase());
+        const stepLabel = data.step_name ? ` · ${data.step_name}` : '';
+        setStreamingActivity(`🔧 ${toolDisplayName}${stepLabel}`);
+        setIsThinking(false);
+        break;
+      }
+
+      case 'tool_result': {
+        const resultToolName = data.tool_name
+          ? (data.tool_name as string).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+          : 'Tool';
+        setStreamingActivity(`✓ ${resultToolName}`);
+        setIsThinking(false);
+        break;
+      }
+
+      case 'llm_thought':
+        if (data.orch_step_id) {
+          if (data.orch_step_id !== stepState.orchStepId) {
+            stepState.thoughts = [];
+            stepState.orchStepId = data.orch_step_id as string;
+          }
+          stepState.thoughts = [...stepState.thoughts, data.thought as string];
+        } else {
+          pendingThoughtsRef.current = [...pendingThoughtsRef.current, data.thought as string];
+        }
+        setIsThinking(true);
+        break;
+
+      case 'response': {
+        const capturedThoughts = [...pendingThoughtsRef.current];
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.content as string,
+          intent: data.intent,
+          data: data.data,
+          tool: data.tool_name,
+          thoughts: capturedThoughts,
+        }]);
+        pendingThoughtsRef.current = [];
+        break;
+      }
+
+      // ── Orchestration lifecycle ────────────────────────────────────────────
+      case 'orchestration_start':
+        setStreamingActivity(`🚀 Starting orchestration`);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `🚀 ${(data.orchestration_name as string) || 'Orchestration'} started`,
+          msgType: 'orchestration_start',
+        }]);
+        break;
+
+      case 'step_start':
+        stepState.thoughts = [];
+        stepState.orchStepId = data.orch_step_id as string;
+        setStreamingActivity(`▶ ${(data.step_name as string) || 'Step'}`);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: (data.step_name as string) || 'Step',
+          msgType: 'step_start',
+          stepName: data.step_name,
+          stepType: data.step_type,
+          orchStepId: data.orch_step_id,
+        }]);
+        break;
+
+      case 'agent_step_result':
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.content as string,
+          intent: data.intent,
+          data: data.data,
+          tool: data.tool_name,
+          msgType: 'agent_step_result',
+          stepName: data.step_name,
+          orchStepId: data.orch_step_id,
+          thoughts: [...stepState.thoughts],
+        }]);
+        stepState.thoughts = [];
+        break;
+
+      case 'step_complete':
+        setStreamingActivity(`✓ ${(data.step_name as string) || 'Step'} complete`);
+        break;
+
+      case 'step_error':
+        setStreamingActivity(`✗ Step failed`);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `❌ Step failed: ${(data.error as string) || 'Unknown error'}`,
+          msgType: 'orchestration_start',
+        }]);
+        break;
+
+      case 'orchestration_complete':
+        setStreamingActivity(`Orchestration ${data.status as string}`);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `✅ Orchestration ${(data.status as string) || 'complete'}`,
+          msgType: 'orchestration_complete',
+        }]);
+        break;
+
+      case 'orchestration_error':
+        setStreamingActivity(`Orchestration error`);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `❌ Orchestration error: ${(data.error as string) || 'Unknown error'}`,
+          msgType: 'orchestration_complete',
+        }]);
+        break;
+
+      case 'human_input_required':
+        setStreamingActivity(null);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: (data.prompt as string) || 'Please provide input to continue.',
+          msgType: 'human_input_required',
+          data: {
+            fields: data.fields,
+            run_id: data.run_id,
+            orch_step_id: data.orch_step_id,
+            agent_context: data.agent_context,
+            channel_id: data.channel_id,
+          },
+        }]);
+        break;
+
+      // ── Parallel / loop / routing info ──────────────────────────────────────
+      case 'routing_decision':
+        setStreamingActivity(`🔀 Route: ${(data.decision as string) || (data.tool_name as string)}`);
+        break;
+
+      case 'loop_iteration':
+        setStreamingActivity(`🔄 Loop iteration ${data.iteration}/${data.total}`);
+        break;
+
+      case 'parallel_start':
+        setStreamingActivity(`⚡ Running ${data.branch_count} parallel branches`);
+        break;
+
+      case 'branch_start':
+        setStreamingActivity(`⚡ Branch ${((data.branch_index as number) ?? 0) + 1}/${data.branch_count}`);
+        break;
+
+      case 'merge_complete':
+        setStreamingActivity(`🔗 Merged ${data.input_count} results`);
+        break;
+
+      case 'done':
+        return { done: true };
+
+      case 'error':
+        return { done: false, error: new Error(data.message as string) };
+    }
+    return { done: false };
+  };
+
   // SSE Streaming implementation
   const processMessageSSE = async (content: string, images?: string[]) => {
     return new Promise<void>((resolve, reject) => {
-      // Track state local to this SSE stream
-      let currentStepThoughts: string[] = [];
-      let currentOrchStepId: string | null = null;
+      const stepState = { thoughts: [] as string[], orchStepId: null as string | null };
 
       console.log('[SSE] Attempting SSE connection to /api/chat/stream');
       fetch('/api/chat/stream', {
@@ -682,186 +877,9 @@ export default function Home() {
                 try {
                   const data = JSON.parse(line.slice(6));
                   console.log('[SSE Event]', data.type, data);
-
-                  switch (data.type) {
-
-                    // ── Standard events ──────────────────────────────────────────
-                    case 'status':
-                      setStreamingActivity(data.message);
-                      setIsThinking(false);
-                      break;
-
-                    case 'thinking':
-                      setIsThinking(true);
-                      break;
-
-                    case 'tool_execution': {
-                      const toolDisplayName = data.tool_name
-                        .replace(/_/g, ' ')
-                        .replace(/\b\w/g, (l: string) => l.toUpperCase());
-                      const stepLabel = data.step_name ? ` · ${data.step_name}` : '';
-                      setStreamingActivity(`🔧 ${toolDisplayName}${stepLabel}`);
-                      setIsThinking(false);
-                      break;
-                    }
-
-                    case 'tool_result': {
-                      const resultToolName = data.tool_name
-                        ? data.tool_name.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-                        : 'Tool';
-                      setStreamingActivity(`✓ ${resultToolName}`);
-                      setIsThinking(false);
-                      break;
-                    }
-
-                    case 'llm_thought':
-                      // Accumulate thoughts for the current step
-                      if (data.orch_step_id) {
-                        // Inside orchestration — reset if new step started
-                        if (data.orch_step_id !== currentOrchStepId) {
-                          currentStepThoughts = [];
-                          currentOrchStepId = data.orch_step_id;
-                        }
-                        currentStepThoughts = [...currentStepThoughts, data.thought];
-                      } else {
-                        // Single-agent flow — accumulate in pending ref
-                        pendingThoughtsRef.current = [...pendingThoughtsRef.current, data.thought];
-                      }
-                      setIsThinking(true);
-                      break;
-
-                    case 'response': {
-                      // Final response — capture thoughts snapshot then clear
-                      const capturedThoughts = [...pendingThoughtsRef.current];
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: data.content,
-                        intent: data.intent,
-                        data: data.data,
-                        tool: data.tool_name,
-                        thoughts: capturedThoughts,
-                      }]);
-                      pendingThoughtsRef.current = [];
-                      break;
-                    }
-
-                    // ── Orchestration lifecycle ──────────────────────────────────
-                    case 'orchestration_start':
-                      setStreamingActivity(`🚀 Starting orchestration`);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: `🚀 ${data.orchestration_name || 'Orchestration'} started`,
-                        msgType: 'orchestration_start',
-                      }]);
-                      break;
-
-                    case 'step_start':
-                      // Reset thoughts for this new step
-                      currentStepThoughts = [];
-                      currentOrchStepId = data.orch_step_id;
-                      setStreamingActivity(`▶ ${data.step_name || 'Step'}`);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: data.step_name || 'Step',
-                        msgType: 'step_start',
-                        stepName: data.step_name,
-                        stepType: data.step_type,
-                        orchStepId: data.orch_step_id,
-                      }]);
-                      break;
-
-                    case 'agent_step_result':
-                      // Sub-agent completed — add as purple-accented bubble with thoughts
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: data.content,
-                        intent: data.intent,
-                        data: data.data,
-                        tool: data.tool_name,
-                        msgType: 'agent_step_result',
-                        stepName: data.step_name,
-                        orchStepId: data.orch_step_id,
-                        thoughts: [...currentStepThoughts],
-                      }]);
-                      // Reset for next step
-                      currentStepThoughts = [];
-                      break;
-
-                    case 'step_complete':
-                      setStreamingActivity(`✓ ${data.step_name || 'Step'} complete`);
-                      break;
-
-                    case 'step_error':
-                      setStreamingActivity(`✗ Step failed`);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: `❌ Step failed: ${data.error || 'Unknown error'}`,
-                        msgType: 'orchestration_start', // reuse error styling via variant
-                      }]);
-                      break;
-
-                    case 'orchestration_complete':
-                      setStreamingActivity(`Orchestration ${data.status}`);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: `✅ Orchestration ${data.status || 'complete'}`,
-                        msgType: 'orchestration_complete',
-                      }]);
-                      break;
-
-                    case 'orchestration_error':
-                      setStreamingActivity(`Orchestration error`);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: `❌ Orchestration error: ${data.error || 'Unknown error'}`,
-                        msgType: 'orchestration_complete',
-                      }]);
-                      break;
-
-                    case 'human_input_required':
-                      setStreamingActivity(null);
-                      setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: data.prompt || 'Please provide input to continue.',
-                        msgType: 'human_input_required',
-                        data: {
-                          fields: data.fields,
-                          run_id: data.run_id,
-                          agent_context: data.agent_context,
-                          channel_id: data.channel_id,
-                        },
-                      }]);
-                      break;
-
-                    // ── Parallel / loop / routing info ───────────────────────────
-                    case 'routing_decision':
-                      setStreamingActivity(`🔀 Route: ${data.decision || data.tool_name}`);
-                      break;
-
-                    case 'loop_iteration':
-                      setStreamingActivity(`🔄 Loop iteration ${data.iteration}/${data.total}`);
-                      break;
-
-                    case 'parallel_start':
-                      setStreamingActivity(`⚡ Running ${data.branch_count} parallel branches`);
-                      break;
-
-                    case 'branch_start':
-                      setStreamingActivity(`⚡ Branch ${(data.branch_index ?? 0) + 1}/${data.branch_count}`);
-                      break;
-
-                    case 'merge_complete':
-                      setStreamingActivity(`🔗 Merged ${data.input_count} results`);
-                      break;
-
-                    case 'done':
-                      resolve();
-                      return;
-
-                    case 'error':
-                      reject(new Error(data.message));
-                      return;
-                  }
+                  const result = handleSSEEvent(data, stepState);
+                  if (result.done) { resolve(); return; }
+                  if (result.error) { reject(result.error); return; }
                 } catch (e) {
                   console.error('Failed to parse SSE event:', e);
                 }
@@ -875,6 +893,81 @@ export default function Home() {
           reject(err);
         });
     });
+  };
+
+  // Resume a paused orchestration after a HUMAN step
+  const handleHumanInputSubmit = async (
+    runId: string,
+    stepId: string | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    values: Record<string, any>
+  ) => {
+    const keys = Object.keys(values);
+    let userMessage: string;
+    if (keys.length === 1) {
+      const value = values[keys[0]];
+      userMessage = Array.isArray(value) ? (value as string[]).join(', ') : String(value);
+    } else {
+      userMessage = keys
+        .map(key => {
+          const value = values[key];
+          const displayValue = Array.isArray(value) ? (value as string[]).join(', ') : value;
+          return `${key}: ${displayValue}`;
+        })
+        .join(', ');
+    }
+
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsLoading(true);
+    setStreamingActivity('Resuming orchestration...');
+    setIsThinking(false);
+    pendingThoughtsRef.current = [];
+
+    try {
+      const response = await fetch(`/api/orchestrations/runs/${runId}/human-input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: values, step_id: stepId || '' }),
+      });
+
+      if (!response.ok) throw new Error(`Resume failed: ${response.status}`);
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      const decoder = new TextDecoder();
+      const stepState = { thoughts: [] as string[], orchStepId: null as string | null };
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const result = handleSSEEvent(data, stepState);
+              if (result.done || result.error) return;
+            } catch (e) {
+              console.error('Failed to parse human-input SSE event:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[HumanInput] Resume failed:', err);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error resuming orchestration.' }]);
+    } finally {
+      setIsLoading(false);
+      setStreamingActivity(null);
+      setIsThinking(false);
+      pendingThoughtsRef.current = [];
+    }
   };
 
   // HTTP fallback implementation (original logic)
@@ -957,9 +1050,10 @@ export default function Home() {
               <div className="prose prose-invert max-w-none text-zinc-100 font-normal mb-4">
                 {renderTextContent(msg.content)}
               </div>
-              {msg.data?.fields && (
-                <CollectDataForm data={msg.data} onSubmit={handleCollectDataSubmit} />
-              )}
+              <CollectDataForm
+                data={{ ...msg.data, fields: msg.data?.fields || [] }}
+                onSubmit={(values) => handleHumanInputSubmit(msg.data?.run_id, msg.data?.orch_step_id, values)}
+              />
               {msg.data?.channel_id && (
                 <div className="mt-2 text-[11px] text-zinc-500 font-mono">
                   📲 Notification sent to messaging channel

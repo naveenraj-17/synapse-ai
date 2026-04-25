@@ -401,7 +401,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             .then(res => res.json())
             .then(data => {
                 setAgentName(data.agent_name || 'Antigravity Agent');
-                setSelectedModel(data.model || 'mistral');
+                setSelectedModel(data.model || 'ollama.mistral');
                 setEmbeddingModel(data.embedding_model || '');
                 setMode(data.mode || 'local');
                 setOpenaiKey(data.openai_key || '');
