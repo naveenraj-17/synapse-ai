@@ -20,13 +20,21 @@ interface CollectDataFormProps {
 export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormProps) {
   const [values, setValues] = useState<Record<string, any>>({});
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+  const [defaultText, setDefaultText] = useState('');
+
+  const hasFields = data.fields.length > 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (!hasFields) {
+      onSubmit({ response: defaultText });
+      return;
+    }
+
     // Combine regular values and selected options
     const finalValues: Record<string, any> = {};
-    
+
     data.fields.forEach((field, idx) => {
       const key = field.label || `field_${idx}`;
       if (field.type === 'options') {
@@ -39,7 +47,7 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
         finalValues[key] = values[key] || '';
       }
     });
-    
+
     onSubmit(finalValues);
   };
 
@@ -67,6 +75,7 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
   };
 
   const isFormValid = () => {
+    if (!hasFields) return defaultText.trim().length > 0;
     return data.fields.every((field, idx) => {
       const key = field.label || `field_${idx}`;
       if (field.type === 'options') {
@@ -83,6 +92,15 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
   return (
     <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {!hasFields && (
+          <textarea
+            value={defaultText}
+            onChange={(e) => setDefaultText(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors resize-none"
+            placeholder="Type your response..."
+            rows={3}
+          />
+        )}
         {data.fields.map((field, idx) => {
           const key = field.label || `field_${idx}`;
           

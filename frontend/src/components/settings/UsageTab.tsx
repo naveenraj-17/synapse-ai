@@ -106,6 +106,7 @@ function fmtTime(ts: string) {
     } catch { return ts; }
 }
 function detectProvider(model: string): Provider {
+    if (model.startsWith('ollama.')) return 'ollama';
     if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) return 'openai';
     if (model.startsWith('claude')) return 'anthropic';
     if (model.startsWith('gemini')) return 'gemini';

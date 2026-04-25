@@ -20,7 +20,7 @@ TOKEN_FILE = os.path.join(DATA_DIR, "token.json")
 def load_settings():
     default_settings = {
         "agent_name": "System Agent", 
-        "model": "mistral",
+        "model": "ollama.mistral",
         "mode": "local",
         "openai_key": "",
         "anthropic_key": "",
