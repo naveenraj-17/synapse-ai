@@ -59,8 +59,9 @@ def maybe_vault(tool_name: str, raw_output: str) -> str:
         "size_chars": len(raw_output),
         "total_lines": total_lines,
         "message": (
-            f"Output too large ({len(raw_output):,} chars). Saved to vault. "
-            f"Use the Filesystem MCP read_file tool to access the data at: {path}"
+            f"Output too large ({len(raw_output):,} chars, {total_lines:,} lines). Saved to vault at: {path}. "
+            f"Instead: use read_file_by_lines with start_line/end_line to read a slice, "
+            f"or grep to search for specific values."
         ),
     })
 
