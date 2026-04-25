@@ -141,6 +141,60 @@ BUILDER_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "create_agents",
+            "description": (
+                "Create multiple agents at once and save them. Returns the created agents with their new IDs. "
+                "Prefer this over calling `create_agent` repeatedly when the plan needs more than one new agent — "
+                "one tool call instead of many avoids context bloat and timeout risk. "
+                "Each input item supports the same fields as `create_agent` plus a `role` string that is echoed "
+                "back in the response so callers can key results by role."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agents": {
+                        "type": "array",
+                        "description": "Array of agent specs to create. Each item must include name, description, type, tools, system_prompt. Optional: role, model, repos, db_configs.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "description": "Role label from the plan (echoed back; not persisted on the agent).",
+                                },
+                                "name": {"type": "string"},
+                                "description": {"type": "string"},
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["conversational", "code", "orchestrator"],
+                                },
+                                "tools": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "system_prompt": {"type": "string"},
+                                "model": {"type": "string"},
+                                "repos": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of repo IDs (use list_repos to find IDs).",
+                                },
+                                "db_configs": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": ["name", "description", "type", "tools", "system_prompt"],
+                        },
+                    },
+                },
+                "required": ["agents"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_agent",
             "description": "Update specific fields of an existing agent. Only the fields you provide will be changed.",
             "parameters": {
@@ -660,6 +714,55 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         save_user_agents(agents)
         return {"status": "created", "agent": agent}
 
+    elif tool_name == "create_agents":
+        specs = args.get("agents") or []
+        if not isinstance(specs, list) or not specs:
+            return {"error": "agents must be a non-empty array of agent specs"}
+        agents = load_user_agents()
+        existing_ids = {a.get("id") for a in agents}
+        created = []
+        errors = []
+        for i, spec in enumerate(specs):
+            if not isinstance(spec, dict):
+                errors.append({"index": i, "error": "spec is not an object"})
+                continue
+            for field in ("name", "description", "type", "tools", "system_prompt"):
+                if field not in spec:
+                    errors.append({"index": i, "role": spec.get("role"), "error": f"missing required field '{field}'"})
+                    break
+            else:
+                # Guarantee uniqueness even when called repeatedly in the same millisecond.
+                new_id = _random_id("agent_", length=10)
+                while new_id in existing_ids:
+                    new_id = _random_id("agent_", length=10)
+                existing_ids.add(new_id)
+                agent = {
+                    "id": new_id,
+                    "name": spec["name"],
+                    "description": spec.get("description", ""),
+                    "avatar": "default",
+                    "type": spec.get("type", "conversational"),
+                    "tools": spec.get("tools", ["all"]),
+                    "repos": spec.get("repos", []) or [],
+                    "db_configs": spec.get("db_configs", []) or [],
+                    "system_prompt": spec.get("system_prompt", ""),
+                    "orchestration_id": None,
+                    "model": spec.get("model") or None,
+                    "provider": None,
+                    "max_turns": None,
+                }
+                agents.append(agent)
+                created.append({
+                    "role": spec.get("role"),
+                    "id": new_id,
+                    "name": agent["name"],
+                    "type": agent["type"],
+                    "repos": agent["repos"],
+                })
+        if created:
+            save_user_agents(agents)
+        return {"status": "created", "agents": created, "errors": errors}
+
     elif tool_name == "update_agent":
         agents = load_user_agents()
         idx = next((i for i, a in enumerate(agents) if a["id"] == args["agent_id"]), None)
@@ -748,8 +851,10 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             }
             for s in ext_servers
         ]
-        # Also include native MCP sessions (e.g. Google Workspace, filesystem)
-        # that are started programmatically and not stored in mcp_store.json
+        # Also include MCP sessions started programmatically (not in mcp_store.json).
+        # Sessions keyed as "ext_mcp_<name>" are external — strip the prefix and
+        # mark them as external so callers know to use "name__tool_name" format.
+        # Sessions without that prefix are native (no tool-name prefix needed).
         ext_keys = {f"ext_mcp_{s.get('name')}" for s in ext_servers}
         for sess_name, session in server_module.agent_sessions.items():
             if sess_name in ext_keys:
@@ -759,10 +864,12 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
                 tool_count = len(tools_result.tools)
             except Exception:
                 tool_count = 0
+            is_ext = sess_name.startswith("ext_mcp_")
+            display_name = sess_name[len("ext_mcp_"):] if is_ext else sess_name
             result.append({
-                "name": sess_name,
-                "label": sess_name.replace("_", " ").title(),
-                "type": "native_mcp",
+                "name": display_name,
+                "label": display_name.replace("_", " ").title(),
+                "type": "external_mcp" if is_ext else "native_mcp",
                 "status": "running",
                 "tool_count": tool_count,
             })
@@ -929,11 +1036,13 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         dup = existing_ids.intersection(incoming_ids)
         if dup:
             return {"error": f"Duplicate step ids: {sorted(dup)}"}
-        # Offset canvas positions so newly-added steps land to the right of existing ones
-        base_x = -600 + len(existing) * 350
+        # Offset canvas positions so newly-added steps continue the zig-zag
+        # pattern past any existing steps.
+        offset = len(existing)
         filled = _fill_step_defaults(new_steps)
         for i, s in enumerate(filled):
-            s["position_x"] = base_x + i * 350
+            s["position_x"] = _POS_X_START + (offset + i) * _POS_X_STEP
+            s["position_y"] = _zigzag_y(offset + i)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_orchestrations(orchs)
@@ -977,9 +1086,10 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         # Normalize *_json fields (route_map_json → route_map, etc.)
         step = _normalize_step_inputs(step)
         filled = _fill_step_defaults([step])
-        # Position to the right of existing steps
-        base_x = -600 + len(existing) * 350
-        filled[0]["position_x"] = base_x
+        # Position continues the zig-zag past any existing steps.
+        offset = len(existing)
+        filled[0]["position_x"] = _POS_X_START + offset * _POS_X_STEP
+        filled[0]["position_y"] = _zigzag_y(offset)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_orchestrations(orchs)
@@ -1021,9 +1131,10 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             processed.append(step)
 
         filled = _fill_step_defaults(processed)
-        base_x = -600 + len(existing) * 350
+        offset = len(existing)
         for i, s in enumerate(filled):
-            s["position_x"] = base_x + i * 350
+            s["position_x"] = _POS_X_START + (offset + i) * _POS_X_STEP
+            s["position_y"] = _zigzag_y(offset + i)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_orchestrations(orchs)
@@ -1315,6 +1426,19 @@ def _normalize_patch_arg(args: dict) -> dict:
     return legacy if isinstance(legacy, dict) else {}
 
 
+# Canvas layout constants. Zig-zag keeps long flows visible within typical
+# screen widths by using vertical space instead of a single long horizontal line.
+_POS_X_START = -600
+_POS_X_STEP = 260
+_POS_Y_AMPLITUDE = 180.0
+
+
+def _zigzag_y(index: int) -> float:
+    """Triangle-wave y: center → up → center → down, repeating every 4 steps."""
+    pattern = (0.0, -_POS_Y_AMPLITUDE, 0.0, _POS_Y_AMPLITUDE)
+    return pattern[index % 4]
+
+
 def _fill_step_defaults(steps: list) -> list:
     """Ensure every step has the required default fields."""
     result = []
@@ -1323,11 +1447,11 @@ def _fill_step_defaults(steps: list) -> list:
         # Generate ID if missing
         if not s.get("id"):
             s["id"] = _random_id("step_")
-        # Canvas positions: simple left-to-right layout
+        # Canvas positions: zig-zag so more steps fit in screen width.
         if "position_x" not in s:
-            s["position_x"] = -600 + i * 350
+            s["position_x"] = _POS_X_START + i * _POS_X_STEP
         if "position_y" not in s:
-            s["position_y"] = 0.0
+            s["position_y"] = _zigzag_y(i)
         # Defaults
         s.setdefault("agent_id", None)
         s.setdefault("prompt_template", None)

@@ -82,6 +82,11 @@ This demo highlights a multi-agent software development system that writes code 
 
 https://github.com/user-attachments/assets/95a511e1-e3e9-4812-b9ca-f7f4c28ef80f
 
+### Native Orchestration Builder
+Instead of manually dragging and dropping to create your flow, you can now just chat with the builder. Tell it what kind of orchestration you want, and the AI will build the DAG for you. Once it maps it out, you can just start running it immediately.
+
+https://github.com/user-attachments/assets/282cc99d-cdea-4ad0-b648-f22112c6e295
+
 ## The Tool Ecosystem
 
 Synapse agents are powerful because of what they can do. Every tool is a separate MCP process — isolated, composable, and safe.

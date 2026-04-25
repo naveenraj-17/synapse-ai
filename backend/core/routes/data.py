@@ -199,7 +199,7 @@ async def get_models():
             async with httpx.AsyncClient() as client:
                 r = await client.get(f"{os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')}/api/tags", timeout=3.0)
                 if r.status_code == 200:
-                    models = [m["name"] for m in r.json().get("models", [])]
+                    models = [f"ollama.{m['name']}" for m in r.json().get("models", [])]
                     # Simple heuristic: models with 'embed' in name are likely for embeddings
                     embeds = [m for m in models if "embed" in m.lower()]
                     return True, models, embeds

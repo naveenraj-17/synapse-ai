@@ -106,6 +106,16 @@ async def _translate_engine_events(event_source, run_id: str):
                         yield {"type": "agent_saved", "agent": agent_obj}
                 except Exception:
                     pass
+            elif tool_name == "create_agents":
+                try:
+                    parsed = json.loads(preview)
+                    agents_list = parsed.get("agents")
+                    if isinstance(agents_list, list):
+                        for agent_obj in agents_list:
+                            if isinstance(agent_obj, dict) and "id" in agent_obj:
+                                yield {"type": "agent_saved", "agent": agent_obj}
+                except Exception:
+                    pass
             elif tool_name in ("create_orchestration", "update_orchestration"):
                 # Legacy monolithic tool path
                 try:
