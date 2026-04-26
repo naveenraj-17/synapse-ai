@@ -1,9 +1,8 @@
-# Synapse AI — A Multi-Agent Orchestrator
+# Synapse AI — Multi-Agent Orchestration Platform
 
-*A tool becomes an agent. An agent becomes a pipeline.*
-*A pipeline becomes whatever you were too busy to build.*
+*Build AI workflows that actually ship.*
 
-**Build AI agents that actually do things.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can expose through an MCP server, a webhook, or a Python script — if you can write it, agents can use it.
+**Wire agents, tools, and LLMs into deterministic pipelines — without the framework lock-in.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can expose through an MCP server, a webhook, or a Python script — if you can write it, agents can use it.
 
 ---
 
@@ -49,20 +48,47 @@ synapse uninstall # remove Synapse and clean up installed files
 
 ## What Makes Synapse Different
 
-Most AI agent frameworks give you a loop and a few toy tools. Synapse gives you a production-grade platform:
+Most agent frameworks hand you a loop, a few toy tools, and a tutorial. Synapse is a production-grade orchestration platform built for the real thing:
 
-- **ReAct reasoning engine** — agents think, act, observe, and iterate for any number of turns per task
-- **8 built-in tool servers** ready to use out of the box
-- **Advanced Python Tool** — dynamically write and execute Python code in a secure sandbox
-- **Schedule Agents** — trigger agents and orchestrations automatically using a cron schedule
-- **Messaging Apps** — effortlessly connect agents to messaging platforms like Slack and Discord
-- **Import & Export** — portably share orchestrations, agents, and MCP server configs
-- **Plug in any MCP server** — local stdio or remote HTTP, added in seconds via the UI
-- **Build custom tools with Webhooks and Python** — instantly convert any webhook (zero-code) or Python script into an agent tool.
-- **AI Builder** — a built-in multi-agent orchestration that designs, plans, and creates other orchestrations through natural language conversation, with a human approval gate before anything is written
-- **Orchestrate multiple agents** as a DAG — parallel branches, routing logic, loops, human checkpoints
-- **Persistent vault** — agents save and share files across sessions and runs
-- **Local-first** — runs entirely on your machine with Ollama, local v1-compatible servers (vLLM, LM Studio), or CLI providers (Claude, Gemini, Codex), or connect any cloud LLM
+### Cut Costs Without Cutting Quality
+Run a different model at every step. Use a fast, cheap model for routing and classification; switch to a powerful model only for the steps that need it. One orchestration, many models — you control exactly where the compute goes.
+
+### Workflows That Actually Do What You Designed
+Orchestrations are strict DAGs. Execution follows the exact path you defined — no surprises, no hallucinated detours. For steps where the next action is already known (fetch this, parse that, write here), use **Tool** and **LLM** steps instead of full agents: zero reasoning overhead, deterministic output, and far cheaper to run.
+
+### Turn Anything Into a Tool
+- **Any Python program** → drop it in, it becomes a sandboxed agent tool
+- **Any API or webhook** → describe its schema, agents call it natively
+- **Any MCP server** → local subprocess or remote HTTP, connected in seconds
+- **Any orchestration** → promote it to an agent; chain orchestrations like functions
+
+### Never Blocked on a Human Decision
+**Human** steps pause execution mid-workflow and wait. When the person responds — via the UI, Slack, Telegram, or any connected messaging channel — the run resumes exactly where it left off. No polling, no timeouts you didn't set.
+
+### Run It Anywhere, Own Your Data
+Full local operation with Ollama. Or mix: local models for some agents, cloud APIs for others. No vendor lock-in on models, no data sent anywhere you didn't choose. Persistent vault stores files across agent sessions on your machine.
+
+### Built-In Scheduling & Messaging
+Schedule any agent or orchestration to run on a cron or interval. Results are pushed directly to Slack, Discord, Telegram, Teams, or WhatsApp — with multi-agent mode so users can switch agents mid-chat.
+
+---
+
+## Under the Hood
+
+| Capability | Detail |
+|---|---|
+| **Multi-model orchestrations** | Per-step model override — mix Gemini Flash, Claude Opus, and local Ollama in one workflow |
+| **Orchestrations as agents** | Promote any orchestration to an agent; nest pipelines inside pipelines |
+| **Deterministic Tool steps** | Skip the ReAct loop entirely — call a specific tool directly with state values |
+| **Resumable human gates** | Human steps survive server restarts; runs pick up exactly where they paused |
+| **Docker-sandboxed Python** | Agents write and execute Python in an isolated container — safe by default |
+| **Stealth web scraping** | Built-in anti-bot evasion; works on LinkedIn, financial sites, JS-heavy pages |
+| **Semantic code search** | Index any repo; agents query it by natural language and get file + line results |
+| **Cost limits per run** | Set a max-spend per orchestration run — execution halts if the budget is hit |
+| **5 messaging platforms** | Slack, Discord, Telegram, Teams, WhatsApp — with per-channel agent binding |
+| **14+ LLM providers** | Cloud, local, and CLI providers; no API key needed for Claude/Gemini/Codex CLI |
+| **Import/Export packs** | Portable bundles of agents + orchestrations + MCP configs; 3 curated starter packs |
+| **AI Builder** | Chat with a meta-agent that designs and materializes orchestrations for you |
 
 ---
 
