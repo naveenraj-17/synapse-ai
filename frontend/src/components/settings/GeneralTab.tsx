@@ -50,6 +50,8 @@ export function GeneralTab({
 }: GeneralTabProps) {
     const [embedChecking, setEmbedChecking] = useState(false);
     const [newDir, setNewDir] = useState('');
+    const [vaultDraft, setVaultDraft] = useState(String(vaultThreshold));
+    const [compactDraft, setCompactDraft] = useState(String(autoCompactThreshold));
     const [embedCheckState, setEmbedCheckState] = useState<EmbedCheckState | null>(null);
     const [dbForm, setDbForm] = useState<DbForm>({ host: 'localhost', port: '5432', username: 'postgres', password: '', dbName: 'synapse' });
     const [setupInProgress, setSetupInProgress] = useState(false);
@@ -159,8 +161,13 @@ export function GeneralTab({
                         </p>
                         <input
                             type="number"
-                            value={vaultThreshold}
-                            onChange={(e) => setVaultThreshold(Math.max(1, parseInt(e.target.value) || 1))}
+                            value={vaultDraft}
+                            onChange={(e) => setVaultDraft(e.target.value)}
+                            onBlur={() => {
+                                const v = Math.max(1, parseInt(vaultDraft) || 1);
+                                setVaultThreshold(v);
+                                setVaultDraft(String(v));
+                            }}
                             className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
                             min={1}
                         />
@@ -195,8 +202,13 @@ export function GeneralTab({
                         </p>
                         <input
                             type="number"
-                            value={autoCompactThreshold}
-                            onChange={(e) => setAutoCompactThreshold(Math.max(10000, parseInt(e.target.value) || 10000))}
+                            value={compactDraft}
+                            onChange={(e) => setCompactDraft(e.target.value)}
+                            onBlur={() => {
+                                const v = Math.max(10000, parseInt(compactDraft) || 10000);
+                                setAutoCompactThreshold(v);
+                                setCompactDraft(String(v));
+                            }}
                             className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
                             min={10000}
                         />
