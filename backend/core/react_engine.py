@@ -11,6 +11,7 @@ import httpx
 
 from core.config import load_settings
 from core.vault import maybe_vault, expand_vault_mentions
+from core.compaction import maybe_compact
 from core.session import (
     _get_session_id, _get_session_state,
     _apply_sticky_args, _clear_session_embeddings,
@@ -386,6 +387,7 @@ async def run_agent_step(
     # <<BROWSER_STATE>> block so the agent retains full action history even
     # though the DOM snapshot is replaced on each navigation/click.
     browser_action_history: list[str] = []
+    _has_compacted = False  # anti-thrash: only compact once per run
 
     # Build type-aware set of always-allowed tools
     always_allowed = set(DEFAULT_TOOLS_BY_TYPE.get("all_types", set()))
@@ -433,6 +435,32 @@ async def run_agent_step(
             else:
                 active_prompt = current_context_text
                 active_history = []
+
+            # Auto-compact: summarise accumulated context when it exceeds the threshold.
+            # Gated on turn > 0 (nothing to compact on the first turn) and
+            # _has_compacted (anti-thrash: skip if we already compacted this run so we
+            # don't loop calling the LLM when a single output fills the window).
+            if turn > 0 and not _has_compacted:
+                _compact_ctx, _compact_hist, _compact_path = await maybe_compact(
+                    current_context_text,
+                    recent_history_messages,
+                    current_settings,
+                    current_model,
+                    mode,
+                    current_settings,
+                    session_id,
+                    agent_id_for_session,
+                )
+                if _compact_ctx is not current_context_text:
+                    current_context_text = _compact_ctx
+                    recent_history_messages = _compact_hist
+                    active_prompt = current_context_text
+                    active_history = []
+                    _has_compacted = True
+                    if _compact_path is not None:
+                        yield {"type": "system", "message": f"Context compacted — original archived at: {_compact_path}"}
+                    else:
+                        yield {"type": "system", "message": "Context trimmed — oldest tool outputs dropped to stay within threshold."}
 
             # Safety guard: truncate if too long
             total_prompt_chars = len(active_prompt) + len(active_sys_prompt) + len(memory_context)

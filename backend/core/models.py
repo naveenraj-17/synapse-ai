@@ -104,6 +104,8 @@ class Settings(BaseModel):
     global_config: dict[str, str] = {}
     vault_enabled: bool = True
     vault_threshold: int = 100000
+    auto_compact_enabled: bool = False
+    auto_compact_threshold: int = 100000
     allow_db_write: bool = False  # If False, only SELECT/SHOW/DESCRIBE queries allowed
     embed_code: bool = False  # If False, search_codebase is disabled and postgres not required
     bash_allowed_dirs: list[str] = []  # Extra dirs the bash tool can run commands in (repos + vault always included)
