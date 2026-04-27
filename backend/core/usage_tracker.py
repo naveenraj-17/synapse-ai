@@ -149,6 +149,55 @@ def log_usage(
     )
 
 
+def log_compaction_event(
+    *,
+    stage: str,                        # "trim" | "llm_summary"
+    chars_before: int,
+    chars_after: int,
+    session_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    archive_path: Optional[str] = None,
+    model: str = "",
+):
+    """Append a compaction event to usage_logs.json.
+
+    Tokens and cost are zero — the Stage-2 LLM call is already captured by the
+    regular log_usage() call inside llm_providers. This record exists solely for
+    observability: when did compaction fire, how much was saved, where is the archive.
+    """
+    chars_saved = chars_before - chars_after
+    reduction_pct = round(chars_saved / chars_before * 100) if chars_before > 0 else 0
+    record = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "event_type": "compaction",
+        "source": "compaction",
+        "stage": stage,
+        "session_id": session_id or "unknown",
+        "agent_id": agent_id or "unknown",
+        "chars_before": chars_before,
+        "chars_after": chars_after,
+        "chars_saved": chars_saved,
+        "reduction_pct": reduction_pct,
+        "archive_path": archive_path,
+        "model": model,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost": 0.0,
+        "latency_seconds": 0.0,
+    }
+    with _lock:
+        logs = _load_logs()
+        logs.append(record)
+        _save_logs(logs)
+    archive_note = f" → archived: {archive_path}" if archive_path else ""
+    print(
+        f"DEBUG usage: [compaction/{stage}] "
+        f"{chars_before:,} → {chars_after:,} chars (-{reduction_pct}%){archive_note}",
+        flush=True,
+    )
+
+
 # -------------------------------------------------------------
 # Query helpers
 # -------------------------------------------------------------
@@ -196,13 +245,16 @@ def get_usage_summary() -> dict:
     total_cost = 0.0
     total_input = 0
     total_output = 0
-    total_requests = len(logs)
+    # Compaction events are observational (0 tokens/cost) — exclude from request count
+    total_requests = sum(1 for r in logs if r.get("event_type") != "compaction")
     by_model: dict[str, dict] = {}
     by_session: dict[str, dict] = {}   # keyed by session_id (chat)
     by_run: dict[str, dict] = {}       # keyed by run_id (orchestration runs)
     by_schedule: dict[str, dict] = {}  # keyed by run_id (schedule runs)
 
     for r in logs:
+        if r.get("event_type") == "compaction":
+            continue  # purely observational — skip all aggregates
         model = r.get("model", "unknown")
         provider = r.get("provider", "unknown")
         session = r.get("session_id", "unknown")

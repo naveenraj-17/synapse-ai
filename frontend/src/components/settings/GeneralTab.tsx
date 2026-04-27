@@ -23,6 +23,10 @@ interface GeneralTabProps {
     setVaultEnabled: (v: boolean) => void;
     vaultThreshold: number;
     setVaultThreshold: (v: number) => void;
+    autoCompactEnabled: boolean;
+    setAutoCompactEnabled: (v: boolean) => void;
+    autoCompactThreshold: number;
+    setAutoCompactThreshold: (v: number) => void;
     allowDbWrite: boolean;
     setAllowDbWrite: (v: boolean) => void;
     embedCode: boolean;
@@ -37,6 +41,8 @@ export function GeneralTab({
     agentName, setAgentName,
     vaultEnabled, setVaultEnabled,
     vaultThreshold, setVaultThreshold,
+    autoCompactEnabled, setAutoCompactEnabled,
+    autoCompactThreshold, setAutoCompactThreshold,
     allowDbWrite, setAllowDbWrite,
     embedCode, setEmbedCode,
     bashAllowedDirs, setBashAllowedDirs,
@@ -44,6 +50,8 @@ export function GeneralTab({
 }: GeneralTabProps) {
     const [embedChecking, setEmbedChecking] = useState(false);
     const [newDir, setNewDir] = useState('');
+    const [vaultDraft, setVaultDraft] = useState(String(vaultThreshold));
+    const [compactDraft, setCompactDraft] = useState(String(autoCompactThreshold));
     const [embedCheckState, setEmbedCheckState] = useState<EmbedCheckState | null>(null);
     const [dbForm, setDbForm] = useState<DbForm>({ host: 'localhost', port: '5432', username: 'postgres', password: '', dbName: 'synapse' });
     const [setupInProgress, setSetupInProgress] = useState(false);
@@ -153,12 +161,60 @@ export function GeneralTab({
                         </p>
                         <input
                             type="number"
-                            value={vaultThreshold}
-                            onChange={(e) => setVaultThreshold(Math.max(1, parseInt(e.target.value) || 1))}
+                            value={vaultDraft}
+                            onChange={(e) => setVaultDraft(e.target.value)}
+                            onBlur={() => {
+                                const v = Math.max(1, parseInt(vaultDraft) || 1);
+                                setVaultThreshold(v);
+                                setVaultDraft(String(v));
+                            }}
                             className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
                             min={1}
                         />
                         <p className="text-xs text-zinc-600">Responses longer than this many characters will be saved to a file.</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="space-y-4">
+                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Auto Context Compaction</label>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-xs text-zinc-600 mt-0.5">
+                            When the accumulated context exceeds the threshold, the agent summarises everything so far to ~30% of its size and archives the original to the vault so nothing is lost.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setAutoCompactEnabled(!autoCompactEnabled)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${autoCompactEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${autoCompactEnabled ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                        />
+                    </button>
+                </div>
+                {autoCompactEnabled && (
+                    <div className="space-y-2">
+                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Compaction Threshold (characters)</label>
+                        <p className="text-xs text-zinc-500">
+                            ≈ <span className="text-zinc-300 font-semibold">{Math.round(autoCompactThreshold / 4).toLocaleString()}</span> tokens
+                            <span className="text-zinc-600 ml-1">(at ~4 chars / token)</span>
+                        </p>
+                        <input
+                            type="number"
+                            value={compactDraft}
+                            onChange={(e) => setCompactDraft(e.target.value)}
+                            onBlur={() => {
+                                const v = Math.max(10000, parseInt(compactDraft) || 10000);
+                                setAutoCompactThreshold(v);
+                                setCompactDraft(String(v));
+                            }}
+                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
+                            min={10000}
+                        />
+                        <p className="text-xs text-zinc-600">
+                            When context exceeds this, it is compacted using the current model. The full original is archived to the vault.
+                        </p>
                     </div>
                 )}
             </div>

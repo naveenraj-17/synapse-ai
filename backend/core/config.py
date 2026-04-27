@@ -49,6 +49,8 @@ def load_settings():
         "global_config": {},
         "vault_enabled": True,
         "vault_threshold": 100000,
+        "auto_compact_enabled": False,
+        "auto_compact_threshold": 100000,
         "allow_db_write": False,
         "coding_agent_enabled": False,
         "report_agent_enabled": True,
