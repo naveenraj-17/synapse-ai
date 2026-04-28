@@ -258,7 +258,14 @@ async def submit_human_input(run_id: str, request: Request):
             event = await queue.get()
             if event is _SENTINEL:
                 break
-            yield f"data: {json.dumps(event, default=str)}\n\n"
+            etype = event.get("type")
+            if etype == "final":
+                if event.get("orch_step_id"):
+                    yield f"data: {json.dumps({'type': 'agent_step_result', 'orch_step_id': event.get('orch_step_id'), 'step_name': event.get('step_name', ''), 'content': event.get('response', ''), 'intent': event.get('intent', 'chat'), 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'response', 'content': event.get('response', ''), 'intent': event.get('intent', 'chat'), 'data': event.get('data'), 'tool_name': event.get('tool_name')}, default=str)}\n\n"
+            else:
+                yield f"data: {json.dumps(event, default=str)}\n\n"
         yield "data: {\"type\": \"done\"}\n\n"
 
     return StreamingResponse(
