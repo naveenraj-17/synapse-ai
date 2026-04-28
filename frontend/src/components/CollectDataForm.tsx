@@ -74,20 +74,6 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
     }
   };
 
-  const isFormValid = () => {
-    if (!hasFields) return defaultText.trim().length > 0;
-    return data.fields.every((field, idx) => {
-      const key = field.label || `field_${idx}`;
-      if (field.type === 'options') {
-        if (field.multiple) {
-          return (selectedOptions[key] || []).length > 0;
-        } else {
-          return !!values[key];
-        }
-      }
-      return !!values[key];
-    });
-  };
 
   return (
     <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800">
@@ -147,7 +133,6 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
                   onChange={(e) => setValue(key, e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors"
                   placeholder={`Enter ${field.type}...`}
-                  required
                 />
               )}
             </div>
@@ -158,7 +143,7 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
           <button
             type="submit"
             className="flex-1 bg-white text-black px-4 py-2 text-sm font-bold uppercase hover:bg-zinc-200 transition-colors"
-            disabled={!isFormValid()}
+            disabled={false}
           >
             Submit
           </button>
