@@ -1086,11 +1086,6 @@ export default function Home() {
               <div className="absolute -top-3 left-2 bg-zinc-950 border border-amber-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-500 font-mono">
                 Human Input Required
               </div>
-              {msg.data?.agent_context && (
-                <div className="mb-3 p-3 bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 font-mono whitespace-pre-wrap max-h-40 overflow-auto rounded-sm">
-                  {msg.data.agent_context}
-                </div>
-              )}
               <div className="prose prose-invert max-w-none text-zinc-100 font-normal mb-4">
                 {renderTextContent(msg.content)}
               </div>
