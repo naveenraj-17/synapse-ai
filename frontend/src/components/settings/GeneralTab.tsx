@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
 type EmbedIssue = 'no_psql' | 'no_db' | 'existing_url_broken' | 'no_pgvector' | 'connection_error';
@@ -52,6 +52,9 @@ export function GeneralTab({
     const [newDir, setNewDir] = useState('');
     const [vaultDraft, setVaultDraft] = useState(String(vaultThreshold));
     const [compactDraft, setCompactDraft] = useState(String(autoCompactThreshold));
+
+    useEffect(() => { setVaultDraft(String(vaultThreshold)); }, [vaultThreshold]);
+    useEffect(() => { setCompactDraft(String(autoCompactThreshold)); }, [autoCompactThreshold]);
     const [embedCheckState, setEmbedCheckState] = useState<EmbedCheckState | null>(null);
     const [dbForm, setDbForm] = useState<DbForm>({ host: 'localhost', port: '5432', username: 'postgres', password: '', dbName: 'synapse' });
     const [setupInProgress, setSetupInProgress] = useState(false);
