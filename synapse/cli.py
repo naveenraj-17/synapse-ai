@@ -473,11 +473,33 @@ def _start_command(
     frontend_port: int | None = None,
     profile: bool = False,
 ):
-    # Resolve effective ports: CLI arg > env var > default
-    effective_backend_port = backend_port if backend_port is not None else DEFAULT_BACKEND_PORT
-    effective_frontend_port = frontend_port if frontend_port is not None else DEFAULT_FRONTEND_PORT
-
     check_prerequisites()
+
+    # First-run: no settings.json yet — run setup wizard before starting
+    _settings_file = DATA_DIR / "settings.json"
+    if not _settings_file.exists():
+        try:
+            from synapse import setup_wizard
+            setup_wizard.run()
+        except Exception as e:
+            print(f"Note: setup wizard error ({e}). Run 'synapse setup' to configure.")
+
+    # Resolve effective ports: CLI arg > settings.json > env var > default
+    _saved_backend_port: int | None = None
+    _saved_frontend_port: int | None = None
+    try:
+        import json as _json
+        _s = _json.loads(_settings_file.read_text())
+        if "backend_port" in _s:
+            _saved_backend_port = int(_s["backend_port"])
+        if "frontend_port" in _s:
+            _saved_frontend_port = int(_s["frontend_port"])
+    except Exception:
+        pass
+
+    effective_backend_port = backend_port if backend_port is not None else (_saved_backend_port or DEFAULT_BACKEND_PORT)
+    effective_frontend_port = frontend_port if frontend_port is not None else (_saved_frontend_port or DEFAULT_FRONTEND_PORT)
+
     ensure_data_dir()
 
     # Prevent accidental foreground start if processes already running

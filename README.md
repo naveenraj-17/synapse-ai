@@ -1,11 +1,11 @@
 # Synapse AI — Multi-Agent Orchestration Platform
 
 <p align="center">
-
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/9UN45qyGh8)
-[![GitHub stars](https://img.shields.io/github/stars/naveenraj-17/synapse-ai?style=social)](https://github.com/naveenraj-17/synapse-ai)
-[![License](https://img.shields.io/github/license/naveenraj-17/synapse-ai)](https://github.com/naveenraj-17/synapse-ai?tab=AGPL-3.0-1-ov-file)
-
+  <a href="https://discord.gg/9UN45qyGh8"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/naveenraj-17/synapse-ai"><img src="https://img.shields.io/github/stars/naveenraj-17/synapse-ai?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/naveenraj-17/synapse-ai?tab=AGPL-3.0-1-ov-file"><img src="https://img.shields.io/github/license/naveenraj-17/synapse-ai" alt="License"></a>
+  <a href="https://www.npmjs.com/package/synapse-orch-ai"><img src="https://img.shields.io/npm/v/synapse-orch-ai?logo=npm&label=npm" alt="npm"></a>
+  <a href="https://pypi.org/project/synapse-orch-ai/"><img src="https://img.shields.io/pypi/v/synapse--orch-ai?logo=pypi&logoColor=white&label=pypi" alt="PyPI"></a>
 </p>
 
 *Build AI workflows that actually ship.*
@@ -27,7 +27,7 @@
 ## Install
 
 ### Quick Setup Script (recommended)
-The easiest way to get started is to run the automated setup script. This will clone the repository, install all necessary dependencies, verify your environment, and start both the backend and frontend servers.
+The easiest way to get started. Clones the repository, installs all dependencies, and starts both servers automatically.
 
 **macOS / Linux:**
 ```bash
@@ -37,6 +37,18 @@ curl -sSL https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.s
 **Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/naveenraj-17/synapse-ai/main/setup.ps1 | iex
+```
+
+### npm
+```bash
+npm install -g synapse-orch-ai
+synapse
+```
+
+### pip
+```bash
+pip install synapse-orch-ai
+synapse
 ```
 
 ---

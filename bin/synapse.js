@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 
-const { spawnSync, spawn, execFileSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
 const os = require('os');
+const readline = require('readline');
 
 const PKG_DIR = path.resolve(__dirname, '..');
 const BACKEND_DIR = path.join(PKG_DIR, 'backend');
@@ -17,20 +18,20 @@ const SYNAPSE_HOME = path.join(os.homedir(), '.synapse');
 const VENV_DIR = path.join(SYNAPSE_HOME, 'venv');
 const DATA_DIR = process.env.SYNAPSE_DATA_DIR || path.join(SYNAPSE_HOME, 'data');
 const HASH_FILE = path.join(SYNAPSE_HOME, 'requirements.hash');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-const BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8765');
-const FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
-
-// ── Python executable detection ───────────────────────────────────────────────
+let BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8765');
+let FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
 
 const IS_WIN = os.platform() === 'win32';
 
+// ── Python executable detection ───────────────────────────────────────────────
+
 function pythonCmd() {
   if (!IS_WIN) return 'python3';
-  // On Windows, Python is installed as 'python' (not 'python3')
   const r = spawnSync('python', ['--version'], { stdio: 'pipe', shell: true });
   if (r.status === 0) return 'python';
-  return 'python3'; // fallback (e.g. via pyenv-win)
+  return 'python3';
 }
 
 const PYTHON = pythonCmd();
@@ -38,7 +39,6 @@ const PYTHON = pythonCmd();
 // ── Prerequisite checks ───────────────────────────────────────────────────────
 
 function checkCmd(cmd) {
-  // shell: true is required on Windows so .cmd wrappers (npx.cmd, etc.) are found
   const result = spawnSync(cmd, ['--version'], { stdio: 'pipe', shell: IS_WIN });
   return result.status === 0;
 }
@@ -48,7 +48,6 @@ function checkPrerequisites() {
     console.error('Error: python3 not found. Install Python 3.11+ from https://www.python.org/');
     process.exit(1);
   }
-  // Verify version >= 3.11
   const result = spawnSync(PYTHON, ['-c', 'import sys; print(sys.version_info[:2])'], { stdio: 'pipe' });
   if (result.status === 0) {
     const out = result.stdout.toString().trim();
@@ -65,9 +64,64 @@ function checkPrerequisites() {
     console.error('Error: npx not found. Install Node.js from https://nodejs.org/');
     process.exit(1);
   }
-  if (!checkCmd('ollama')) {
-    console.warn('Warning: ollama not found. Local models won\'t work; cloud API models still work.');
-  }
+}
+
+// ── Progress bar for pip install ──────────────────────────────────────────────
+
+function countRequirements(reqFile) {
+  if (!fs.existsSync(reqFile)) return 0;
+  return fs.readFileSync(reqFile, 'utf8')
+    .split('\n')
+    .filter(l => l.trim() && !l.trim().startsWith('#'))
+    .length;
+}
+
+function renderBar(done, total) {
+  const width = 28;
+  const pct = total > 0 ? Math.min(done / total, 1) : 0;
+  const filled = Math.round(pct * width);
+  const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+  const pctStr = Math.round(pct * 100).toString().padStart(3);
+  return `  [${bar}] ${pctStr}% (${done}/${total})`;
+}
+
+function installPipDeps(reqFile) {
+  return new Promise((resolve) => {
+    const total = countRequirements(reqFile);
+    let done = 0;
+    let lineBuffer = '';
+
+    process.stdout.write(renderBar(0, total) + '\r');
+
+    const pip = spawn(venvPip(), ['install', '-r', reqFile, '--progress-bar', 'off'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    function parseLines(chunk) {
+      lineBuffer += chunk.toString();
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (/^(Collecting|Using cached) /.test(line)) {
+          done = Math.min(done + 1, total > 0 ? total : done + 1);
+          process.stdout.write(renderBar(done, total) + '\r');
+        }
+      }
+    }
+
+    pip.stdout.on('data', parseLines);
+    pip.stderr.on('data', parseLines);
+
+    pip.on('close', (code) => {
+      process.stdout.write(renderBar(total, total) + '\n');
+      if (code !== 0) {
+        console.error('\n  Failed to install Python dependencies.');
+        process.exit(1);
+      }
+      console.log('  ✓ Python dependencies installed.');
+      resolve();
+    });
+  });
 }
 
 // ── Python venv setup ─────────────────────────────────────────────────────────
@@ -78,40 +132,37 @@ function getRequirementsHash() {
 }
 
 function venvPython() {
-  return os.platform() === 'win32'
+  return IS_WIN
     ? path.join(VENV_DIR, 'Scripts', 'python.exe')
     : path.join(VENV_DIR, 'bin', 'python');
 }
 
 function venvPip() {
-  return os.platform() === 'win32'
+  return IS_WIN
     ? path.join(VENV_DIR, 'Scripts', 'pip.exe')
     : path.join(VENV_DIR, 'bin', 'pip');
 }
 
-function setupVenv() {
+async function setupVenv() {
   const currentHash = getRequirementsHash();
   const savedHash = fs.existsSync(HASH_FILE) ? fs.readFileSync(HASH_FILE, 'utf8').trim() : null;
 
   if (fs.existsSync(venvPython()) && currentHash === savedHash) {
-    return; // Already up to date
+    return;
   }
 
   if (!fs.existsSync(VENV_DIR)) {
-    console.log('Creating Python virtual environment...');
-    const result = spawnSync(PYTHON, ['-m', 'venv', VENV_DIR], { stdio: 'inherit' });
+    process.stdout.write('Creating Python virtual environment...');
+    const result = spawnSync(PYTHON, ['-m', 'venv', VENV_DIR], { stdio: ['ignore', 'pipe', 'pipe'] });
     if (result.status !== 0) {
-      console.error('Failed to create virtual environment.');
+      console.error('\nFailed to create virtual environment.');
       process.exit(1);
     }
+    console.log(' done.');
   }
 
-  console.log('Installing Python dependencies (first run, this may take a minute)...');
-  const result = spawnSync(venvPip(), ['install', '-r', REQUIREMENTS, '--quiet'], { stdio: 'inherit' });
-  if (result.status !== 0) {
-    console.error('Failed to install Python dependencies.');
-    process.exit(1);
-  }
+  console.log('Installing Python dependencies...');
+  await installPipDeps(REQUIREMENTS);
 
   if (currentHash) fs.writeFileSync(HASH_FILE, currentHash);
 }
@@ -124,6 +175,7 @@ const DEFAULT_JSON = {
   'repos.json': '[]',
   'mcp_servers.json': '[]',
   'custom_tools.json': '[]',
+  'db_configs.json': '[]',
 };
 
 function ensureDataDir() {
@@ -137,12 +189,129 @@ function ensureDataDir() {
   }
 }
 
+// ── Setup Wizard ──────────────────────────────────────────────────────────────
+
+function ask(rl, question) {
+  return new Promise((resolve) => rl.question(question, (ans) => resolve(ans.trim())));
+}
+
+async function askDefault(rl, label, defaultVal) {
+  const ans = await ask(rl, `${label} [${defaultVal}]: `);
+  return ans || String(defaultVal);
+}
+
+async function askChoice(rl, label, options) {
+  console.log('\n' + label);
+  options.forEach((o, i) => console.log(`  ${i + 1}. ${o}`));
+  while (true) {
+    const ans = await ask(rl, 'Select: ');
+    const n = parseInt(ans);
+    if (!isNaN(n) && n >= 1 && n <= options.length) return options[n - 1];
+    console.log(`  Enter a number 1-${options.length}.`);
+  }
+}
+
+async function runSetupWizard(ollamaAvailable) {
+  console.log('\n+----------------------------------------------------------+');
+  console.log('|          Synapse -- First-Time Setup                     |');
+  console.log('+----------------------------------------------------------+\n');
+
+  if (!ollamaAvailable) {
+    console.log('  [!] Ollama is not installed -- local models are unavailable.');
+    console.log('      You will need a cloud API key (OpenAI, Anthropic, Gemini, etc.).\n');
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    console.log('General');
+    const agentName = await askDefault(rl, 'Agent name', 'Synapse');
+
+    const providers = ollamaAvailable
+      ? ['Ollama (local)', 'OpenAI', 'Claude (Anthropic)', 'Gemini', 'OpenAI Compatible', 'Local V1 Compatible', 'Bedrock (AWS)', 'Skip for now']
+      : ['OpenAI', 'Claude (Anthropic)', 'Gemini', 'OpenAI Compatible', 'Local V1 Compatible', 'Bedrock (AWS)', 'Skip for now'];
+
+    const provider = await askChoice(rl, 'LLM Provider:', providers);
+
+    const cfg = {
+      agent_name: agentName,
+      model: '',
+      mode: 'cloud',
+      openai_key: '',
+      anthropic_key: '',
+      gemini_key: '',
+      ollama_base_url: '',
+      openai_compatible_key: '',
+      openai_compatible_base_url: '',
+      openai_compatible_models: '',
+      local_compatible_base_url: '',
+      local_compatible_key: '',
+      local_compatible_models: '',
+      bedrock_api_key: '',
+      bedrock_inference_profile: '',
+      aws_region: 'us-east-1',
+      coding_agent_enabled: true,
+      report_agent_enabled: true,
+      backend_port: BACKEND_PORT,
+      frontend_port: FRONTEND_PORT,
+    };
+
+    if (provider.startsWith('Ollama')) {
+      cfg.mode = 'local';
+      cfg.ollama_base_url = await askDefault(rl, 'Ollama base URL', 'http://127.0.0.1:11434');
+      cfg.model = await askDefault(rl, 'Model name (e.g. mistral, llama3)', 'mistral');
+    } else if (provider === 'OpenAI') {
+      cfg.openai_key = await askDefault(rl, 'OpenAI API key', '');
+    } else if (provider === 'Claude (Anthropic)') {
+      cfg.anthropic_key = await askDefault(rl, 'Anthropic API key', '');
+    } else if (provider === 'Gemini') {
+      cfg.gemini_key = await askDefault(rl, 'Gemini API key', '');
+    } else if (provider === 'OpenAI Compatible') {
+      cfg.openai_compatible_key = await askDefault(rl, 'API key', '');
+      cfg.openai_compatible_base_url = await askDefault(rl, 'Base URL (without /v1)', '');
+      cfg.openai_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
+      if (cfg.openai_compatible_models) {
+        cfg.model = 'oaic.' + cfg.openai_compatible_models.split(',')[0].trim();
+      }
+    } else if (provider === 'Local V1 Compatible') {
+      cfg.local_compatible_base_url = await askDefault(rl, 'Base URL (without /v1)', '');
+      cfg.local_compatible_key = await askDefault(rl, 'API key (optional)', '');
+      cfg.local_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
+      if (cfg.local_compatible_models) {
+        cfg.model = 'locv1.' + cfg.local_compatible_models.split(',')[0].trim();
+      }
+    } else if (provider === 'Bedrock (AWS)') {
+      cfg.bedrock_api_key = await askDefault(rl, 'Bedrock API key', '');
+      cfg.aws_region = await askDefault(rl, 'AWS region', 'us-east-1');
+    }
+
+    console.log('\nPorts (press Enter to keep defaults):');
+    const backendStr = await askDefault(rl, 'Backend port', String(BACKEND_PORT));
+    const frontendStr = await askDefault(rl, 'Frontend (UI) port', String(FRONTEND_PORT));
+    cfg.backend_port = parseInt(backendStr) || BACKEND_PORT;
+    cfg.frontend_port = parseInt(frontendStr) || FRONTEND_PORT;
+    BACKEND_PORT = cfg.backend_port;
+    FRONTEND_PORT = cfg.frontend_port;
+
+    rl.close();
+
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(cfg, null, 4));
+    console.log('\n[OK] Settings saved to ' + SETTINGS_FILE);
+    console.log('     You can reconfigure anytime with: synapse setup\n');
+  } catch (err) {
+    rl.close();
+    throw err;
+  }
+}
+
 // ── Process management ────────────────────────────────────────────────────────
 
 function startBackend() {
   const env = {
     ...process.env,
     SYNAPSE_DATA_DIR: DATA_DIR,
+    SYNAPSE_BACKEND_PORT: String(BACKEND_PORT),
     PYTHONPATH: BACKEND_DIR + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ''),
   };
   return spawn(venvPython(), [path.join(BACKEND_DIR, 'main.py')], {
@@ -163,6 +332,7 @@ function startFrontend() {
     PORT: String(FRONTEND_PORT),
     HOSTNAME: '0.0.0.0',
     BACKEND_URL: `http://127.0.0.1:${BACKEND_PORT}`,
+    NEXT_PUBLIC_BACKEND_PORT: String(BACKEND_PORT),
     NODE_ENV: 'production',
   };
   return spawn('node', [path.join(FRONTEND_BUILD, 'server.js')], {
@@ -197,7 +367,7 @@ function openBrowser(url) {
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open';
   const args = platform === 'win32' ? ['/c', 'start', url] : [url];
   setTimeout(() => {
-    try { spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref(); } catch {}
+    try { spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref(); } catch (_) {}
   }, 1000);
 }
 
@@ -212,10 +382,32 @@ async function main() {
     console.log('\nTip: Install globally so "synapse" works from anywhere:');
     console.log('  npm install -g synapse-orch-ai\n');
   }
+
   console.log('Starting Synapse...');
   checkPrerequisites();
+
   fs.mkdirSync(SYNAPSE_HOME, { recursive: true });
-  setupVenv();
+
+  const ollamaAvail = checkCmd('ollama');
+
+  // Run setup wizard on first launch (no settings.json yet)
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    if (!ollamaAvail) {
+      console.log('\nOllama is not installed -- local models are unavailable.');
+    }
+    await runSetupWizard(ollamaAvail);
+  } else if (!ollamaAvail) {
+    console.log("Warning: ollama not found. Local models won't work; cloud API models still work.");
+  }
+
+  // Load saved port overrides from settings
+  try {
+    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    if (saved.backend_port) BACKEND_PORT = saved.backend_port;
+    if (saved.frontend_port) FRONTEND_PORT = saved.frontend_port;
+  } catch (_) {}
+
+  await setupVenv();
   ensureDataDir();
 
   console.log('Starting backend...');
@@ -264,7 +456,17 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err.message);
-  process.exit(1);
-});
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+const cliArg = process.argv[2];
+
+if (cliArg === 'setup') {
+  checkPrerequisites();
+  fs.mkdirSync(SYNAPSE_HOME, { recursive: true });
+  const ollamaAvail = checkCmd('ollama');
+  runSetupWizard(ollamaAvail)
+    .then(() => process.exit(0))
+    .catch((err) => { console.error('Setup failed:', err.message); process.exit(1); });
+} else {
+  main().catch((err) => { console.error('Fatal error:', err.message); process.exit(1); });
+}
