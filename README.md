@@ -1,5 +1,13 @@
 # Synapse AI — Multi-Agent Orchestration Platform
 
+<p align="center">
+
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/9UN45qyGh8)
+[![GitHub stars](https://img.shields.io/github/stars/naveenraj-17/synapse-ai?style=social)](https://github.com/naveenraj-17/synapse-ai)
+[![License](https://img.shields.io/github/license/naveenraj-17/synapse-ai)](https://github.com/naveenraj-17/synapse-ai?tab=AGPL-3.0-1-ov-file)
+
+</p>
+
 *Build AI workflows that actually ship.*
 
 **Wire agents, tools, and LLMs into deterministic pipelines — without the framework lock-in.** Synapse is an open-source platform for creating, connecting, and orchestrating AI agents powered by any LLM — local or cloud. Agents use real tools: browsing the web, querying databases, executing code, reading files, managing emails, trading stocks, and anything else you can expose through an MCP server, a webhook, or a Python script — if you can write it, agents can use it.
