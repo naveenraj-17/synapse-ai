@@ -17,6 +17,7 @@
   },
   "files": [
     "bin/",
+    "scripts/postinstall.js",
     "frontend-build/",
     "backend/core/",
     "backend/services/",
@@ -28,6 +29,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "postinstall": "node scripts/postinstall.js",
     "build": "node scripts/bundle-frontend.js",
     "prepublishOnly": "npm run build"
   }

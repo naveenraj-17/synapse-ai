@@ -1086,6 +1086,16 @@ MIN_PYTHON = (3, 11)
 MIN_NODE   = (20, 9, 0)
 
 
+def _warn_if_not_on_path():
+    if sys.platform == "win32" and not shutil.which("synapse"):  # type: ignore[unreachable]
+        print(  # type: ignore[unreachable]
+            "\nNote: 'synapse' is not on your PATH.\n"
+            "You can run Synapse with:  python -m synapse\n"
+            "To fix permanently, add your Python Scripts folder to PATH.\n",
+            file=sys.stderr,
+        )
+
+
 def _warn_versions():
     """Warn (non-fatally) if Python or Node.js versions are below the minimum required."""
     # ── Python ───────────────────────────────────────────────────────────────
@@ -1131,6 +1141,7 @@ def _warn_versions():
 
 
 def main():
+    _warn_if_not_on_path()
     _warn_versions()
     parser = argparse.ArgumentParser(prog="synapse", description="Manage Synapse server (backend + frontend)")
     sub = parser.add_subparsers(dest="cmd")
