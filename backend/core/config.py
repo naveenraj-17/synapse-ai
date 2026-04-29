@@ -19,7 +19,7 @@ TOKEN_FILE = os.path.join(DATA_DIR, "token.json")
 
 def load_settings():
     default_settings = {
-        "agent_name": "System Agent", 
+        "agent_name": "Synapse",
         "model": "ollama.mistral",
         "mode": "local",
         "openai_key": "",
@@ -52,7 +52,7 @@ def load_settings():
         "auto_compact_enabled": False,
         "auto_compact_threshold": 100000,
         "allow_db_write": False,
-        "coding_agent_enabled": False,
+        "coding_agent_enabled": True,
         "report_agent_enabled": True,
         "messaging_enabled": True,
         "embed_code": False,

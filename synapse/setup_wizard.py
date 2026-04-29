@@ -52,8 +52,10 @@ DEFAULT_SETTINGS = {
     "global_config": {},
     "vault_enabled": True,
     "vault_threshold": 100000,
-    "coding_agent_enabled": False,
-    "report_agent_enabled": False,
+    "coding_agent_enabled": True,
+    "report_agent_enabled": True,
+    "backend_port": 8765,
+    "frontend_port": 3000,
 }
 
 
@@ -101,15 +103,15 @@ def save_settings(cfg):
 
 
 def run():
-    print("\nSynapse — Interactive Setup (lightweight)")
+    print("\nSynapse — Interactive Setup")
     cfg = load_settings()
 
     print("\nGeneral")
     cfg["agent_name"] = _ask("Agent name", cfg.get("agent_name", "Synapse"))
 
     print("\nAgent features")
-    cfg["coding_agent_enabled"] = _ask_yn("Enable Coding Agent?", "n")
-    cfg["report_agent_enabled"] = _ask_yn("Enable Report Agent?", "n")
+    cfg["coding_agent_enabled"] = _ask_yn("Enable Coding Agent?", "y")
+    cfg["report_agent_enabled"] = _ask_yn("Enable Report Agent?", "y")
 
     print("\nLLM Provider (you can fill keys later)")
     providers = ["Ollama (local)", "Gemini", "OpenAI", "Claude (Anthropic)", "OpenAI Compatible", "Local V1 Compatible", "Bedrock (AWS)", "Skip for now"]
@@ -117,7 +119,7 @@ def run():
     if choice.startswith("Ollama"):
         cfg["mode"] = "local"
         cfg["ollama_base_url"] = _ask("Ollama base URL", cfg.get("ollama_base_url", "http://127.0.0.1:11434"))
-        cfg["model"] = _ask("Model name", cfg.get("model", ""))
+        cfg["model"] = _ask("Model name (e.g. mistral, llama3)", cfg.get("model", "mistral"))
     elif choice == "Gemini":
         cfg["mode"] = "cloud"
         cfg["gemini_key"] = _ask("Gemini API key", cfg.get("gemini_key", ""))
@@ -148,31 +150,23 @@ def run():
             first = cfg["local_compatible_models"].split(",")[0].strip()
             cfg["model"] = f"locv1.{first}"
 
-    print("\nExample data")
-    if _ask_yn("Import example data (if available)?", "y"):
-        # Look for *.example.json files next to package, and in backend/data
-        possible_dirs = [PACKAGE_DIR.parent / "backend" / "data", PACKAGE_DIR.parent / "data", DATA_DIR]
-        imported = False
-        for d in possible_dirs:
-            if not d.exists():
-                continue
-            for src in d.glob("*.example.json"):
-                dest = src.with_name(src.name.replace('.example.json', '.json'))
-                if dest.exists():
-                    print(f"Skipping (exists): {dest}")
-                    continue
-                try:
-                    with open(src, 'rb') as sf, open(dest, 'wb') as df:
-                        df.write(sf.read())
-                    print(f"Imported: {dest}")
-                    imported = True
-                except Exception:
-                    pass
-        if not imported:
-            print("No example files found to import.")
+    print("\nPorts (press Enter to keep defaults)")
+    default_backend = cfg.get("backend_port", 8765)
+    default_frontend = cfg.get("frontend_port", 3000)
+    backend_port_str = _ask("Backend port", str(default_backend))
+    frontend_port_str = _ask("Frontend (UI) port", str(default_frontend))
+    try:
+        cfg["backend_port"] = int(backend_port_str)
+    except ValueError:
+        cfg["backend_port"] = default_backend
+    try:
+        cfg["frontend_port"] = int(frontend_port_str)
+    except ValueError:
+        cfg["frontend_port"] = default_frontend
 
     save_settings(cfg)
     print(f"\nSettings saved to {SETTINGS_FILE}")
+    print("You can reconfigure anytime with: synapse setup")
 
 
 if __name__ == "__main__":
