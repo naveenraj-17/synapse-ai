@@ -21,6 +21,18 @@ const HASH_FILE = path.join(SYNAPSE_HOME, 'requirements.hash');
 const BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8765');
 const FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
 
+// ── Python executable detection ───────────────────────────────────────────────
+
+function pythonCmd() {
+  if (os.platform() !== 'win32') return 'python3';
+  // On Windows, Python is installed as 'python' (not 'python3')
+  const r = spawnSync('python', ['--version'], { stdio: 'pipe' });
+  if (r.status === 0) return 'python';
+  return 'python3'; // fallback (e.g. via pyenv-win)
+}
+
+const PYTHON = pythonCmd();
+
 // ── Prerequisite checks ───────────────────────────────────────────────────────
 
 function checkCmd(cmd) {
@@ -29,12 +41,12 @@ function checkCmd(cmd) {
 }
 
 function checkPrerequisites() {
-  if (!checkCmd('python3')) {
+  if (!checkCmd(PYTHON)) {
     console.error('Error: python3 not found. Install Python 3.11+ from https://www.python.org/');
     process.exit(1);
   }
   // Verify version >= 3.11
-  const result = spawnSync('python3', ['-c', 'import sys; print(sys.version_info[:2])'], { stdio: 'pipe' });
+  const result = spawnSync(PYTHON, ['-c', 'import sys; print(sys.version_info[:2])'], { stdio: 'pipe' });
   if (result.status === 0) {
     const out = result.stdout.toString().trim();
     const match = out.match(/\((\d+),\s*(\d+)\)/);
@@ -84,7 +96,7 @@ function setupVenv() {
 
   if (!fs.existsSync(VENV_DIR)) {
     console.log('Creating Python virtual environment...');
-    const result = spawnSync('python3', ['-m', 'venv', VENV_DIR], { stdio: 'inherit' });
+    const result = spawnSync(PYTHON, ['-m', 'venv', VENV_DIR], { stdio: 'inherit' });
     if (result.status !== 0) {
       console.error('Failed to create virtual environment.');
       process.exit(1);
@@ -140,7 +152,7 @@ function startBackend() {
 function startFrontend() {
   if (!fs.existsSync(FRONTEND_BUILD)) {
     console.error('Error: bundled frontend not found at', FRONTEND_BUILD);
-    console.error('The package may be corrupted. Try reinstalling: npm install -g synapse-ai');
+    console.error('The package may be corrupted. Try reinstalling: npm install -g synapse-orch-ai');
     process.exit(1);
   }
   const env = {
