@@ -157,10 +157,6 @@ def run():
     print("\nGeneral")
     cfg["agent_name"] = _ask("Agent name", cfg.get("agent_name", "Synapse"))
 
-    print("\nAgent features")
-    cfg["coding_agent_enabled"] = _ask_yn("Enable Coding Agent?", "y")
-    cfg["report_agent_enabled"] = _ask_yn("Enable Report Agent?", "y")
-
     print("\nLLM Provider")
     providers = ["Ollama (local)", "Gemini", "OpenAI", "Claude (Anthropic)", "OpenAI Compatible", "Local V1 Compatible", "Bedrock (AWS)", "Skip for now"]
     choice = _ask_choice("Select provider", providers)

@@ -22,6 +22,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: frontend-builds
+          include-hidden-files: true
           path: |
             synapse/_frontend
             frontend-build
