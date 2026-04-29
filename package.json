@@ -18,6 +18,7 @@
   "files": [
     "bin/",
     "scripts/postinstall.js",
+    "scripts/preuninstall.js",
     "frontend-build/",
     "backend/core/",
     "backend/services/",
@@ -30,6 +31,7 @@
   },
   "scripts": {
     "build": "node scripts/bundle-frontend.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "preuninstall": "node scripts/preuninstall.js"
   }
 }

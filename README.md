@@ -61,8 +61,9 @@ Once installed, use the `synapse` command to manage the server:
 synapse start     # start backend + frontend, open browser
 synapse stop      # stop background processes
 synapse upgrade   # upgrade to the latest version
-synapse uninstall # remove Synapse and clean up installed files
+synapse uninstall # remove Synapse, wipe ~/.synapse, and uninstall the package
 ```
+
 
 ---
 
