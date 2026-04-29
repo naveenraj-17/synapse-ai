@@ -868,7 +868,12 @@ def _uninstall_command(keep_data: bool = False):
     # 4. Remove the installation directory/directories
     # Collect unique dirs: the running ROOT_DIR plus the platform standard install location
     # (e.g. ~/.local/share/SynapseAI on Linux, %LOCALAPPDATA%\Programs\SynapseAI on Windows).
-    _dirs_to_remove: list[Path] = [ROOT_DIR]
+    # Skip ROOT_DIR when pip-installed: it resolves to site-packages/, which must not be deleted.
+    _is_pip_install = any(p in ("site-packages", "dist-packages") for p in ROOT_DIR.parts)
+    if _is_pip_install:
+        _dirs_to_remove: list[Path] = []
+    else:
+        _dirs_to_remove = [ROOT_DIR]
     if platform_install and platform_install.resolve() != ROOT_DIR.resolve():
         _dirs_to_remove.append(platform_install)
 
