@@ -23,10 +23,12 @@ const FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
 
 // ── Python executable detection ───────────────────────────────────────────────
 
+const IS_WIN = os.platform() === 'win32';
+
 function pythonCmd() {
-  if (os.platform() !== 'win32') return 'python3';
+  if (!IS_WIN) return 'python3';
   // On Windows, Python is installed as 'python' (not 'python3')
-  const r = spawnSync('python', ['--version'], { stdio: 'pipe' });
+  const r = spawnSync('python', ['--version'], { stdio: 'pipe', shell: true });
   if (r.status === 0) return 'python';
   return 'python3'; // fallback (e.g. via pyenv-win)
 }
@@ -36,7 +38,8 @@ const PYTHON = pythonCmd();
 // ── Prerequisite checks ───────────────────────────────────────────────────────
 
 function checkCmd(cmd) {
-  const result = spawnSync(cmd, ['--version'], { stdio: 'pipe' });
+  // shell: true is required on Windows so .cmd wrappers (npx.cmd, etc.) are found
+  const result = spawnSync(cmd, ['--version'], { stdio: 'pipe', shell: IS_WIN });
   return result.status === 0;
 }
 
@@ -198,9 +201,17 @@ function openBrowser(url) {
   }, 1000);
 }
 
+// ── Local install detection ───────────────────────────────────────────────────
+
+const isLocalInstall = PKG_DIR.split(path.sep).includes('node_modules');
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
+  if (isLocalInstall) {
+    console.log('\nTip: Install globally so "synapse" works from anywhere:');
+    console.log('  npm install -g synapse-orch-ai\n');
+  }
   console.log('Starting Synapse...');
   checkPrerequisites();
   fs.mkdirSync(SYNAPSE_HOME, { recursive: true });
