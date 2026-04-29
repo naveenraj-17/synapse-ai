@@ -1,5 +1,5 @@
 {
-  "name": "synapse-ai",
+  "name": "synapse-orch-ai",
   "version": "0.1.0",
   "description": "Synapse - A Multi Agent Orchestrator",
   "keywords": ["ai", "agent", "mcp", "llm", "orchestrator", "local", "ollama"],
