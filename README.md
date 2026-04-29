@@ -1,8 +1,12 @@
 # Synapse AI — Multi-Agent Orchestration Platform
 
+<p align="center">
+
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/9UN45qyGh8)
 [![GitHub stars](https://img.shields.io/github/stars/naveenraj-17/synapse-ai?style=social)](https://github.com/naveenraj-17/synapse-ai)
 [![License](https://img.shields.io/github/license/naveenraj-17/synapse-ai)](https://github.com/naveenraj-17/synapse-ai?tab=AGPL-3.0-1-ov-file)
+
+</p>
 
 *Build AI workflows that actually ship.*
 
