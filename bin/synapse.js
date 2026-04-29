@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const http = require('http');
+const https = require('https');
 const os = require('os');
 const readline = require('readline');
 
@@ -39,7 +40,10 @@ const PYTHON = pythonCmd();
 // ── Prerequisite checks ───────────────────────────────────────────────────────
 
 function checkCmd(cmd) {
-  const result = spawnSync(cmd, ['--version'], { stdio: 'pipe', shell: IS_WIN });
+  // On Windows use shell:true but pass a single string to avoid DEP0190
+  const result = IS_WIN
+    ? spawnSync(`${cmd} --version`, { stdio: 'pipe', shell: true })
+    : spawnSync(cmd, ['--version'], { stdio: 'pipe' });
   return result.status === 0;
 }
 
@@ -103,7 +107,8 @@ function installPipDeps(reqFile) {
       lineBuffer = lines.pop() || '';
       for (const line of lines) {
         if (/^(Collecting|Using cached) /.test(line)) {
-          done = Math.min(done + 1, total > 0 ? total : done + 1);
+          // Cap at total-1 so the bar only hits 100% when pip actually exits
+          done = Math.min(done + 1, total > 1 ? total - 1 : done + 1);
           process.stdout.write(renderBar(done, total) + '\r');
         }
       }
@@ -189,6 +194,49 @@ function ensureDataDir() {
   }
 }
 
+// ── Model fetching ────────────────────────────────────────────────────────────
+
+function fetchJson(url, headers = {}) {
+  return new Promise((resolve) => {
+    const lib = url.startsWith('https') ? https : http;
+    const req = lib.get(url, { headers }, (res) => {
+      let body = '';
+      res.on('data', (c) => body += c);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+    });
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+  });
+}
+
+async function fetchOllamaModels(baseUrl = 'http://127.0.0.1:11434') {
+  const data = await fetchJson(`${baseUrl}/api/tags`);
+  return (data?.models || []).map(m => m.name).filter(Boolean);
+}
+
+async function fetchGeminiModels(key) {
+  const data = await fetchJson(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`
+  );
+  return (data?.models || [])
+    .filter(m => m.name?.startsWith('models/') && m.supportedGenerationMethods?.includes('generateContent'))
+    .map(m => m.name.replace('models/', ''))
+    .sort();
+}
+
+async function fetchOpenAIModels(key) {
+  const data = await fetchJson('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
+  return [...new Set((data?.data || []).map(m => m.id).filter(id => id && /gpt-4|gpt-3\.5|o1|o3/.test(id)))].sort();
+}
+
+async function fetchAnthropicModels(key) {
+  const data = await fetchJson('https://api.anthropic.com/v1/models', {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+  });
+  return [...new Set((data?.data || []).map(m => m.id).filter(Boolean))].sort().reverse();
+}
+
 // ── Setup Wizard ──────────────────────────────────────────────────────────────
 
 function ask(rl, question) {
@@ -259,26 +307,85 @@ async function runSetupWizard(ollamaAvailable) {
     if (provider.startsWith('Ollama')) {
       cfg.mode = 'local';
       cfg.ollama_base_url = await askDefault(rl, 'Ollama base URL', 'http://127.0.0.1:11434');
-      cfg.model = await askDefault(rl, 'Model name (e.g. mistral, llama3)', 'mistral');
+      process.stdout.write('  Fetching Ollama models...');
+      const ollamaModels = await fetchOllamaModels(cfg.ollama_base_url);
+      console.log('');
+      if (ollamaModels.length > 0) {
+        cfg.model = await askChoice(rl, 'Select model', ollamaModels);
+      } else {
+        console.log('  No models found at that URL.');
+        cfg.model = await askDefault(rl, 'Model name (e.g. mistral, llama3)', 'mistral');
+      }
     } else if (provider === 'OpenAI') {
-      cfg.openai_key = await askDefault(rl, 'OpenAI API key', '');
+      cfg.openai_key = await ask(rl, 'OpenAI API key: ');
+      process.stdout.write('  Fetching available models...');
+      const openaiModels = await fetchOpenAIModels(cfg.openai_key);
+      console.log('');
+      if (openaiModels.length > 0) {
+        cfg.model = await askChoice(rl, 'Select model', openaiModels);
+      } else {
+        console.log('  Could not fetch models. Check your key.');
+        cfg.model = await askDefault(rl, 'Model name', 'gpt-4o');
+      }
     } else if (provider === 'Claude (Anthropic)') {
-      cfg.anthropic_key = await askDefault(rl, 'Anthropic API key', '');
+      cfg.anthropic_key = await ask(rl, 'Anthropic API key: ');
+      process.stdout.write('  Fetching available models...');
+      const claudeModels = await fetchAnthropicModels(cfg.anthropic_key);
+      console.log('');
+      if (claudeModels.length > 0) {
+        cfg.model = await askChoice(rl, 'Select model', claudeModels);
+      } else {
+        console.log('  Could not fetch models. Check your key.');
+        cfg.model = await askDefault(rl, 'Model name', 'claude-sonnet-4-6');
+      }
     } else if (provider === 'Gemini') {
-      cfg.gemini_key = await askDefault(rl, 'Gemini API key', '');
+      cfg.gemini_key = await ask(rl, 'Gemini API key: ');
+      process.stdout.write('  Fetching available models...');
+      const geminiModels = await fetchGeminiModels(cfg.gemini_key);
+      console.log('');
+      if (geminiModels.length > 0) {
+        cfg.model = await askChoice(rl, 'Select model', geminiModels);
+      } else {
+        console.log('  Could not fetch models. Check your key.');
+        cfg.model = await askDefault(rl, 'Model name', 'gemini-2.0-flash');
+      }
     } else if (provider === 'OpenAI Compatible') {
       cfg.openai_compatible_key = await askDefault(rl, 'API key', '');
       cfg.openai_compatible_base_url = await askDefault(rl, 'Base URL (without /v1)', '');
-      cfg.openai_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
-      if (cfg.openai_compatible_models) {
-        cfg.model = 'oaic.' + cfg.openai_compatible_models.split(',')[0].trim();
+      if (cfg.openai_compatible_base_url) {
+        process.stdout.write('  Fetching available models...');
+        const d = await fetchJson(
+          cfg.openai_compatible_base_url.replace(/\/$/, '') + '/v1/models',
+          { Authorization: `Bearer ${cfg.openai_compatible_key}` }
+        );
+        const models = (d?.data || []).map(m => m.id).filter(Boolean);
+        console.log('');
+        if (models.length > 0) {
+          const chosen = await askChoice(rl, 'Select model', models);
+          cfg.openai_compatible_models = chosen;
+          cfg.model = `oaic.${chosen}`;
+        } else {
+          cfg.openai_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
+          if (cfg.openai_compatible_models) cfg.model = 'oaic.' + cfg.openai_compatible_models.split(',')[0].trim();
+        }
       }
     } else if (provider === 'Local V1 Compatible') {
       cfg.local_compatible_base_url = await askDefault(rl, 'Base URL (without /v1)', '');
       cfg.local_compatible_key = await askDefault(rl, 'API key (optional)', '');
-      cfg.local_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
-      if (cfg.local_compatible_models) {
-        cfg.model = 'locv1.' + cfg.local_compatible_models.split(',')[0].trim();
+      if (cfg.local_compatible_base_url) {
+        process.stdout.write('  Fetching available models...');
+        const hdrs = cfg.local_compatible_key ? { Authorization: `Bearer ${cfg.local_compatible_key}` } : {};
+        const d = await fetchJson(cfg.local_compatible_base_url.replace(/\/$/, '') + '/v1/models', hdrs);
+        const models = (d?.data || []).map(m => m.id).filter(Boolean);
+        console.log('');
+        if (models.length > 0) {
+          const chosen = await askChoice(rl, 'Select model', models);
+          cfg.local_compatible_models = chosen;
+          cfg.model = `locv1.${chosen}`;
+        } else {
+          cfg.local_compatible_models = await askDefault(rl, 'Model names (comma-separated)', '');
+          if (cfg.local_compatible_models) cfg.model = 'locv1.' + cfg.local_compatible_models.split(',')[0].trim();
+        }
       }
     } else if (provider === 'Bedrock (AWS)') {
       cfg.bedrock_api_key = await askDefault(rl, 'Bedrock API key', '');
