@@ -740,6 +740,40 @@ export default function Home() {
         break;
       }
 
+      // Raw 'final' events — emitted by resume/direct-run endpoints (no SSE transformation)
+      case 'final': {
+        if (data.orch_step_id) {
+          // Sub-agent step inside an orchestration — render as agent_step_result bubble
+          const capturedThoughts = [...stepState.thoughts];
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: data.response as string,
+            intent: data.intent,
+            data: data.data,
+            tool: data.tool_name,
+            msgType: 'agent_step_result',
+            stepName: data.step_name,
+            orchStepId: data.orch_step_id,
+            thoughts: capturedThoughts,
+          }]);
+          stepState.thoughts = [];
+          stepState.receivedAgentStep = true;
+        } else {
+          // Top-level final (single-agent response outside orchestration)
+          const capturedThoughts = [...pendingThoughtsRef.current];
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: data.response as string,
+            intent: data.intent,
+            data: data.data,
+            tool: data.tool_name,
+            thoughts: capturedThoughts,
+          }]);
+          pendingThoughtsRef.current = [];
+        }
+        break;
+      }
+
       // ── Orchestration lifecycle ────────────────────────────────────────────
       case 'orchestration_start':
         setStreamingActivity(`🚀 Starting orchestration`);
