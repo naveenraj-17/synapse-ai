@@ -52,6 +52,9 @@ BACKEND_DIR = PACKAGE_DIR.parent / "backend"
 FRONTEND_DIR = PACKAGE_DIR.parent / "frontend"
 ROOT_DIR = PACKAGE_DIR.parent
 
+# When installed via pip, the Next.js standalone build is bundled here.
+_BUNDLED_FRONTEND = PACKAGE_DIR / "_frontend"
+
 
 def _system_python() -> str:
     """Return the real system Python executable, not one inside a venv."""
@@ -291,15 +294,9 @@ def start_backend(detach: bool = False, port: int | None = None, profile: bool =
 
 
 def start_frontend(detach: bool = False, port: int | None = None, backend_port: int | None = None):
-    next_dir = FRONTEND_DIR / ".next"
-    if not next_dir.exists():
-        print("Error: frontend is not built. Run the following first:")
-        print(f"  cd {FRONTEND_DIR} && npm install && npm run build")
-        sys.exit(1)
-    env = os.environ.copy()
     _backend_port = backend_port if backend_port is not None else DEFAULT_BACKEND_PORT
     _frontend_port = port if port is not None else DEFAULT_FRONTEND_PORT
-    # Always set these so Next.js picks up the correct URLs at runtime
+    env = os.environ.copy()
     env["BACKEND_URL"] = f"http://127.0.0.1:{_backend_port}"
     env["NEXT_PUBLIC_BACKEND_PORT"] = str(_backend_port)
     env["SYNAPSE_FRONTEND_PORT"] = str(_frontend_port)
@@ -310,6 +307,34 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
             kwargs["preexec_fn"] = os.setsid
         else:
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+    # Pip-installed package: frontend is pre-built standalone at synapse/_frontend/
+    if _BUNDLED_FRONTEND.exists():
+        server_js = _BUNDLED_FRONTEND / "server.js"
+        if not server_js.exists():
+            print(f"Error: bundled frontend server not found at {server_js}")
+            print("Try reinstalling: pip install --upgrade synapse-ai")
+            sys.exit(1)
+        node = shutil.which("node")
+        if not node:
+            print("Error: node not found -- install Node.js 20.9.0+ from https://nodejs.org/")
+            sys.exit(1)
+        env["PORT"] = str(_frontend_port)
+        env["HOSTNAME"] = "0.0.0.0"
+        env["NODE_ENV"] = "production"
+        return subprocess.Popen(
+            [node, str(server_js)],
+            cwd=str(_BUNDLED_FRONTEND),
+            env=env,
+            **kwargs,
+        )
+
+    # Dev/source mode: use npm start on the frontend source directory
+    next_dir = FRONTEND_DIR / ".next"
+    if not next_dir.exists():
+        print("Error: frontend is not built. Run the following first:")
+        print(f"  cd {FRONTEND_DIR} && npm install && npm run build")
+        sys.exit(1)
     npm = _npm_command()
     return subprocess.Popen(
         [npm, "start"],
