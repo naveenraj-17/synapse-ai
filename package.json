@@ -1,6 +1,6 @@
 {
   "name": "synapse-orch-ai",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Synapse - A Multi Agent Orchestrator",
   "keywords": ["ai", "agent", "mcp", "llm", "orchestrator", "local", "ollama"],
   "homepage": "https://github.com/naveenraj-17/synapse-ai",
@@ -18,6 +18,7 @@
   "files": [
     "bin/",
     "scripts/postinstall.js",
+    "scripts/preuninstall.js",
     "frontend-build/",
     "backend/core/",
     "backend/services/",
@@ -30,6 +31,7 @@
   },
   "scripts": {
     "build": "node scripts/bundle-frontend.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "preuninstall": "node scripts/preuninstall.js"
   }
 }

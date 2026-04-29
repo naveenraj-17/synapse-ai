@@ -456,6 +456,29 @@ async function main() {
   });
 }
 
+// ── Uninstall ─────────────────────────────────────────────────────────────────
+
+async function runUninstall() {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await new Promise((resolve) =>
+    rl.question(
+      'This will remove ~/.synapse (venv, data, settings).\nType "yes" to confirm: ',
+      (a) => { rl.close(); resolve(a.trim().toLowerCase()); }
+    )
+  );
+  if (answer !== 'yes') { console.log('Aborted.'); return; }
+
+  if (fs.existsSync(SYNAPSE_HOME)) {
+    console.log(`Removing ${SYNAPSE_HOME} ...`);
+    fs.rmSync(SYNAPSE_HOME, { recursive: true, force: true });
+    console.log('  Done.');
+  } else {
+    console.log(`${SYNAPSE_HOME} not found — nothing to remove.`);
+  }
+
+  console.log('\nNow run: npm uninstall -g synapse-orch-ai');
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 const cliArg = process.argv[2];
@@ -467,6 +490,10 @@ if (cliArg === 'setup') {
   runSetupWizard(ollamaAvail)
     .then(() => process.exit(0))
     .catch((err) => { console.error('Setup failed:', err.message); process.exit(1); });
+} else if (cliArg === 'uninstall') {
+  runUninstall()
+    .then(() => process.exit(0))
+    .catch((err) => { console.error('Uninstall failed:', err.message); process.exit(1); });
 } else {
   main().catch((err) => { console.error('Fatal error:', err.message); process.exit(1); });
 }

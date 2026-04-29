@@ -892,23 +892,20 @@ def _uninstall_command(keep_data: bool = False):
 
     # 5. Remove the pip-installed `synapse` console script
     print("\nUninstalling Python package...")
+    _pip_names = ["synapse-orch-ai", "synapse-ai", "synapse"]
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "uninstall", "-y", "synapse-ai"],
-            capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            print("  Removed pip package synapse-ai.")
-        else:
-            # Try alternate package name
-            result2 = subprocess.run(
-                [sys.executable, "-m", "pip", "uninstall", "-y", "synapse"],
+        _removed = False
+        for _pkg in _pip_names:
+            _r = subprocess.run(
+                [sys.executable, "-m", "pip", "uninstall", "-y", _pkg],
                 capture_output=True, text=True,
             )
-            if result2.returncode == 0:
-                print("  Removed pip package synapse.")
-            else:
-                print("  Package not found in pip (may already be removed).")
+            if _r.returncode == 0:
+                print(f"  Removed pip package {_pkg}.")
+                _removed = True
+                break
+        if not _removed:
+            print("  Package not found in pip (may already be removed).")
     except Exception as e:
         print(f"  Warning: pip uninstall failed: {e}")
 
