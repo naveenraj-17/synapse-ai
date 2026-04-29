@@ -29,6 +29,7 @@ dist/
 *.egg-info/
 *.whl
 *.tar.gz
+*.tgz
 synapse/_frontend/
 frontend-build/
 node_modules/

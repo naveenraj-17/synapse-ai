@@ -53,6 +53,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     // Vault settings
     const [vaultEnabled, setVaultEnabled] = useState(true);
     const [vaultThreshold, setVaultThreshold] = useState(100000);
+    const [autoCompactEnabled, setAutoCompactEnabled] = useState(false);
+    const [autoCompactThreshold, setAutoCompactThreshold] = useState(50000);
     const [allowDbWrite, setAllowDbWrite] = useState(false);
     const [bashAllowedDirs, setBashAllowedDirs] = useState<string[]>([]);
 
@@ -230,6 +232,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             n8n_api_key: n8nApiKey,
             vault_enabled: vaultEnabled,
             vault_threshold: vaultThreshold,
+            auto_compact_enabled: autoCompactEnabled,
+            auto_compact_threshold: autoCompactThreshold,
             allow_db_write: allowDbWrite,
             embed_code: embedCode,
             bash_allowed_dirs: bashAllowedDirs,
@@ -425,6 +429,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setN8nApiKey(data.n8n_api_key || '');
                 setVaultEnabled(data.vault_enabled !== undefined ? data.vault_enabled : true);
                 setVaultThreshold(data.vault_threshold || 100000);
+                setAutoCompactEnabled(data.auto_compact_enabled || false);
+                setAutoCompactThreshold(data.auto_compact_threshold || 50000);
                 setAllowDbWrite(data.allow_db_write || false);
                 setEmbedCode(data.embed_code || false);
                 setBashAllowedDirs(data.bash_allowed_dirs || []);
@@ -895,6 +901,10 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             setVaultEnabled={setVaultEnabled}
                             vaultThreshold={vaultThreshold}
                             setVaultThreshold={setVaultThreshold}
+                            autoCompactEnabled={autoCompactEnabled}
+                            setAutoCompactEnabled={setAutoCompactEnabled}
+                            autoCompactThreshold={autoCompactThreshold}
+                            setAutoCompactThreshold={setAutoCompactThreshold}
                             allowDbWrite={allowDbWrite}
                             setAllowDbWrite={setAllowDbWrite}
                             embedCode={embedCode}

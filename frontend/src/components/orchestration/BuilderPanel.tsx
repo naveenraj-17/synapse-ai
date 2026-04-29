@@ -2,9 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useRef, useEffect } from 'react';
 import { X, Send, Sparkles, ChevronDown, ChevronUp, Loader2, Bot, Plus, CheckCircle2, ArrowRight } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import type { Orchestration } from '@/types/orchestration';
+import { renderTextContent } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,8 +142,8 @@ function HumanPromptCard({ content }: { content: string }) {
                 <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-700/30 bg-amber-900/10">
                     <span className="text-[9px] font-mono text-amber-500/70 uppercase tracking-widest">Evaluator</span>
                 </div>
-                <div className="px-3 py-2.5 prose prose-invert prose-xs max-w-none text-zinc-300 text-[12px] leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{visible}</ReactMarkdown>
+                <div className="px-3 py-2.5 text-zinc-300 text-[12px] leading-relaxed">
+                    {renderTextContent(visible)}
                 </div>
                 {isLong && (
                     <button
@@ -519,8 +518,8 @@ export function BuilderPanel({
                         /* Assistant text (final summary etc.) */
                         return (
                             <div key={idx} className="flex justify-start">
-                                <div className="max-w-[88%] px-4 py-3 rounded-2xl rounded-bl-sm bg-zinc-800/80 text-zinc-200 text-sm prose prose-invert prose-sm max-w-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                <div className="max-w-[88%] px-4 py-3 rounded-2xl rounded-bl-sm bg-zinc-800/80 text-zinc-200 text-sm">
+                                    {renderTextContent(msg.content)}
                                 </div>
                             </div>
                         );

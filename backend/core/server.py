@@ -420,6 +420,9 @@ async def lifespan(app: FastAPI):
             print(f"Connecting native MCP server '{mcp_name}'...")
             try:
                 env = os.environ.copy()
+                # Don't leak the backend's PYTHONPATH into isolated external MCP processes —
+                # it causes their `from main import main` to resolve to backend/main.py instead.
+                env.pop("PYTHONPATH", None)
                 # Merge any extra env vars from the config (e.g. OAuth credentials)
                 env.update(mcp_cfg.get("env", {}))
 

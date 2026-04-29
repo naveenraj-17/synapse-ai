@@ -107,6 +107,8 @@ function AgentStepResult({ msg, onCollectDataSubmit }: {
   msg: Message;
   onCollectDataSubmit: (values: Record<string, unknown>) => void;
 }) {
+  // Fallback chain: content → data.content → data.result → empty
+  const displayContent = msg.content || (msg.data as any)?.content || (msg.data as any)?.result || '';
   return (
     <div className="flex gap-3 max-w-4xl">
       <div className="h-7 w-7 shrink-0 flex items-center justify-center border border-purple-800/50 bg-purple-950/30 text-purple-400 mt-1 rounded-sm">
@@ -120,7 +122,7 @@ function AgentStepResult({ msg, onCollectDataSubmit }: {
         )}
         <div className="p-3 text-[14px] leading-7 border border-purple-900/30 bg-purple-950/10 relative font-sans rounded-sm">
           <div className="prose prose-invert max-w-none text-zinc-200 font-normal">
-            {renderTextContent(msg.content)}
+            {renderTextContent(displayContent)}
           </div>
         </div>
         {/* Thoughts */}
@@ -361,16 +363,17 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
   );
 }
 
+function generateSessionId() {
+  const c = (globalThis as any).crypto;
+  return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function Home() {
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('synapseSessionId') || (() => {
-        const c: any = (globalThis as any).crypto;
-        return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      })();
+      return localStorage.getItem('synapseSessionId') || generateSessionId();
     }
-    const c: any = (globalThis as any).crypto;
-    return c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    return generateSessionId();
   });
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -398,6 +401,10 @@ export default function Home() {
 
   // Accumulate LLM thoughts per active step during streaming
   const pendingThoughtsRef = useRef<string[]>([]);
+  // SSE abort controller — cancelled on new chat, unmount, or confirmed Settings navigation
+  const sseAbortRef = useRef<AbortController | null>(null);
+  // Persists across SSE calls: true once orchestration_complete is received
+  const orchestrationCompletedRef = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -419,6 +426,11 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('synapseTheme') as 'dark' | 'light' | null;
     if (saved) setTheme(saved);
+  }, []);
+
+  // Abort any in-flight SSE stream on unmount (e.g. navigating away after confirm)
+  useEffect(() => {
+    return () => { sseAbortRef.current?.abort(); };
   }, []);
 
 
@@ -509,11 +521,13 @@ export default function Home() {
   }, []);
 
   const handleNewChat = () => {
-    const c: any = (globalThis as any).crypto;
-    const newSessionId = c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    setSessionId(newSessionId);
-    setMessages([]);
+    sseAbortRef.current?.abort();
+    sseAbortRef.current = null;
+    setIsLoading(false);
+    setIsThinking(false);
     setStreamingActivity(null);
+    setSessionId(generateSessionId());
+    setMessages([]);
   };
 
   const handleRefresh = () => {
@@ -567,9 +581,7 @@ export default function Home() {
         setCurrentAgentId(agentId);
 
         // Generate new session for the new agent — isolates context
-        const c: any = (globalThis as any).crypto;
-        const newSessionId = c?.randomUUID?.() ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        setSessionId(newSessionId);
+        setSessionId(generateSessionId());
 
         // Clear chat messages for clean agent context (no system bubble)
         setMessages([]);
@@ -654,6 +666,11 @@ export default function Home() {
       setStreamingActivity(null);
       setIsThinking(false);
       pendingThoughtsRef.current = [];
+      // Reset session after orchestration so next query starts fresh (no sub-agent history)
+      if (orchestrationCompletedRef.current) {
+        orchestrationCompletedRef.current = false;
+        setSessionId(generateSessionId());
+      }
     }
   };
 
@@ -663,7 +680,7 @@ export default function Home() {
   const handleSSEEvent = (
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     data: Record<string, any>,
-    stepState: { thoughts: string[]; orchStepId: string | null }
+    stepState: { thoughts: string[]; orchStepId: string | null; orchCompleted: boolean; receivedAgentStep: boolean }
   ): { done: boolean; error?: Error } => {
     switch (data.type) {
 
@@ -723,6 +740,40 @@ export default function Home() {
         break;
       }
 
+      // Raw 'final' events — emitted by resume/direct-run endpoints (no SSE transformation)
+      case 'final': {
+        if (data.orch_step_id) {
+          // Sub-agent step inside an orchestration — render as agent_step_result bubble
+          const capturedThoughts = [...stepState.thoughts];
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: data.response as string,
+            intent: data.intent,
+            data: data.data,
+            tool: data.tool_name,
+            msgType: 'agent_step_result',
+            stepName: data.step_name,
+            orchStepId: data.orch_step_id,
+            thoughts: capturedThoughts,
+          }]);
+          stepState.thoughts = [];
+          stepState.receivedAgentStep = true;
+        } else {
+          // Top-level final (single-agent response outside orchestration)
+          const capturedThoughts = [...pendingThoughtsRef.current];
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: data.response as string,
+            intent: data.intent,
+            data: data.data,
+            tool: data.tool_name,
+            thoughts: capturedThoughts,
+          }]);
+          pendingThoughtsRef.current = [];
+        }
+        break;
+      }
+
       // ── Orchestration lifecycle ────────────────────────────────────────────
       case 'orchestration_start':
         setStreamingActivity(`🚀 Starting orchestration`);
@@ -748,6 +799,7 @@ export default function Home() {
         break;
 
       case 'agent_step_result':
+        stepState.receivedAgentStep = true;
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: data.content as string,
@@ -782,6 +834,21 @@ export default function Home() {
           content: `✅ Orchestration ${(data.status as string) || 'complete'}`,
           msgType: 'orchestration_complete',
         }]);
+        // Fallback: if no agent_step_result events arrived, display final_state values
+        if (!stepState.receivedAgentStep && data.final_state) {
+          Object.entries(data.final_state as Record<string, unknown>).forEach(([key, value]) => {
+            if (typeof value === 'string' && value.trim()) {
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: value,
+                msgType: 'agent_step_result',
+                stepName: key,
+                thoughts: [],
+              }]);
+            }
+          });
+        }
+        stepState.orchCompleted = true;
         break;
 
       case 'orchestration_error':
@@ -797,7 +864,7 @@ export default function Home() {
         setStreamingActivity(null);
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: (data.prompt as string) || 'Please provide input to continue.',
+          content: (data.prompt as string) || (data.content as string) || 'Please provide input to continue.',
           msgType: 'human_input_required',
           data: {
             fields: data.fields,
@@ -842,15 +909,20 @@ export default function Home() {
   // SSE Streaming implementation
   const processMessageSSE = async (content: string, images?: string[]) => {
     return new Promise<void>((resolve, reject) => {
-      const stepState = { thoughts: [] as string[], orchStepId: null as string | null };
+      const stepState = { thoughts: [] as string[], orchStepId: null as string | null, orchCompleted: false, receivedAgentStep: false };
+
+      const controller = new AbortController();
+      sseAbortRef.current = controller;
 
       console.log('[SSE] Attempting SSE connection to /api/chat/stream');
       fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: content, session_id: sessionId, agent_id: currentAgentId, images: images || [] }),
+        signal: controller.signal,
       })
         .then(async (response) => {
+          if (controller.signal.aborted) { resolve(); return; }
           if (!response.ok) {
             throw new Error(`SSE request failed: ${response.status}`);
           }
@@ -878,7 +950,11 @@ export default function Home() {
                   const data = JSON.parse(line.slice(6));
                   console.log('[SSE Event]', data.type, data);
                   const result = handleSSEEvent(data, stepState);
-                  if (result.done) { resolve(); return; }
+                  if (result.done) {
+                    if (stepState.orchCompleted) orchestrationCompletedRef.current = true;
+                    resolve();
+                    return;
+                  }
                   if (result.error) { reject(result.error); return; }
                 } catch (e) {
                   console.error('Failed to parse SSE event:', e);
@@ -887,9 +963,11 @@ export default function Home() {
             }
           }
 
+          if (stepState.orchCompleted) orchestrationCompletedRef.current = true;
           resolve();
         })
         .catch((err) => {
+          if (err.name === 'AbortError') { resolve(); return; }
           reject(err);
         });
     });
@@ -936,7 +1014,7 @@ export default function Home() {
       if (!reader) throw new Error('No reader available');
 
       const decoder = new TextDecoder();
-      const stepState = { thoughts: [] as string[], orchStepId: null as string | null };
+      const stepState = { thoughts: [] as string[], orchStepId: null as string | null, orchCompleted: false, receivedAgentStep: false };
       let buffer = '';
 
       while (true) {
@@ -976,7 +1054,7 @@ export default function Home() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, session_id: sessionId, images: images || [] }),
+        body: JSON.stringify({ message: content, session_id: sessionId, agent_id: currentAgentId, images: images || [] }),
       });
       const data = await res.json();
       setMessages(prev => [...prev, {
@@ -1042,11 +1120,6 @@ export default function Home() {
               <div className="absolute -top-3 left-2 bg-zinc-950 border border-amber-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-500 font-mono">
                 Human Input Required
               </div>
-              {msg.data?.agent_context && (
-                <div className="mb-3 p-3 bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 font-mono whitespace-pre-wrap max-h-40 overflow-auto rounded-sm">
-                  {msg.data.agent_context}
-                </div>
-              )}
               <div className="prose prose-invert max-w-none text-zinc-100 font-normal mb-4">
                 {renderTextContent(msg.content)}
               </div>
@@ -1382,7 +1455,18 @@ export default function Home() {
               </button>
 
               <button
-                onClick={() => router.push('/settings/general')}
+                onClick={() => {
+                  if (isLoading) {
+                    const ok = window.confirm('An agent is still processing. Navigating away will cancel it. Continue?');
+                    if (!ok) return;
+                    sseAbortRef.current?.abort();
+                    sseAbortRef.current = null;
+                    setIsLoading(false);
+                    setStreamingActivity(null);
+                    setIsThinking(false);
+                  }
+                  router.push('/settings/general');
+                }}
                 className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
               >
                 <Settings className="h-4 w-4" />
