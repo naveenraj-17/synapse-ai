@@ -301,9 +301,20 @@ def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100
         if os.path.exists(file_path):
             resolved = file_path
             
+    # Fallback: absolute path from a different user/container context — try local vault by filename
+    if not resolved and os.path.isabs(file_path) and "vault" in file_path:
+        try:
+            from core.config import DATA_DIR
+            filename = os.path.basename(file_path)
+            local_candidate = os.path.join(DATA_DIR, "vault", "tool_outputs", filename)
+            if os.path.exists(local_candidate):
+                resolved = local_candidate
+        except Exception:
+            pass
+
     if not resolved:
         cwd = os.getcwd()
-        
+
         # Check vault directory relative to cwd
         if file_path.startswith("data/vault/"):
             candidate = os.path.join(cwd, file_path)
