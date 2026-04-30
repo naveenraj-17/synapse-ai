@@ -224,6 +224,23 @@ class OrchestrationLogger:
         elif etype == "error":
             self._write(f"  ❌ ERROR: {event.get('message', '')}\n")
 
+        elif etype == "context_compact":
+            stage = event.get("stage", "unknown").upper()
+            cb = event.get("chars_before", 0)
+            ca = event.get("chars_after", 0)
+            pct = event.get("reduction_pct", 0)
+            archive = event.get("archive_path")
+            archive_line = f"\n  Archive  : {archive}" if archive else ""
+            sep = "=" * 60
+            self._write(f"""
+{sep}
+  CONTEXT COMPACTED [{stage}]
+  Before   : {cb:>12,} chars  (~{cb // 4:,} tokens est.)
+  After    : {ca:>12,} chars  (~{ca // 4:,} tokens est.)
+  Saved    : {cb - ca:>12,} chars  (-{pct}%){archive_line}
+{sep}
+""")
+
     # ── Helpers ────────────────────────────────────────────────────
 
     @staticmethod

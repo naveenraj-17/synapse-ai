@@ -156,6 +156,7 @@ def log_compaction_event(
     chars_after: int,
     session_id: Optional[str] = None,
     agent_id: Optional[str] = None,
+    run_id: Optional[str] = None,
     archive_path: Optional[str] = None,
     model: str = "",
 ):
@@ -174,6 +175,7 @@ def log_compaction_event(
         "stage": stage,
         "session_id": session_id or "unknown",
         "agent_id": agent_id or "unknown",
+        "run_id": run_id,
         "chars_before": chars_before,
         "chars_after": chars_after,
         "chars_saved": chars_saved,
