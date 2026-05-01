@@ -475,6 +475,20 @@ async def run_agent_step(
                 active_prompt = active_prompt[: len(active_prompt) - overflow]
                 print(f"DEBUG: ⚠️ Truncated prompt by {overflow} chars")
 
+            # Emit per-turn LLM call context to loggers before invoking the model
+            yield {
+                "type": "_log_llm_call",
+                "turn": turn + 1,
+                "model": current_model,
+                "system_chars": len(active_sys_prompt),
+                "prompt_chars": len(active_prompt),
+                "memory_chars": len(memory_context),
+                "history_turns": len(active_history),
+                "total_chars": total_prompt_chars,
+                "prompt": active_prompt,
+                "system_prompt": active_sys_prompt,
+            }
+
             # Ask LLM
             print(f"DEBUG: 🔄 Calling LLM...", flush=True)
             _llm_start = time.time()
