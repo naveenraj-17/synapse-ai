@@ -1,7 +1,7 @@
 # Synapse AI — Multi-Agent Orchestration Platform
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/6166cfe8-e53e-431c-b74f-1d59d09ec80a" width="600" />
+  <img src="https://github.com/user-attachments/assets/f11290ed-dde2-493f-9c5a-9423b9679f1c" alt="synapse-ai-github" width="600" />
 </p>
 
 <p align="center">
