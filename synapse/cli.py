@@ -271,6 +271,49 @@ def ensure_data_dir():
             target.write_text(default)
 
 
+def _ensure_playwright_browsers():
+    import json
+    if IS_WIN:
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+        browsers_path = Path(base) / "ms-playwright"
+    elif sys.platform == "darwin":
+        browsers_path = Path.home() / "Library" / "Caches" / "ms-playwright"
+    else:
+        browsers_path = Path.home() / ".cache" / "ms-playwright"
+
+    if browsers_path.exists():
+        try:
+            if any(d.name.startswith("chromium-") for d in browsers_path.iterdir() if d.is_dir()):
+                return
+        except Exception:
+            pass
+
+    print("Installing Playwright browsers...", end="", flush=True)
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
+        env = os.environ.copy()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_path)
+        npx_cmd = shutil.which("npx.cmd") if IS_WIN else "npx"
+        if not npx_cmd:
+            npx_cmd = "npx"
+        subprocess.run([npx_cmd, "-y", "@playwright/mcp", "install-browser", "chromium"], env=env, check=True, capture_output=True)
+        print(" done.")
+    except Exception as e:
+        print(f"\n  Warning: Failed to install Playwright browsers: {e}")
+        return
+
+    try:
+        settings_file = DATA_DIR / "settings.json"
+        if settings_file.exists():
+            with open(settings_file, "r") as f:
+                settings = json.load(f)
+            settings["playwright_browsers_path"] = str(browsers_path)
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=4)
+    except Exception as e:
+        print(f"\n  Warning: Failed to save playwright_browsers_path to settings: {e}")
+
+
 def start_backend(detach: bool = False, port: int | None = None, profile: bool = False):
     env = os.environ.copy()
     env["SYNAPSE_DATA_DIR"] = str(DATA_DIR)
@@ -501,6 +544,7 @@ def _start_command(
     effective_frontend_port = frontend_port if frontend_port is not None else (_saved_frontend_port or DEFAULT_FRONTEND_PORT)
 
     ensure_data_dir()
+    _ensure_playwright_browsers()
 
     # Prevent accidental foreground start if processes already running
     if not detach:

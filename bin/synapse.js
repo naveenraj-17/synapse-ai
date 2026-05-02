@@ -172,6 +172,51 @@ async function setupVenv() {
   if (currentHash) fs.writeFileSync(HASH_FILE, currentHash);
 }
 
+async function installPlaywrightBrowsers() {
+  const browsersPath = IS_WIN
+    ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'ms-playwright')
+    : os.platform() === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+      : path.join(os.homedir(), '.cache', 'ms-playwright');
+
+  try {
+    if (fs.existsSync(browsersPath)) {
+      const dirs = fs.readdirSync(browsersPath);
+      if (dirs.some(d => d.startsWith('chromium-'))) {
+        return;
+      }
+    }
+  } catch (e) {
+    // Ignore error reading dir
+  }
+
+  process.stdout.write('Installing Playwright browsers...');
+  try {
+    const res1 = spawnSync(venvPython(), ['-m', 'playwright', 'install', 'chromium'], { stdio: 'pipe' });
+    if (res1.status !== 0) throw new Error('Failed to install python playwright');
+
+    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsersPath };
+    const npxCmd = IS_WIN ? 'npx.cmd' : 'npx';
+    const res2 = spawnSync(npxCmd, ['-y', '@playwright/mcp', 'install-browser', 'chromium'], { env, stdio: 'pipe', shell: IS_WIN });
+    if (res2.status !== 0) throw new Error('Failed to install mcp playwright');
+
+    console.log(' done.');
+  } catch (e) {
+    console.log(`\n  Warning: Failed to install Playwright browsers: ${e.message}`);
+    return;
+  }
+
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+      settings.playwright_browsers_path = browsersPath;
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 4));
+    }
+  } catch (e) {
+    console.log(`\n  Warning: Failed to save playwright_browsers_path to settings: ${e.message}`);
+  }
+}
+
 // ── Data directory ────────────────────────────────────────────────────────────
 
 const DEFAULT_JSON = {
@@ -515,6 +560,7 @@ async function main() {
   } catch (_) {}
 
   await setupVenv();
+  await installPlaywrightBrowsers();
   ensureDataDir();
 
   console.log('Starting backend...');
