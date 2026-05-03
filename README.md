@@ -294,7 +294,59 @@ An orchestration is a directed graph (DAG) of steps — you wire agents together
 | **Loop** | Repeat a set of steps N times. Use with transforms to iterate over lists or refine outputs. |
 | **Transform** | Execute arbitrary Python against the shared state dict. Reshape data, compute values, filter lists. |
 | **Human** | Pause and ask a human for input via a generated form. Execution resumes when the user responds. Fully resumable. |
+| **Extract JSON** | Parse JSON out of any text — handles raw JSON, markdown code fences, and multiple objects (stored as an array). No LLM call. Perfect for pulling structured data out of an agent's raw output. |
+| **Print** | Render a text or Markdown template with `{state.key}` interpolation and store it in the shared state. Use for building formatted summaries, reports, or notification bodies without an LLM call. |
+| **IF / Else** | Evaluate a Python expression against the shared state and branch to one of two steps — true path or false path. Supports dot-notation (`state.result.flag`). Missing keys evaluate to `None`. No LLM call. |
+| **Switch** | Match a Python expression's string result against a set of named cases. Each case routes to a different step; unmatched values fall through to the default route. No LLM call. |
 | **End** | Finalize the workflow. |
+
+### Deterministic Control-Flow Steps
+
+Four step types execute **without any LLM call** — they are fast, free, and completely predictable. Use them to add control flow and data handling between your agent steps.
+
+#### Extract JSON
+Finds and parses JSON from raw text. Works with:
+- Plain JSON objects / arrays
+- Markdown code fences (` ```json ... ``` `)
+- Multiple JSON blocks in a single string (stored as an array)
+
+```
+Input key:  llm_raw_output   (e.g. "The answer is: ```json\n{\"score\": 8}\n```")
+Output key: parsed           (→ { "score": 8 })
+```
+
+#### Print
+Renders a Markdown or plain-text template with `{state.key}` and `{state.key.nested}` placeholders resolved from the shared state, then stores the result.
+
+```
+print_content: "# Report\n\nScore: {state.score}\nCategory: {state.category}"
+output_key:    report_text
+```
+
+#### IF / Else
+Evaluates a Python expression against the shared state and branches to one of two steps. Dot-notation is supported — missing keys are `None`.
+
+```
+if_condition:    state.score > 7
+if_true_step_id:  step_approve
+if_false_step_id: step_reject
+```
+
+Safe built-ins only (`len`, `str`, `int`, `float`, `bool`, `list`, `dict`, `max`, `min`, `abs`, `round`, `any`, `all`). No imports.
+
+#### Switch
+Converts a Python expression to a string and matches it against named cases. Unmatched values fall through to `switch_default_step_id`.
+
+```
+switch_expression:      state.category
+switch_cases:
+  "sports"   → step_sports_handler
+  "politics" → step_politics_handler
+  "science"  → step_science_handler
+switch_default_step_id: step_general_handler
+```
+
+> **Tip:** Chain these steps to build lightweight classification pipelines — use an LLM step to classify, an **Extract JSON** step to parse its output, and a **Switch** step to route — all without extra LLM calls.
 
 ### Shared State
 
