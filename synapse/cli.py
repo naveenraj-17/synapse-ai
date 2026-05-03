@@ -674,8 +674,35 @@ def _status_command():
 
 
 def _upgrade_command():
-    """Pull latest code, rebuild venv + pip deps, rebuild frontend."""
+    """Upgrade Synapse AI to the latest version.
+
+    - pip-installed  → pip install --upgrade synapse-orch-ai
+    - source / editable install → git pull + rebuild venv + rebuild frontend
+    """
     print("\n=== Synapse AI -- Upgrade ===")
+
+    # Detect whether we're running from a pip-installed wheel or a source tree.
+    # When installed from PyPI, ROOT_DIR is inside site-packages/.
+    _is_pip_install = any(p in ("site-packages", "dist-packages") for p in ROOT_DIR.parts)
+
+    if _is_pip_install:
+        # ── pip-installed path ────────────────────────────────────────────────
+        print("\nUpgrading via pip...")
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "synapse-orch-ai"],
+            # Show live output so the user can see progress
+            stdout=None, stderr=None,
+        )
+        if result.returncode != 0:
+            print("\n  Upgrade failed.")
+            print("  Try manually: pip install --upgrade synapse-orch-ai")
+            sys.exit(result.returncode)
+
+        print("\n=== Upgrade complete! ===")
+        print("Run 'synapse start' to launch the updated Synapse.")
+        return
+
+    # ── source / editable install path ───────────────────────────────────────
 
     # 1. Stop running services first
     print("\nStopping running services...")
