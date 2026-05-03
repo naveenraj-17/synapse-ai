@@ -434,6 +434,46 @@ class OrchestrationEngine:
                 return guarded_id, event or loop_event
             return next_id, event
 
+        # IF_ELSE — deterministic true/false branch
+        if step.type == StepType.IF_ELSE:
+            decision = run.shared_state.get(f"_if_decision_{step.id}")
+            if decision == "true" and step.if_true_step_id:
+                target = step.if_true_step_id
+            elif step.if_false_step_id:
+                target = step.if_false_step_id
+            else:
+                target = step.next_step_id
+            event = {
+                "type": "if_decision",
+                "orch_step_id": step.id,
+                "decision": decision,
+                "target_step_id": target,
+            }
+            if target:
+                guarded_id, loop_event = self._apply_loop_guard(target, run)
+                return guarded_id, event or loop_event
+            return target, event
+
+        # SWITCH — deterministic case matching
+        if step.type == StepType.SWITCH and step.switch_cases:
+            matched = run.shared_state.get(f"_switch_decision_{step.id}")
+            if matched is not None and matched in step.switch_cases:
+                target = step.switch_cases[matched]
+            else:
+                target = step.switch_default_step_id
+            event = {
+                "type": "switch_decision",
+                "orch_step_id": step.id,
+                "matched_case": matched,
+                "target_step_id": target,
+            }
+            if target is None:
+                return None, event
+            if target:
+                guarded_id, loop_event = self._apply_loop_guard(target, run)
+                return guarded_id, event or loop_event
+            return target, event
+
         # Default linear routing
         next_id = step.next_step_id
 
