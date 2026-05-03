@@ -609,6 +609,28 @@ async function main() {
   });
 }
 
+// ── Upgrade ───────────────────────────────────────────────────────────────────
+
+async function runUpgrade() {
+  console.log('\n=== Synapse AI -- Upgrade ===');
+  console.log('\nPulling latest version from npm...');
+
+  const npm = IS_WIN ? (require('child_process').spawnSync('where', ['npm.cmd'], { stdio: 'pipe', shell: true }).stdout?.toString().trim().split('\n')[0]?.trim() || 'npm') : 'npm';
+
+  const result = spawnSync(npm, ['install', '-g', 'synapse-orch-ai@latest'], {
+    stdio: 'inherit',
+    shell: IS_WIN,
+  });
+
+  if (result.status !== 0) {
+    console.error('\n  Upgrade failed. Try manually: npm install -g synapse-orch-ai@latest');
+    process.exit(1);
+  }
+
+  console.log('\n=== Upgrade complete! ===');
+  console.log('Run: synapse  (to start the updated Synapse)');
+}
+
 // ── Uninstall ─────────────────────────────────────────────────────────────────
 
 async function runUninstall() {
@@ -647,6 +669,10 @@ if (cliArg === 'setup') {
   runUninstall()
     .then(() => process.exit(0))
     .catch((err) => { console.error('Uninstall failed:', err.message); process.exit(1); });
+} else if (cliArg === 'upgrade') {
+  runUpgrade()
+    .then(() => process.exit(0))
+    .catch((err) => { console.error('Upgrade failed:', err.message); process.exit(1); });
 } else {
   main().catch((err) => { console.error('Fatal error:', err.message); process.exit(1); });
 }
