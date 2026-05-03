@@ -3,7 +3,7 @@
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault, LifeBuoy } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
@@ -31,6 +31,7 @@ import { UsageTab } from './settings/UsageTab';
 import { SchedulesTab } from './settings/SchedulesTab';
 import { ImportExportTab } from './settings/ImportExportTab';
 import { VaultTab } from './settings/VaultTab';
+import { SupportTab } from './settings/SupportTab';
 
 
 export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
@@ -812,6 +813,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         { id: 'logs', label: 'Logs', icon: ScrollText },
         { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
         { id: 'vault', label: 'Vault', icon: Vault },
+        { id: 'support', label: 'Support & Docs', icon: LifeBuoy },
     ];
 
     return (
@@ -1064,6 +1066,11 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                     {/* DB CONFIGS TAB */}
                     {activeTab === 'db_configs' && (
                         <DBsTab />
+                    )}
+
+                    {/* SUPPORT TAB */}
+                    {activeTab === 'support' && (
+                        <SupportTab />
                     )}
                 </div>
             </div>
