@@ -89,17 +89,56 @@ function renderBar(done, total) {
   return `  [${bar}] ${pctStr}% (${done}/${total})`;
 }
 
+// Spinner shown while pip goes silent after downloading (build/install phase)
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 function installPipDeps(reqFile) {
   return new Promise((resolve) => {
     const total = countRequirements(reqFile);
     let done = 0;
     let lineBuffer = '';
+    let spinnerActive = false;
+    let spinnerFrame = 0;
+    let spinnerTimer = null;
+    let staleTimer = null;
+
+    // How long (ms) of silence before we switch to the "building" spinner
+    const STALE_THRESHOLD = 3000;
 
     process.stdout.write(renderBar(0, total) + '\r');
+
+    function stopSpinner() {
+      if (!spinnerActive) return;
+      spinnerActive = false;
+      clearInterval(spinnerTimer);
+      spinnerTimer = null;
+    }
+
+    function startSpinner() {
+      if (spinnerActive) return;
+      spinnerActive = true;
+      spinnerFrame = 0;
+      spinnerTimer = setInterval(() => {
+        const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length];
+        spinnerFrame++;
+        process.stdout.write(`  ${frame} Building & installing packages — please stay put...\r`);
+      }, 100);
+    }
+
+    function resetStaleTimer() {
+      if (staleTimer) clearTimeout(staleTimer);
+      staleTimer = setTimeout(() => {
+        // Pip has gone quiet — it's in the build/install phase now
+        startSpinner();
+      }, STALE_THRESHOLD);
+    }
 
     const pip = spawn(venvPip(), ['install', '-r', reqFile, '--progress-bar', 'off'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+
+    // Kick off the stale-detection timer right away
+    resetStaleTimer();
 
     function parseLines(chunk) {
       lineBuffer += chunk.toString();
@@ -107,9 +146,13 @@ function installPipDeps(reqFile) {
       lineBuffer = lines.pop() || '';
       for (const line of lines) {
         if (/^(Collecting|Using cached) /.test(line)) {
+          // New output means pip is still downloading — stop any spinner
+          stopSpinner();
           // Cap at total-1 so the bar only hits 100% when pip actually exits
           done = Math.min(done + 1, total > 1 ? total - 1 : done + 1);
           process.stdout.write(renderBar(done, total) + '\r');
+          // Reset silence timer so spinner only fires if pip goes quiet again
+          resetStaleTimer();
         }
       }
     }
@@ -118,6 +161,10 @@ function installPipDeps(reqFile) {
     pip.stderr.on('data', parseLines);
 
     pip.on('close', (code) => {
+      if (staleTimer) clearTimeout(staleTimer);
+      stopSpinner();
+      // Clear the current line before printing final bar
+      process.stdout.write('\r' + ' '.repeat(70) + '\r');
       process.stdout.write(renderBar(total, total) + '\n');
       if (code !== 0) {
         console.error('\n  Failed to install Python dependencies.');
