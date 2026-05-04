@@ -336,6 +336,31 @@ def start_backend(detach: bool = False, port: int | None = None, profile: bool =
     )
 
 
+def _sync_bundled_frontend(verbose: bool = True) -> bool:
+    """Copy the latest standalone build from frontend/.next/standalone into synapse/_frontend/.
+
+    Returns True if a sync was performed, False if skipped (no source or no mismatch).
+    """
+    standalone_src = FRONTEND_DIR / ".next" / "standalone"
+    if not standalone_src.exists():
+        if verbose:
+            print(f"  Warning: standalone build not found at {standalone_src}")
+            print("  synapse/_frontend/ was NOT updated. Try running scripts/build_frontend.sh manually.")
+        return False
+    _rmtree(_BUNDLED_FRONTEND)
+    _BUNDLED_FRONTEND.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(str(standalone_src), str(_BUNDLED_FRONTEND), dirs_exist_ok=True)
+    static_src = FRONTEND_DIR / ".next" / "static"
+    static_dst = _BUNDLED_FRONTEND / ".next" / "static"
+    if static_src.exists():
+        static_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(str(static_src), str(static_dst), dirs_exist_ok=True)
+    public_src = FRONTEND_DIR / "public"
+    if public_src.exists():
+        shutil.copytree(str(public_src), str(_BUNDLED_FRONTEND / "public"), dirs_exist_ok=True)
+    return True
+
+
 def start_frontend(detach: bool = False, port: int | None = None, backend_port: int | None = None):
     _backend_port = backend_port if backend_port is not None else DEFAULT_BACKEND_PORT
     _frontend_port = port if port is not None else DEFAULT_FRONTEND_PORT
@@ -353,6 +378,18 @@ def start_frontend(detach: bool = False, port: int | None = None, backend_port: 
 
     # Pip-installed package: frontend is pre-built standalone at synapse/_frontend/
     if _BUNDLED_FRONTEND.exists():
+        # Auto-sync if the source has a newer build (e.g. after synapse upgrade pulled new code).
+        standalone_src = FRONTEND_DIR / ".next" / "standalone"
+        if standalone_src.exists():
+            src_id_file = standalone_src / ".next" / "BUILD_ID"
+            bundled_id_file = _BUNDLED_FRONTEND / ".next" / "BUILD_ID"
+            src_id = src_id_file.read_text().strip() if src_id_file.exists() else None
+            bundled_id = bundled_id_file.read_text().strip() if bundled_id_file.exists() else None
+            if src_id and src_id != bundled_id:
+                print("  Syncing updated frontend build into synapse/_frontend/...")
+                _sync_bundled_frontend(verbose=False)
+                print("  Frontend sync complete.")
+
         server_js = _BUNDLED_FRONTEND / "server.js"
         if not server_js.exists():
             print(f"Error: bundled frontend server not found at {server_js}")
@@ -825,24 +862,9 @@ def _upgrade_command():
 
     # Sync new standalone build into _BUNDLED_FRONTEND if this is a traditionally-installed instance.
     if _BUNDLED_FRONTEND.exists():
-        standalone_src = FRONTEND_DIR / ".next" / "standalone"
-        if standalone_src.exists():
-            print("  Updating bundled frontend (synapse/_frontend/)...")
-            _rmtree(_BUNDLED_FRONTEND)
-            _BUNDLED_FRONTEND.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(str(standalone_src), str(_BUNDLED_FRONTEND), dirs_exist_ok=True)
-            static_src = FRONTEND_DIR / ".next" / "static"
-            static_dst = _BUNDLED_FRONTEND / ".next" / "static"
-            if static_src.exists():
-                static_dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(str(static_src), str(static_dst), dirs_exist_ok=True)
-            public_src = FRONTEND_DIR / "public"
-            if public_src.exists():
-                shutil.copytree(str(public_src), str(_BUNDLED_FRONTEND / "public"), dirs_exist_ok=True)
+        print("  Updating bundled frontend (synapse/_frontend/)...")
+        if _sync_bundled_frontend(verbose=True):
             print("  Bundled frontend updated.")
-        else:
-            print(f"  Warning: standalone build not found at {standalone_src}")
-            print("  synapse/_frontend/ was NOT updated. Try running scripts/build_frontend.sh manually.")
 
     print("  Frontend rebuild complete.")
 
