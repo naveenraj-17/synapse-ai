@@ -822,6 +822,28 @@ def _upgrade_command():
 
     print("  Building frontend...")
     subprocess.check_call([npm, "run", "build"], cwd=str(FRONTEND_DIR))
+
+    # Sync new standalone build into _BUNDLED_FRONTEND if this is a traditionally-installed instance.
+    if _BUNDLED_FRONTEND.exists():
+        standalone_src = FRONTEND_DIR / ".next" / "standalone"
+        if standalone_src.exists():
+            print("  Updating bundled frontend (synapse/_frontend/)...")
+            _rmtree(_BUNDLED_FRONTEND)
+            _BUNDLED_FRONTEND.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(str(standalone_src), str(_BUNDLED_FRONTEND), dirs_exist_ok=True)
+            static_src = FRONTEND_DIR / ".next" / "static"
+            static_dst = _BUNDLED_FRONTEND / ".next" / "static"
+            if static_src.exists():
+                static_dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(str(static_src), str(static_dst), dirs_exist_ok=True)
+            public_src = FRONTEND_DIR / "public"
+            if public_src.exists():
+                shutil.copytree(str(public_src), str(_BUNDLED_FRONTEND / "public"), dirs_exist_ok=True)
+            print("  Bundled frontend updated.")
+        else:
+            print(f"  Warning: standalone build not found at {standalone_src}")
+            print("  synapse/_frontend/ was NOT updated. Try running scripts/build_frontend.sh manually.")
+
     print("  Frontend rebuild complete.")
 
     # 5. Re-apply execute permissions on the synapse bin script
