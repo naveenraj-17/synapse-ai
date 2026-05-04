@@ -108,7 +108,7 @@ BUILDER_TOOL_SCHEMAS = [
                     "description": {"type": "string", "description": "What this agent does"},
                     "type": {
                         "type": "string",
-                        "enum": ["conversational", "code", "orchestrator"],
+                        "enum": ["conversational", "code", "orchestrator", "delegate"],
                         "description": "Agent type",
                     },
                     "tools": {
@@ -167,7 +167,7 @@ BUILDER_TOOL_SCHEMAS = [
                                 "description": {"type": "string"},
                                 "type": {
                                     "type": "string",
-                                    "enum": ["conversational", "code", "orchestrator"],
+                                    "enum": ["conversational", "code", "orchestrator", "delegate"],
                                 },
                                 "tools": {
                                     "type": "array",

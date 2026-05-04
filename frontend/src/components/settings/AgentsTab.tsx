@@ -489,6 +489,83 @@ export const AgentsTab = ({
                                         </div>
                                     )}
 
+                                    {draftAgent.type === 'delegate' ? (
+                                        /* ── Delegate Agent: Sub-Agent Selector ── */
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Sub-Agents (Delegation Targets)</label>
+                                            <p className="text-[9px] text-zinc-500 -mt-1">
+                                                Select which agents this delegate can route tasks to. Leave all unchecked to allow delegation to any agent.
+                                            </p>
+                                            {(() => {
+                                                const otherAgents = agents.filter((a: any) =>
+                                                    a.id !== draftAgent.id && a.type !== 'builder'
+                                                );
+                                                const selectedIds: string[] = draftAgent.delegate_agent_ids || [];
+                                                const allSelected = selectedIds.length === 0;
+                                                if (otherAgents.length === 0) {
+                                                    return (
+                                                        <div className="p-6 border border-dashed border-zinc-800 text-center text-zinc-600">
+                                                            <Bot className="h-6 w-6 mx-auto opacity-20 mb-2" />
+                                                            <p className="text-xs">No other agents available. Create agents first, then assign them here.</p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <div className="space-y-2">
+                                                        {/* All agents toggle */}
+                                                        <div
+                                                            onClick={() => setDraftAgent({ ...draftAgent, delegate_agent_ids: [] })}
+                                                            className={`p-3 border cursor-pointer transition-all flex items-center gap-3
+                                                                ${allSelected ? 'bg-zinc-900 border-rose-700/50' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                                        >
+                                                            <div className={`w-3 h-3 border flex-shrink-0 flex items-center justify-center
+                                                                ${allSelected ? 'bg-rose-500 border-rose-500' : 'border-zinc-600'}`}
+                                                            />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="text-xs font-bold text-white">All Agents</div>
+                                                                <div className="text-[9px] text-zinc-500">Allow delegation to any available agent</div>
+                                                            </div>
+                                                            {allSelected && <span className="text-[9px] px-1.5 py-0.5 bg-rose-900/50 text-rose-400 border border-rose-900 rounded">ACTIVE</span>}
+                                                        </div>
+
+                                                        {/* Individual agents */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {otherAgents.map((a: any) => {
+                                                                const isSelected = selectedIds.includes(a.id);
+                                                                return (
+                                                                    <div
+                                                                        key={a.id}
+                                                                        onClick={() => {
+                                                                            let newIds: string[];
+                                                                            if (isSelected) {
+                                                                                newIds = selectedIds.filter((id: string) => id !== a.id);
+                                                                            } else {
+                                                                                newIds = [...selectedIds, a.id];
+                                                                            }
+                                                                            setDraftAgent({ ...draftAgent, delegate_agent_ids: newIds });
+                                                                        }}
+                                                                        className={`p-3 border cursor-pointer transition-all
+                                                                            ${isSelected ? 'bg-zinc-900 border-rose-700/50' : allSelected ? 'bg-zinc-900/30 border-zinc-800 opacity-60' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className={`w-3 h-3 border flex-shrink-0
+                                                                                ${isSelected ? 'bg-rose-500 border-rose-500' : 'border-zinc-600'}`}
+                                                                            />
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="text-xs font-bold text-white truncate">{a.name}</div>
+                                                                                <div className="text-[9px] text-zinc-500 truncate">{a.description}</div>
+                                                                            </div>
+                                                                            <span className="text-[9px] px-1 bg-zinc-800 text-zinc-500 rounded capitalize flex-shrink-0">{a.type}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    ) : (
                                     <div className="space-y-3">
                                         <label className="text-[10px] font-bold text-zinc-500 uppercase">Capabilities (Tools)</label>
                                         {loadingCapabilities ? (
@@ -628,6 +705,7 @@ export const AgentsTab = ({
                                             );
                                         })()}
                                     </div>
+                                    )}
 
                                     {/* Prompt Generator */}
                                     <div className="space-y-2">

@@ -264,6 +264,127 @@ def _inject_repo_context(agent_data, system_template):
         return system_template
 
 
+def _build_delegate_context(
+    active_agent: dict,
+    all_tools: list,
+    tool_schema_map: dict,
+    ollama_tools: list,
+) -> dict:
+    """Build delegate agent context: load eligible sub-agents and inject the
+    synthetic delegate_to_agent tool into the tool lists.
+
+    Returns a dict of agent_id -> agent_data for all eligible sub-agents.
+    """
+    from core.tools import VirtualTool
+
+    agents = load_user_agents()
+    own_id = active_agent.get("id", "")
+    delegate_agent_ids = active_agent.get("delegate_agent_ids") or []
+
+    # Build the eligible agents map
+    eligible: dict = {}
+    for a in agents:
+        aid = a.get("id", "")
+        atype = a.get("type", "")
+        # Skip self, builder agents, and other delegate agents (no infinite loops)
+        if aid == own_id or atype in ("builder",):
+            continue
+        # If specific agents are selected, filter to those
+        if delegate_agent_ids and aid not in delegate_agent_ids:
+            continue
+        eligible[aid] = a
+
+    if not eligible:
+        print(f"DEBUG: ⚠ Delegate agent '{own_id}' has no eligible sub-agents", flush=True)
+        return {}
+
+    # Build agent descriptions for the tool's description
+    agent_summaries = []
+    for aid, a in eligible.items():
+        agent_summaries.append(f"  - {a.get('name', aid)} (id: {aid}): {a.get('description', 'No description')}")
+    agents_list_str = "\n".join(agent_summaries)
+
+    # Create the synthetic delegate_to_agent tool
+    delegate_tool = VirtualTool(
+        name="delegate_to_agent",
+        description=(
+            "Delegate a task to a specific sub-agent. The agent will run its full "
+            "ReAct loop autonomously and return its result. Use this to route tasks "
+            "to the most appropriate agent based on their capabilities.\n\n"
+            f"Available agents:\n{agents_list_str}"
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "ID of the agent to delegate to",
+                    "enum": list(eligible.keys()),
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Clear, specific instructions for the agent to execute",
+                },
+            },
+            "required": ["agent_id", "task"],
+        },
+    )
+
+    # Inject into tool collections
+    all_tools.append(delegate_tool)
+    tool_schema_map["delegate_to_agent"] = delegate_tool.inputSchema
+    ollama_tools.append({
+        "type": "function",
+        "function": {
+            "name": delegate_tool.name,
+            "description": delegate_tool.description,
+            "parameters": delegate_tool.inputSchema,
+        },
+    })
+
+    print(f"DEBUG: 🤝 Delegate agent '{own_id}' can route to {len(eligible)} agents: {list(eligible.keys())}", flush=True)
+    return eligible
+
+
+def _inject_delegate_roster(system_template: str, agents_map: dict) -> str:
+    """Inject a section into the system prompt listing available sub-agents
+    with their names, descriptions, and tool capabilities."""
+    if not agents_map:
+        return system_template
+
+    roster_lines = ["### AVAILABLE SUB-AGENTS", ""]
+    roster_lines.append(
+        "You are a **delegate agent**. Your job is to analyze the user's request and route "
+        "tasks to the most appropriate sub-agent using the `delegate_to_agent` tool. "
+        "Review each sub-agent's description and tools to make the best routing decision.\n"
+    )
+    roster_lines.append(
+        "After a sub-agent completes its task, review the result. You can either:\n"
+        "1. Delegate to another agent if more work is needed\n"
+        "2. Provide your final synthesized response if all tasks are complete\n"
+    )
+
+    for aid, agent in agents_map.items():
+        name = agent.get("name", aid)
+        desc = agent.get("description", "No description")
+        tools = agent.get("tools", [])
+        agent_type = agent.get("type", "conversational")
+
+        roster_lines.append(f"**{name}** (`{aid}`) — {agent_type}")
+        roster_lines.append(f"  Description: {desc}")
+        if tools and tools != ["all"]:
+            # Show first 15 tool names as a capability summary
+            tool_preview = ", ".join(tools[:15])
+            if len(tools) > 15:
+                tool_preview += f", ... (+{len(tools) - 15} more)"
+            roster_lines.append(f"  Tools: {tool_preview}")
+        elif tools == ["all"]:
+            roster_lines.append("  Tools: All available tools")
+        roster_lines.append("")
+
+    return system_template + "\n\n" + "\n".join(roster_lines)
+
+
 async def run_agent_step(
     message,
     agent_id,
@@ -334,6 +455,23 @@ async def run_agent_step(
         print(f"DEBUG RUN_AGENT: aggregate_all_tools done, tool_count={len(all_tools)}", flush=True)
     allowed_tools = list(allowed_tools_override) if allowed_tools_override else active_agent.get("tools", ["all"])
 
+    # ── DELEGATE AGENT: inject synthetic delegate_to_agent tool + agent context ──
+    _delegate_agents_map: dict = {}  # agent_id -> agent dict (populated only for delegates)
+    if agent_type == "delegate" and tools_override is None:
+        _delegate_agents_map = _build_delegate_context(
+            active_agent, all_tools, tool_schema_map, ollama_tools
+        )
+        # Rebuild tools_json after injection so system prompt includes the new tool
+        tools_json = str([
+            {'tool': t.name, 'description': t.description, 'schema': t.inputSchema}
+            for t in all_tools
+        ])
+        # Ensure delegate_to_agent is always allowed
+        if "all" not in allowed_tools and "delegate_to_agent" not in allowed_tools:
+            allowed_tools.append("delegate_to_agent")
+        # Inject agent roster into system prompt
+        agent_system_template = _inject_delegate_roster(agent_system_template, _delegate_agents_map)
+
     system_prompt_text = build_system_prompt(
         agent_system_template, tools_json, session_id,
         _get_session_state, server_module.memory_store, agent_id=agent_id_for_session,
@@ -367,8 +505,8 @@ async def run_agent_step(
     user_message = message
     memory_context = ""
     agent_type = active_agent.get("type", "conversational")
-    # Orchestrator and builder agents always start fresh — no history carryover between runs
-    is_orchestrator = agent_type in ("orchestrator", "builder")
+    # Orchestrator, builder, and delegate agents always start fresh — no history carryover between runs
+    is_orchestrator = agent_type in ("orchestrator", "builder", "delegate")
     if history_override is not None:
         recent_history_messages = history_override
     elif is_orchestrator:
@@ -614,6 +752,49 @@ async def run_agent_step(
                             async for _extra in post_tool_hook(tool_name, raw_output):
                                 yield _extra
                         continue
+
+                # ===== DELEGATE_TO_AGENT (delegate agents) =====
+                if tool_name == "delegate_to_agent" and _delegate_agents_map:
+                    target_agent_id = tool_args.get("agent_id", "")
+                    task_message = tool_args.get("task", "")
+                    target_agent = _delegate_agents_map.get(target_agent_id)
+                    if not target_agent:
+                        block_msg = f"Agent '{target_agent_id}' not found or not available for delegation."
+                        current_context_text += f"\nSystem: {block_msg}\n"
+                        yield {"type": "tool_result", "tool_name": tool_name, "preview": block_msg}
+                        continue
+
+                    agent_name = target_agent.get("name", target_agent_id)
+                    print(f"DEBUG: 🤝 Delegate → agent '{agent_name}' ({target_agent_id})", flush=True)
+                    yield {"type": "thinking", "message": f"Delegating to {agent_name}..."}
+
+                    # Run the sub-agent's full ReAct loop
+                    sub_final = ""
+                    try:
+                        async for sub_event in run_agent_step(
+                            message=task_message,
+                            agent_id=target_agent_id,
+                            session_id=session_id,
+                            server_module=server_module,
+                            max_turns=target_agent.get("max_turns") or 15,
+                            source=source,
+                            run_id=run_id,
+                        ):
+                            # Yield sub-agent events so the UI shows progress
+                            yield {**sub_event, "delegate_from": agent_id_for_session, "delegate_agent_name": agent_name}
+                            if sub_event.get("type") == "final":
+                                sub_final = sub_event.get("response", "")
+                    except Exception as e:
+                        sub_final = f"Error: Sub-agent '{agent_name}' failed: {e}"
+                        print(f"DEBUG: ❌ Delegate sub-agent failed: {e}", flush=True)
+
+                    raw_output = maybe_vault(tool_name, sub_final)
+                    current_context_text += f"\nAgent '{agent_name}' Response: {raw_output}\n"
+                    tools_used_summary.append(f"delegate_to_agent({agent_name}): {raw_output}")
+                    preview = raw_output[:500] + "..." if len(raw_output) > 500 else raw_output
+                    print(f"DEBUG: 🤝 Delegate result from '{agent_name}': {preview}")
+                    yield {"type": "tool_result", "tool_name": tool_name, "preview": preview}
+                    continue
 
                 # ===== NATIVE BUILDER TOOLS =====
                 # Registered as first-class tools in aggregate_all_tools. Any

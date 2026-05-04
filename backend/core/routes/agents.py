@@ -164,6 +164,7 @@ async def get_agent_types():
     types = [
         {"value": "conversational", "label": "Conversational", "description": "General-purpose agent with configurable tools."},
         {"value": "orchestrator", "label": "Orchestrator", "description": "Multi-agent orchestration — deployed from the Orchestrations tab."},
+        {"value": "delegate", "label": "Delegate", "description": "Routes queries to sub-agents dynamically. Usable standalone or as an agent step in orchestrations."},
     ]
     if s.get("coding_agent_enabled"):
         types.insert(2, {"value": "code", "label": "Code", "description": "Automatically includes search_codebase for semantic code search."})
@@ -233,6 +234,14 @@ AGENT_TYPE_CONTEXT = {
         "It receives context from previous steps and must produce structured outputs for downstream steps. "
         "The prompt should emphasize: clear task decomposition, structured output formats, "
         "and awareness that its output feeds into other agents."
+    ),
+    "delegate": (
+        "This is a DELEGATE agent — it acts as a dynamic router that receives user queries and decides "
+        "which sub-agent to hand the task to. It has access to a delegate_to_agent tool that runs a "
+        "sub-agent's full ReAct loop. After receiving a sub-agent's result, the delegate can either "
+        "delegate to another agent or produce a final synthesized response. The prompt should emphasize: "
+        "intelligent task routing, understanding each sub-agent's strengths, clear task instructions "
+        "when delegating, and synthesizing results from multiple agents."
     ),
 }
 

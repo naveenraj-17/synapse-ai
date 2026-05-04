@@ -15,6 +15,7 @@ export const AUTO_TOOLS_BY_TYPE: Record<string, string[]> = {
     all_types: ['sequentialthinking', 'read_file', 'read_multiple_files', 'search_files', 'list_directory', 'get_file_info', 'grep', 'glob', 'read_file_by_lines'],
     code: ['search_codebase'],
     orchestrator: [],
+    delegate: [],
 };
 
 // Static tool group definitions for native Python agents.

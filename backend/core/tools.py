@@ -31,6 +31,7 @@ DEFAULT_TOOLS_BY_TYPE = {
         "search_codebase",
     },
     "orchestrator": set(),  # orchestrator agents delegate to sub-agents; no extra tools needed
+    "delegate": set(),      # delegate agents route to sub-agents via synthetic delegate_to_agent tool
 }
 
 
