@@ -546,6 +546,47 @@ def _terminate_pid(pid: int, name: str, timeout: int = 5) -> bool:
         return not _is_running(pid)
 
 
+def _ensure_coding_deps() -> None:
+    """
+    Ensure cocoindex and psycopg are installed and up-to-date in the backend venv.
+
+    Called at every `synapse start` so the deps are self-healing:
+    - Fresh installs that skipped the coding-agent step get them auto-installed.
+    - Old installs with an outdated cocoindex (missing .typing) get upgraded.
+    - Installs where the user toggled Code Indexing ON after initial setup work
+      without needing a manual 'synapse upgrade'.
+    """
+    venv_python = BACKEND_DIR / "venv" / ("Scripts/python.exe" if IS_WIN else "bin/python")
+    if not venv_python.exists():
+        return  # No venv at all — not our problem here; backend will report it.
+
+    coding_req = BACKEND_DIR / "requirements-coding.txt"
+    if not coding_req.exists():
+        return  # File not shipped (shouldn't happen after package.json fix).
+
+    # Quick check: can the venv import cocoindex.typing?
+    # This catches both "not installed" and "old version" cases.
+    check = subprocess.run(
+        [str(venv_python), "-c", "from cocoindex.typing import VectorInfo"],
+        capture_output=True,
+    )
+    if check.returncode == 0:
+        return  # All good — nothing to do.
+
+    print("  Coding-agent dependencies missing or outdated — installing now...")
+    result = subprocess.run(
+        [str(venv_python), "-m", "pip", "install", "-q", "--upgrade", "-r", str(coding_req)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  Coding-agent dependencies installed.")
+    else:
+        print(f"  Warning: could not install coding-agent dependencies:")
+        print(f"  {result.stderr.strip()[:300]}")
+        print(f"  Run manually: {venv_python} -m pip install -r {coding_req}")
+
+
 def _start_command(
     detach: bool = False,
     no_browser: bool = False,
@@ -582,6 +623,7 @@ def _start_command(
 
     ensure_data_dir()
     _ensure_playwright_browsers()
+    _ensure_coding_deps()
 
     # Prevent accidental foreground start if processes already running
     if not detach:
