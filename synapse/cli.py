@@ -810,7 +810,19 @@ def _upgrade_command():
     else:
         print(f"  Warning: {req_txt} not found -- skipping requirements.")
 
-    # Read settings to determine which optional requirements to install
+    # Always install coding-agent deps (cocoindex, psycopg, numpy).
+    # These are small and needed as soon as the user enables "Code Indexing"
+    # in the UI — we don't want them to have to run upgrade again just because
+    # they toggled a setting after the initial install.
+    coding_req = BACKEND_DIR / "requirements-coding.txt"
+    if coding_req.exists():
+        print("  Installing coding-agent requirements (cocoindex, psycopg)...")
+        subprocess.check_call([str(python_exe), "-m", "pip", "install",
+                               *pip_extra, "-r", str(coding_req)])
+    else:
+        print(f"  Warning: {coding_req} not found -- skipping.")
+
+    # Messaging deps are heavier — only install when the user has opted in.
     import json as _json
     settings_file = DATA_DIR / "settings.json"
     _settings: dict = {}
@@ -819,15 +831,6 @@ def _upgrade_command():
             _settings = _json.loads(settings_file.read_text())
         except Exception:
             pass
-
-    if _settings.get("coding_agent_enabled", False):
-        coding_req = BACKEND_DIR / "requirements-coding.txt"
-        if coding_req.exists():
-            print("  Installing coding-agent requirements...")
-            subprocess.check_call([str(python_exe), "-m", "pip", "install",
-                                   *pip_extra, "-r", str(coding_req)])
-        else:
-            print(f"  Warning: {coding_req} not found -- skipping.")
 
     if _settings.get("messaging_enabled", False):
         messaging_req = BACKEND_DIR / "requirements-messaging.txt"

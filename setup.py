@@ -1627,15 +1627,17 @@ def install_backend(coding_enabled, messaging_enabled=False):
     _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", os.path.join(BACKEND_DIR, "requirements.txt")])
     ok("Base dependencies installed.")
 
-    if coding_enabled:
-        coding_req = os.path.join(BACKEND_DIR, "requirements-coding.txt")
-        if os.path.exists(coding_req):
-            info("Installing coding-agent dependencies (cocoindex, psycopg)...")
-            _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", coding_req])
-            ok("Coding-agent dependencies installed.")
-        else:
-            warn(f"requirements-coding.txt not found at {coding_req}")
-    
+    # Always install coding deps (cocoindex, psycopg, numpy) — they are needed
+    # as soon as the user enables Code Indexing in the UI.  Installing them up
+    # front avoids a second install step (and confusing "not found" errors).
+    coding_req = os.path.join(BACKEND_DIR, "requirements-coding.txt")
+    if os.path.exists(coding_req):
+        info("Installing coding-agent dependencies (cocoindex, psycopg, numpy)...")
+        _run_with_retry([PYTHON_EXE, "-m", "pip", "install", "-r", coding_req])
+        ok("Coding-agent dependencies installed.")
+    else:
+        warn(f"requirements-coding.txt not found at {coding_req}")
+
     if messaging_enabled:
         messaging_req = os.path.join(BACKEND_DIR, "requirements-messaging.txt")
         if os.path.exists(messaging_req):
@@ -2048,7 +2050,15 @@ def _rebuild_backend(install_dir):
     info("Installing / upgrading backend requirements...")
     subprocess.check_call(pip_cmd + ["-r", req_txt])
 
-    # Read settings to determine which optional requirements to install
+    # Always install coding deps (cocoindex, psycopg, numpy).
+    coding_req = os.path.join(backend_dir, "requirements-coding.txt")
+    if os.path.exists(coding_req):
+        info("Installing coding-agent requirements (cocoindex, psycopg, numpy)...")
+        subprocess.check_call(pip_cmd + ["-r", coding_req])
+    else:
+        warn(f"requirements-coding.txt not found at {coding_req}")
+
+    # Messaging deps are heavier — only install when opted in.
     _settings: dict = {}
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -2057,14 +2067,6 @@ def _rebuild_backend(install_dir):
                 _settings = _json.load(_f)
         except Exception:
             pass
-
-    if _settings.get("coding_agent_enabled", False):
-        coding_req = os.path.join(backend_dir, "requirements-coding.txt")
-        if os.path.exists(coding_req):
-            info("Installing coding-agent requirements...")
-            subprocess.check_call(pip_cmd + ["-r", coding_req])
-        else:
-            warn(f"requirements-coding.txt not found at {coding_req}")
 
     if _settings.get("messaging_enabled", False):
         messaging_req = os.path.join(backend_dir, "requirements-messaging.txt")
