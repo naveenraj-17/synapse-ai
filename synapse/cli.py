@@ -946,11 +946,114 @@ def _status_command():
         print(f"{name}: {'running' if running else 'stale pid ' + str(pid)}")
 
 
+def _get_current_version() -> str:
+    """Read the version string from pyproject.toml."""
+    try:
+        content = (ROOT_DIR / "pyproject.toml").read_text()
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("version") and "=" in line:
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return "0.0.0"
+
+
+def _parse_version(v: str) -> tuple:
+    v = v.lstrip("v")
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return (0,)
+
+
+def _get_latest_github_release() -> "tuple[str, str] | tuple[None, None]":
+    """Return (tag_name, tarball_url) for the latest GitHub release, or (None, None) on failure."""
+    import urllib.request as _req
+    import json as _json
+    url = "https://api.github.com/repos/naveenraj-17/synapse-ai/releases/latest"
+    try:
+        req = _req.Request(url, headers={"User-Agent": "synapse-upgrade/1.0"})
+        with _req.urlopen(req, timeout=15) as resp:
+            data = _json.loads(resp.read())
+        return data.get("tag_name", ""), data.get("tarball_url", "")
+    except Exception as e:
+        print(f"  Warning: could not fetch release info: {e}")
+        return None, None
+
+
+def _download_and_apply_release(tarball_url: str) -> bool:
+    """Download the release tarball and overwrite source files, preserving user data."""
+    import tempfile, tarfile
+    import urllib.request as _req
+
+    SKIP = {
+        "backend/data", "backend/venv",
+        "frontend/node_modules", "frontend/.next",
+        "synapse/_frontend",
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tar_path = os.path.join(tmp, "release.tar.gz")
+        print("  Downloading...", end="", flush=True)
+        req = _req.Request(tarball_url, headers={"User-Agent": "synapse-upgrade/1.0"})
+        try:
+            with _req.urlopen(req, timeout=120) as resp, open(tar_path, "wb") as f:
+                shutil.copyfileobj(resp, f)
+        except Exception as e:
+            print(f"\n  Error downloading release: {e}")
+            return False
+        print(" done.")
+
+        print("  Extracting...", end="", flush=True)
+        extract_dir = os.path.join(tmp, "src")
+        os.makedirs(extract_dir)
+        try:
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tf.extractall(extract_dir)
+        except Exception as e:
+            print(f"\n  Error extracting archive: {e}")
+            return False
+        print(" done.")
+
+        entries = os.listdir(extract_dir)
+        if not entries:
+            print("  Warning: tarball was empty — skipping file copy.")
+            return False
+        src_root = os.path.join(extract_dir, entries[0])
+
+        print("  Applying update...")
+        for item in os.listdir(src_root):
+            if item.startswith(".env"):
+                continue
+            src = os.path.join(src_root, item)
+            dst = os.path.join(str(ROOT_DIR), item)
+
+            if os.path.isdir(src):
+                os.makedirs(dst, exist_ok=True)
+                for sub in os.listdir(src):
+                    sub_rel = os.path.join(item, sub)
+                    if any(sub_rel == s or sub_rel.startswith(s + os.sep) for s in SKIP):
+                        continue
+                    sub_src = os.path.join(src, sub)
+                    sub_dst = os.path.join(dst, sub)
+                    if os.path.isdir(sub_src):
+                        if os.path.exists(sub_dst):
+                            _rmtree(sub_dst)
+                        shutil.copytree(sub_src, sub_dst)
+                    else:
+                        shutil.copy2(sub_src, sub_dst)
+            else:
+                shutil.copy2(src, dst)
+
+    return True
+
+
 def _upgrade_command():
     """Upgrade Synapse AI to the latest version.
 
     - pip-installed  → pip install --upgrade synapse-orch-ai
-    - source / editable install → git pull + rebuild venv + rebuild frontend
+    - source / editable install → download latest GitHub release + rebuild venv + rebuild frontend
     """
     print("\n=== Synapse AI -- Upgrade ===")
 
@@ -981,27 +1084,22 @@ def _upgrade_command():
     print("\nStopping running services...")
     _stop_command()
 
-    # 2. Pull latest code
-    print("\n==> Pulling latest code...")
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(ROOT_DIR), "pull", "--ff-only"],
-            capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            output_text = result.stdout.strip()
-            if "Already up to date" in output_text:
-                print("  Already up to date.")
+    # 2. Download latest release from GitHub
+    print("\n==> Checking for latest release...")
+    current_ver = _get_current_version()
+    latest_tag, tarball_url = _get_latest_github_release()
+
+    if latest_tag and tarball_url:
+        if _parse_version(latest_tag) > _parse_version(current_ver):
+            print(f"  New version available: {latest_tag} (current: {current_ver})")
+            if _download_and_apply_release(tarball_url):
+                print(f"  Source updated to {latest_tag}.")
             else:
-                print(f"  Updated:\n{output_text}")
+                print("  Warning: file apply failed — continuing with existing code.")
         else:
-            print(f"  Warning: git pull failed (exit {result.returncode}).")
-            if result.stderr.strip():
-                print(f"  {result.stderr.strip()}")
-    except FileNotFoundError:
-        print("  Warning: git not found -- skipping update.")
-    except Exception as e:
-        print(f"  Warning: git pull error: {e}")
+            print(f"  Already at latest version ({current_ver}).")
+    else:
+        print("  Warning: could not reach GitHub releases — continuing with existing code.")
 
     # 3. Rebuild Python venv
     print("\n==> Rebuilding backend virtual environment...")
@@ -1084,6 +1182,11 @@ def _upgrade_command():
     print("  Backend rebuild complete.")
 
     # 4. Rebuild frontend
+    # Ensure the internal token is in os.environ so the build subprocess
+    # inherits it — Next.js bundles process.env.SYNAPSE_INTERNAL_TOKEN into
+    # the Edge Middleware at build time.
+    _ensure_internal_token()
+
     print("\n==> Rebuilding frontend (npm install + npm run build)...")
     npm = _npm_command()
 
