@@ -77,7 +77,12 @@ def load_settings():
 
 
 def get_or_create_jwt_secret() -> str:
-    """Ensure SYNAPSE_JWT_SECRET exists in .env. Generate if missing. Return the secret."""
+    """Return SYNAPSE_JWT_SECRET from the environment or .env file.
+
+    Persistence is handled by the CLI (synapse/cli.py) before the server starts.
+    If the secret is missing here (e.g. server run directly without the CLI),
+    an ephemeral in-memory value is used for this session only.
+    """
     env_file = _PROJECT_ROOT / ".env"
     var = "SYNAPSE_JWT_SECRET"
 
@@ -99,12 +104,10 @@ def get_or_create_jwt_secret() -> str:
 
     secret = _secrets.token_hex(32)
     os.environ[var] = secret
-    try:
-        with open(env_file, "a") as f:
-            f.write(f"\n# JWT secret for session tokens (auto-generated)\n")
-            f.write(f"{var}={secret}\n")
-    except Exception as e:
-        print(f"Warning: could not write {var} to .env: {e}")
+    print(
+        f"Warning: {var} was not found; generated an ephemeral in-memory secret. "
+        f"Set {var} in the environment (or run 'synapse start') to persist across restarts."
+    )
     return secret
 
 
