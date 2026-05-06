@@ -135,6 +135,11 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
     const [codingEnabled, setCodingEnabled] = useState(false);
     const [embedCode, setEmbedCode] = useState(false);
 
+    // Login settings
+    const [loginEnabled, setLoginEnabled] = useState(false);
+    const [loginUsername, setLoginUsername] = useState('');
+    const [isLoginSaving, setIsLoginSaving] = useState(false);
+
     // Persistent OAuth postMessage listener — lives here so it survives settings tab switches
     const handleMcpOAuthMessage = useCallback((event: MessageEvent) => {
         if (event.data?.type !== 'MCP_OAUTH_COMPLETE') return;
@@ -261,6 +266,28 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             showToast('Failed to save settings', 'error');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleSaveLogin = async (enabled: boolean, username: string, password: string) => {
+        setIsLoginSaving(true);
+        try {
+            const res = await fetch('/api/settings/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_enabled: enabled, login_username: username, login_password: password }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Failed to save login settings');
+            }
+            setLoginEnabled(enabled);
+            setLoginUsername(username);
+            showToast(enabled ? 'Login enabled' : 'Login disabled', 'success');
+        } catch (e: any) {
+            showToast(e.message || 'Failed to save login settings', 'error');
+        } finally {
+            setIsLoginSaving(false);
         }
     };
 
@@ -438,6 +465,8 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                 setBashAllowedDirs(data.bash_allowed_dirs || []);
                 setMessagingEnabled(data.messaging_enabled || false);
                 setCodingEnabled(data.coding_agent_enabled || false);
+                setLoginEnabled(data.login_enabled || false);
+                setLoginUsername(data.login_username || '');
                 if (data.bedrock_api_key) {
                     refreshBedrockInferenceProfiles();
                 }
@@ -915,6 +944,12 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                             setEmbedCode={setEmbedCode}
                             bashAllowedDirs={bashAllowedDirs}
                             setBashAllowedDirs={setBashAllowedDirs}
+                            loginEnabled={loginEnabled}
+                            setLoginEnabled={setLoginEnabled}
+                            loginUsername={loginUsername}
+                            setLoginUsername={setLoginUsername}
+                            onSaveLogin={handleSaveLogin}
+                            isLoginSaving={isLoginSaving}
                             onSave={handleSaveSection}
                             isSaving={isSaving}
                         />
