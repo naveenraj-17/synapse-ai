@@ -57,6 +57,10 @@ def load_settings():
         "messaging_enabled": True,
         "embed_code": False,
         "bash_allowed_dirs": [],
+        "login_enabled": False,
+        "login_username": "admin",
+        "login_password_hash": "",
+        "google_maps_api_key": "",
     }
     
     if not os.path.exists(SETTINGS_FILE):

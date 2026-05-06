@@ -39,6 +39,10 @@ class InternalTokenMiddleware(BaseHTTPMiddleware):
         if path.startswith("/api/v1/") or path == "/api/v1":
             return await call_next(request)
 
+        # Skip: MCP OAuth callback — called by external OAuth providers, not frontend
+        if path == "/api/mcp/oauth/callback":
+            return await call_next(request)
+
         # Skip: FastAPI docs
         if path in ("/docs", "/openapi.json", "/redoc"):
             return await call_next(request)
