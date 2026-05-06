@@ -3,7 +3,7 @@
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault, LifeBuoy } from 'lucide-react';
+import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault, LifeBuoy, Key } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
@@ -32,6 +32,7 @@ import { SchedulesTab } from './settings/SchedulesTab';
 import { ImportExportTab } from './settings/ImportExportTab';
 import { VaultTab } from './settings/VaultTab';
 import { SupportTab } from './settings/SupportTab';
+import { APIKeysTab } from './settings/APIKeysTab';
 
 
 export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
@@ -813,6 +814,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
         { id: 'logs', label: 'Logs', icon: ScrollText },
         { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
         { id: 'vault', label: 'Vault', icon: Vault },
+        { id: 'api_keys', label: 'API Keys', icon: Key },
         { id: 'support', label: 'Support & Docs', icon: LifeBuoy },
     ];
 
@@ -1066,6 +1068,11 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
                     {/* DB CONFIGS TAB */}
                     {activeTab === 'db_configs' && (
                         <DBsTab />
+                    )}
+
+                    {/* API KEYS TAB */}
+                    {activeTab === 'api_keys' && (
+                        <APIKeysTab />
                     )}
 
                     {/* SUPPORT TAB */}
