@@ -988,9 +988,17 @@ def _download_and_apply_release(tarball_url: str) -> bool:
     import urllib.request as _req
 
     SKIP = {
-        "backend/data", "backend/venv",
-        "frontend/node_modules", "frontend/.next",
-        "synapse/_frontend",
+        # User data — must never be overwritten
+        "backend/data",
+        # Runtime / generated — large and not part of releases
+        "backend/venv",
+        "backend/logs",
+        "backend/chroma_db",
+        "backend/.playwright-mcp",
+        "backend/node_modules",
+        "frontend/node_modules",
+        # Note: frontend/.next and synapse/_frontend are intentionally NOT skipped —
+        # they get rebuilt by npm build + _sync_bundled_frontend() during upgrade.
     }
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -1034,6 +1042,9 @@ def _download_and_apply_release(tarball_url: str) -> bool:
                 for sub in os.listdir(src):
                     sub_rel = os.path.join(item, sub)
                     if any(sub_rel == s or sub_rel.startswith(s + os.sep) for s in SKIP):
+                        continue
+                    # Never overwrite log files
+                    if sub.endswith(".log"):
                         continue
                     sub_src = os.path.join(src, sub)
                     sub_dst = os.path.join(dst, sub)
