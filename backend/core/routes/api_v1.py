@@ -14,6 +14,7 @@ Endpoints:
 """
 import asyncio
 import json
+import logging
 import time
 import uuid
 
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 from core.api_key_middleware import require_api_key
 
 router = APIRouter()
+log = logging.getLogger("api_v1")
 
 
 # ── Request / Response Models ────────────────────────────────────────────────
@@ -106,15 +108,20 @@ async def v1_chat(body: V1ChatRequest, key_record: dict = Depends(require_api_ke
     final_event = None
     error_msg = None
 
-    async for event in run_react_loop(chat_request, _server):
-        etype = event.get("type", "")
-        if etype == "final":
-            final_event = event
-        elif etype == "error":
-            error_msg = event.get("message", "Unknown error")
+    try:
+        async for event in run_react_loop(chat_request, _server):
+            etype = event.get("type", "")
+            if etype == "final":
+                final_event = event
+            elif etype == "error":
+                error_msg = event.get("message", "Unknown error")
+    except Exception as exc:
+        log.exception("[v1/chat] Unhandled error for session=%s", chat_request.session_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs for details.")
 
     if error_msg:
-        raise HTTPException(status_code=500, detail=error_msg)
+        log.error("[v1/chat] Agent error for session=%s: %s", chat_request.session_id, error_msg)
+        raise HTTPException(status_code=500, detail="The agent encountered an error processing your request.")
 
     response_text = "I completed the requested actions."
     if final_event:
@@ -194,12 +201,14 @@ async def v1_chat_stream(body: V1ChatRequest, key_record: dict = Depends(require
                     yield _format_sse_event({"type": "done"})
 
                 elif etype == "error":
-                    yield _format_sse_event({"type": "error", "message": event["message"]})
+                    log.error("[v1/chat/stream] Agent error session=%s: %s", chat_request.session_id, event.get("message"))
+                    yield _format_sse_event({"type": "error", "message": "The agent encountered an error processing your request."})
 
                 await asyncio.sleep(0)
 
         except Exception as e:
-            yield _format_sse_event({"type": "error", "message": str(e)})
+            log.exception("[v1/chat/stream] Unhandled error session=%s", chat_request.session_id)
+            yield _format_sse_event({"type": "error", "message": "An internal error occurred. Check server logs for details."})
 
     return StreamingResponse(
         event_generator(),
@@ -316,7 +325,8 @@ async def v1_orchestration_run_stream(
 
                 await asyncio.sleep(0)
         except Exception as e:
-            yield _format_sse_event({"type": "orchestration_error", "error": str(e)})
+            log.exception("[v1/orch/stream] Unhandled error run_id=%s", run_id)
+            yield _format_sse_event({"type": "orchestration_error", "error": "An internal error occurred. Check server logs for details."})
 
         yield _format_sse_event({"type": "done"})
 
@@ -373,6 +383,9 @@ async def v1_orchestration_resume(
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    except Exception as exc:
+        log.exception("[v1/resume] Unhandled error run_id=%s", run_id)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs for details.")
 
     if human_input_event:
         return {
@@ -428,7 +441,8 @@ async def v1_orchestration_resume_stream(
         except FileNotFoundError:
             yield _format_sse_event({"type": "orchestration_error", "error": f"Run '{run_id}' not found"})
         except Exception as e:
-            yield _format_sse_event({"type": "orchestration_error", "error": str(e)})
+            log.exception("[v1/resume/stream] Unhandled error run_id=%s", run_id)
+            yield _format_sse_event({"type": "orchestration_error", "error": "An internal error occurred. Check server logs for details."})
 
         yield _format_sse_event({"type": "done"})
 

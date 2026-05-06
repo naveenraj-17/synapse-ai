@@ -640,14 +640,16 @@ def _api_keys_command(action: str, name: str = "", key_id: str = ""):
         from core.api_keys import generate_api_key
         key_name = name or "CLI-generated key"
         raw_key, record = generate_api_key(key_name)
+        masked_key = f"{raw_key[:6]}...{raw_key[-4:]}" if len(raw_key) >= 10 else "****"
         print(f"\n  API Key generated successfully!")
         print(f"  Name:    {record['name']}")
-        print(f"  Key:     {raw_key}")
+        print(f"  Key:     {masked_key}  (copy full key below)")
         print(f"  ID:      {record['id']}")
         print(f"\n  ⚠  Save this key now — it cannot be retrieved again.")
-        print(f"\n  Usage:")
+        print(f"\n  {raw_key}\n")
+        print(f"  Usage:")
         print(f"    curl -X POST http://localhost:8765/api/v1/chat \\")
-        print(f"      -H 'Authorization: Bearer {raw_key}' \\")
+        print(f"      -H 'Authorization: Bearer <YOUR_API_KEY>' \\")
         print(f"      -H 'Content-Type: application/json' \\")
         print(f"      -d '{{\"message\": \"hello\"}}'")
         print()

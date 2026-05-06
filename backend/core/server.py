@@ -132,7 +132,6 @@ def _get_google_oauth_env() -> dict[str, str]:
 
         # Read user email from token.json so workspace-mcp can skip the email prompt
         if token_file.exists():
-            print("token_file", token_file)
             try:
                 import base64
                 token_data = json.loads(token_file.read_text())
