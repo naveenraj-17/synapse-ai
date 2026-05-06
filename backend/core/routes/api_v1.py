@@ -363,6 +363,7 @@ async def v1_orchestration_resume(
     step_history = []
     shared_state = {}
     status = "running"
+    _allowed_statuses = {"running", "paused", "completed", "failed"}
 
     try:
         async for event in OrchestrationEngine.resume(run_id, human_response, _server):
@@ -374,7 +375,8 @@ async def v1_orchestration_resume(
                 break
 
             if etype == "orchestration_complete":
-                status = event.get("status", "completed")
+                _raw_status = event.get("status", "completed")
+                status = _raw_status if _raw_status in _allowed_statuses else "completed"
                 shared_state = event.get("final_state", {})
 
             if etype == "final":
