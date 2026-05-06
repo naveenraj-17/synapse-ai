@@ -587,6 +587,105 @@ def _ensure_coding_deps() -> None:
         print(f"  Run manually: {venv_python} -m pip install -r {coding_req}")
 
 
+def _ensure_internal_token():
+    """Ensure SYNAPSE_INTERNAL_TOKEN exists in .env. Generate if missing.
+
+    This token secures the backend's internal /api/* routes so only the
+    frontend can access them. External API access uses separate API keys.
+    """
+    env_file = ROOT_DIR / ".env"
+    token_var = "SYNAPSE_INTERNAL_TOKEN"
+
+    # Check if already in environment (e.g. from .env loaded earlier)
+    if os.environ.get(token_var):
+        return
+
+    # Check if present in .env file
+    if env_file.exists():
+        try:
+            content = env_file.read_text()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith(f"{token_var}=") and len(line) > len(f"{token_var}="):
+                    val = line.split("=", 1)[1].strip()
+                    if val:
+                        os.environ[token_var] = val
+                        return
+        except Exception:
+            pass
+
+    # Generate a new token
+    import secrets as _secrets
+    token = _secrets.token_hex(32)
+    os.environ[token_var] = token
+
+    # Append to .env file
+    try:
+        with open(env_file, "a") as f:
+            f.write(f"\n# Internal token for frontend↔backend security (auto-generated)\n")
+            f.write(f"{token_var}={token}\n")
+    except Exception as e:
+        print(f"  Warning: could not write {token_var} to .env: {e}")
+        print(f"  The token is set in memory for this session.")
+
+
+def _api_keys_command(action: str, name: str = "", key_id: str = ""):
+    """Manage API keys for external /api/v1/* access."""
+    # Ensure backend modules are importable
+    backend_dir = str(BACKEND_DIR)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+
+    if action == "generate":
+        from core.api_keys import generate_api_key
+        key_name = name or "CLI-generated key"
+        raw_key, record = generate_api_key(key_name)
+        masked_key = f"{raw_key[:6]}...{raw_key[-4:]}" if len(raw_key) >= 10 else "****"
+        print(f"\n  API Key generated successfully!")
+        print(f"  Name:    {record['name']}")
+        print(f"  Key:     {masked_key}  (copy full key below)")
+        print(f"  ID:      {record['id']}")
+        print(f"\n  ⚠  Save this key now — it cannot be retrieved again.")
+        print(f"\n  {raw_key}\n")
+        print(f"  Usage:")
+        print(f"    curl -X POST http://localhost:8765/api/v1/chat \\")
+        print(f"      -H 'Authorization: Bearer <YOUR_API_KEY>' \\")
+        print(f"      -H 'Content-Type: application/json' \\")
+        print(f"      -d '{{\"message\": \"hello\"}}'")
+        print()
+
+    elif action == "list":
+        from core.api_keys import list_api_keys
+        keys = list_api_keys()
+        if not keys:
+            print("  No API keys found. Generate one with: synapse api-keys generate \"My App\"")
+            return
+        print(f"\n  {'PREFIX':<18} {'NAME':<25} {'CREATED':<22} {'LAST USED':<22} {'ACTIVE'}")
+        print(f"  {'─' * 18} {'─' * 25} {'─' * 22} {'─' * 22} {'─' * 6}")
+        for k in keys:
+            active = "✓" if k.get("is_active", True) else "✗"
+            last_used = k.get("last_used_at") or "never"
+            print(f"  {k['key_prefix']:<18} {k['name']:<25} {k['created_at']:<22} {last_used:<22} {active}")
+        print(f"\n  Total: {len(keys)} key(s)")
+        print()
+
+    elif action == "revoke":
+        if not key_id:
+            print("  Error: key ID required. Get IDs with: synapse api-keys list")
+            sys.exit(1)
+        from core.api_keys import delete_api_key
+        if delete_api_key(key_id):
+            print(f"  API key {key_id} deleted.")
+        else:
+            print(f"  API key {key_id} not found.")
+            sys.exit(1)
+
+    else:
+        print(f"  Unknown action: {action}")
+        print(f"  Usage: synapse api-keys [generate|list|revoke]")
+        sys.exit(1)
+
+
 def _start_command(
     detach: bool = False,
     no_browser: bool = False,
@@ -595,6 +694,7 @@ def _start_command(
     profile: bool = False,
 ):
     check_prerequisites()
+    _ensure_internal_token()
 
     # First-run: no settings.json yet — run setup wizard before starting
     _settings_file = DATA_DIR / "settings.json"
@@ -1381,6 +1481,15 @@ def main():
     p_profile.add_argument("--limit", type=int, default=20, metavar="N", help="Number of top allocations to show (memory-snapshot, default: 20)")
     p_profile.add_argument("--duration", type=int, default=30, metavar="SECS", help="Recording duration in seconds (spy, default: 30)")
 
+    # api-keys: manage external API keys
+    p_apikeys = sub.add_parser("api-keys", help="Manage API keys for external /api/v1/ access")
+    p_apikeys.add_argument(
+        "action",
+        choices=["generate", "list", "revoke"],
+        help="generate: create a new key | list: show all keys | revoke: delete a key",
+    )
+    p_apikeys.add_argument("name_or_id", nargs="?", default="", help="Key name (generate) or key ID (revoke)")
+
     args = parser.parse_args()
 
     if args.cmd == "start" or args.cmd is None:
@@ -1419,6 +1528,12 @@ def main():
             output=args.output,
             limit=args.limit,
             duration=args.duration,
+        )
+    elif args.cmd == "api-keys":
+        _api_keys_command(
+            action=args.action,
+            name=args.name_or_id if args.action == "generate" else "",
+            key_id=args.name_or_id if args.action == "revoke" else "",
         )
     else:
         parser.print_help()

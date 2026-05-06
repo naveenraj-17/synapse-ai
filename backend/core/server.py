@@ -50,7 +50,10 @@ from core.routes.schedules import router as schedules_router
 from core.routes.import_export import router as import_export_router
 from core.routes.vault import router as vault_router
 from core.routes.builder import router as builder_router
+from core.routes.api_keys import router as api_keys_router
+from core.routes.api_v1 import router as api_v1_router
 from core.profiling import TimingMiddleware
+from core.internal_auth import InternalTokenMiddleware
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
@@ -129,7 +132,6 @@ def _get_google_oauth_env() -> dict[str, str]:
 
         # Read user email from token.json so workspace-mcp can skip the email prompt
         if token_file.exists():
-            print("token_file", token_file)
             try:
                 import base64
                 token_data = json.loads(token_file.read_text())
@@ -632,6 +634,7 @@ class PrivateNetworkAccessMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(PrivateNetworkAccessMiddleware)
+app.add_middleware(InternalTokenMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -661,6 +664,8 @@ app.include_router(profiling_router)
 app.include_router(import_export_router)
 app.include_router(vault_router)
 app.include_router(builder_router)
+app.include_router(api_keys_router)
+app.include_router(api_v1_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn

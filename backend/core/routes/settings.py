@@ -92,7 +92,8 @@ async def get_settings():
 
 @router.post("/api/settings")
 async def update_settings(settings: Settings):
-    print(f"DEBUG: update_settings called with: {settings.dict()}")
+    _safe = {k: (v[:4] + '…' + v[-4:] if isinstance(v, str) and len(v) > 12 and any(kw in k for kw in ('key', 'token', 'secret', 'password')) else v) for k, v in settings.dict(exclude_unset=True).items()}
+    print(f"DEBUG: update_settings called with keys: {list(_safe.keys())}")
     # Get the latest payload and strip unset values to avoid overwriting existing properties with defaults
     try:
         data = settings.dict(exclude_unset=True)

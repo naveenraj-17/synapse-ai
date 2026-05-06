@@ -239,17 +239,18 @@ class OrchestrationEngine:
 
             except Exception as e:
                 import traceback; print(f"DEBUG ENGINE: ❌ EXCEPTION in step '{step.id}': {e}\n{traceback.format_exc()}", flush=True)
+                safe_error = "An internal error occurred while executing this step."
                 run.step_history.append({
                     "step_id": step.id,
                     "step_name": step.name,
                     "step_type": step.type.value,
                     "status": "failed",
-                    "error": str(e),
+                    "error": safe_error,
                 })
                 run.status = "failed"
                 if logger:
-                    logger.step_end(step.id, "failed", str(e))
-                yield {"type": "step_error", "orch_step_id": step.id, "error": str(e)}
+                    logger.step_end(step.id, "failed", safe_error)
+                yield {"type": "step_error", "orch_step_id": step.id, "error": safe_error}
                 break
 
         # Finalize
