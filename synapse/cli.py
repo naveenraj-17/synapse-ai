@@ -629,6 +629,99 @@ def _ensure_internal_token():
         print(f"  The token is set in memory for this session.")
 
 
+def _ensure_jwt_secret():
+    """Ensure SYNAPSE_JWT_SECRET exists in .env. Generate if missing."""
+    env_file = ROOT_DIR / ".env"
+    var = "SYNAPSE_JWT_SECRET"
+
+    if os.environ.get(var):
+        return
+
+    if env_file.exists():
+        try:
+            content = env_file.read_text()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith(f"{var}=") and len(line) > len(f"{var}="):
+                    val = line.split("=", 1)[1].strip()
+                    if val:
+                        os.environ[var] = val
+                        return
+        except Exception:
+            pass
+
+    import secrets as _secrets
+    secret = _secrets.token_hex(32)
+    os.environ[var] = secret
+    try:
+        with open(env_file, "a") as f:
+            f.write(f"\n# JWT secret for session tokens (auto-generated)\n")
+            f.write(f"{var}={secret}\n")
+    except Exception as e:
+        print(f"  Warning: could not write {var} to .env: {e}")
+
+
+def _reset_password_command():
+    """Reset the Synapse UI login password via the CLI."""
+    import getpass
+    import json as _json
+
+    backend_dir = str(BACKEND_DIR)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+
+    settings_file = DATA_DIR / "settings.json"
+    if not settings_file.exists():
+        print("  Error: settings.json not found. Start Synapse first to initialise it.")
+        sys.exit(1)
+
+    try:
+        settings = _json.loads(settings_file.read_text())
+    except Exception as e:
+        print(f"  Error reading settings: {e}")
+        sys.exit(1)
+
+    if not settings.get("login_enabled"):
+        print("  Login is not currently enabled.")
+        print("  Enable it first in Settings → General → Require Login.")
+        sys.exit(1)
+
+    current_username = settings.get("login_username", "")
+    try:
+        prompt = f"  Username [{current_username}]: " if current_username else "  Username: "
+        username = input(prompt).strip()
+        if not username:
+            username = current_username
+        if not username:
+            print("  Error: Username cannot be empty.")
+            sys.exit(1)
+
+        password = getpass.getpass("  New password: ")
+        confirm = getpass.getpass("  Confirm password: ")
+    except (KeyboardInterrupt, EOFError):
+        print("\n  Aborted.")
+        sys.exit(0)
+
+    if password != confirm:
+        print("  Error: Passwords do not match.")
+        sys.exit(1)
+    if len(password) < 8:
+        print("  Error: Password must be at least 8 characters.")
+        sys.exit(1)
+
+    from core.user_auth import hash_password
+    settings["login_username"] = username
+    settings["login_password_hash"] = hash_password(password)
+
+    try:
+        settings_file.write_text(_json.dumps(settings, indent=4))
+        print("\n  Password reset successfully.")
+        print("  Re-login will be required if a session was active.")
+    except Exception as e:
+        print(f"  Error writing settings: {e}")
+        sys.exit(1)
+
+
 def _api_keys_command(action: str, name: str = "", key_id: str = ""):
     """Manage API keys for external /api/v1/* access."""
     # Ensure backend modules are importable
@@ -695,6 +788,7 @@ def _start_command(
 ):
     check_prerequisites()
     _ensure_internal_token()
+    _ensure_jwt_secret()
 
     # First-run: no settings.json yet — run setup wizard before starting
     _settings_file = DATA_DIR / "settings.json"
@@ -1481,6 +1575,9 @@ def main():
     p_profile.add_argument("--limit", type=int, default=20, metavar="N", help="Number of top allocations to show (memory-snapshot, default: 20)")
     p_profile.add_argument("--duration", type=int, default=30, metavar="SECS", help="Recording duration in seconds (spy, default: 30)")
 
+    # reset-password: reset the UI login password
+    sub.add_parser("reset-password", help="Reset the Synapse UI login password")
+
     # api-keys: manage external API keys
     p_apikeys = sub.add_parser("api-keys", help="Manage API keys for external /api/v1/ access")
     p_apikeys.add_argument(
@@ -1529,6 +1626,8 @@ def main():
             limit=args.limit,
             duration=args.duration,
         )
+    elif args.cmd == "reset-password":
+        _reset_password_command()
     elif args.cmd == "api-keys":
         _api_keys_command(
             action=args.action,

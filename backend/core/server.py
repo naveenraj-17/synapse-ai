@@ -27,8 +27,11 @@ except ImportError:
     MemoryStore = None
 
 from core.mcp_client import MCPClientManager
-from core.config import load_settings
+from core.config import load_settings, get_or_create_jwt_secret
 from core.routes.settings import _init_memory_store
+
+# Ensure JWT secret is available before any auth route is used
+get_or_create_jwt_secret()
 
 # Route routers
 from core.routes.auth import router as auth_router
