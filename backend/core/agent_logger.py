@@ -3,8 +3,9 @@ Plain-text debug logging for individual agent runs.
 Logs each call to an agent (from chat or orchestration) including all tools
 used and their responses, in the same terminal-style format as orchestration logs.
 """
-import asyncio
 import json
+import queue
+import threading
 import time
 from pathlib import Path
 
@@ -43,6 +44,9 @@ class AgentLogger:
         self.run_id = f"agentrun_{short_id}_{int(time.time() * 1000)}"
         self.path = LOGS_DIR / f"{self.run_id}.log"
         self._start_time = time.time()
+        self._q: queue.SimpleQueue = queue.SimpleQueue()
+        self._thread = threading.Thread(target=self._drain, daemon=True, name=f"agent-log-{self.run_id}")
+        self._thread.start()
 
         self._write(f"""
 {'='*80}
@@ -61,18 +65,23 @@ class AgentLogger:
     # ── Core write ─────────────────────────────────────────────────
 
     def _write(self, text: str):
-        """Sync write — only call from a thread (via _write_async) or startup."""
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(text)
 
     def _write_bg(self, text: str):
-        """Fire-and-forget write that offloads to a thread so the event loop isn't blocked."""
-        try:
-            loop = asyncio.get_running_loop()
-            loop.run_in_executor(None, self._write, text)
-        except RuntimeError:
-            # No running loop (e.g. called from sync context at startup)
-            self._write(text)
+        """Fire-and-forget: enqueue for the background writer thread."""
+        self._q.put(text)
+
+    def _drain(self):
+        """Background thread: drains the write queue in order."""
+        while True:
+            text = self._q.get()
+            if text is None:
+                break
+            try:
+                self._write(text)
+            except Exception:
+                pass
 
     # ── Run lifecycle ──────────────────────────────────────────────
 

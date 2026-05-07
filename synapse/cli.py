@@ -990,6 +990,29 @@ def _parse_version(v: str) -> tuple:
         return (0,)
 
 
+def _register_synapse_pth(venv_dir: str, root_dir: str) -> None:
+    """Add root_dir to the venv's site-packages via a .pth file.
+
+    Equivalent to pip install -e but skips the build hook entirely —
+    no bash, no npm, no hatchling required.
+    """
+    import glob as _glob
+    if IS_WIN:
+        site_pkgs = os.path.join(venv_dir, "Lib", "site-packages")
+    else:
+        candidates = sorted(
+            _glob.glob(os.path.join(venv_dir, "lib", "python*", "site-packages"))
+        )
+        if not candidates:
+            print(f"  Warning: could not locate site-packages inside {venv_dir}")
+            return
+        site_pkgs = candidates[-1]
+    os.makedirs(site_pkgs, exist_ok=True)
+    pth = os.path.join(site_pkgs, "synapse-source.pth")
+    with open(pth, "w") as f:
+        f.write(str(root_dir) + "\n")
+
+
 def _get_latest_github_release() -> "tuple[str, str] | tuple[None, None]":
     """Return (tag_name, tarball_url) for the latest GitHub release, or (None, None) on failure."""
     import urllib.request as _req
@@ -1239,10 +1262,9 @@ def _upgrade_command():
         else:
             print(f"  Warning: {messaging_req} not found -- skipping.")
 
-    # Re-install synapse package in editable mode
-    print("  Reinstalling Synapse package...")
-    subprocess.check_call([str(python_exe), "-m", "pip", "install",
-                           "--upgrade", "-e", str(ROOT_DIR)])
+    # Register synapse package via .pth file — no build hook, no bash required
+    print("  Registering Synapse package...")
+    _register_synapse_pth(str(venv_dir), str(ROOT_DIR))
     print("  Backend rebuild complete.")
 
     # 4. Rebuild frontend

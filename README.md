@@ -55,6 +55,14 @@ pip install synapse-orch-ai
 synapse
 ```
 
+### Upgrading
+
+| Install method | Upgrade command |
+|---|---|
+| Bash / PowerShell installer (recommended) | `synapse upgrade` |
+| pip | `pip install --upgrade synapse-orch-ai` |
+| npm | `npm update -g synapse-orch-ai` |
+
 ---
 
 ## CLI
