@@ -281,26 +281,49 @@ def _ensure_playwright_browsers():
     else:
         browsers_path = Path.home() / ".cache" / "ms-playwright"
 
+    # Check independently: chromium-* is for Python playwright; mcp-chrome*/mcp-chromium
+    # is what `@playwright/mcp install-browser` creates and what the MCP server uses.
+    # A fresh install via setup.py only creates chromium-*, so the MCP browser can be
+    # missing even when the Python playwright browser is present.
+    has_chromium = False
+    has_mcp_browser = False
     if browsers_path.exists():
         try:
-            if any(d.name.startswith("chromium-") for d in browsers_path.iterdir() if d.is_dir()):
-                return
+            for d in browsers_path.iterdir():
+                if not d.is_dir():
+                    continue
+                if d.name.startswith("chromium-"):
+                    has_chromium = True
+                if d.name.startswith("mcp-chrome") or d.name.startswith("mcp-chromium"):
+                    has_mcp_browser = True
         except Exception:
             pass
 
-    print("Installing Playwright browsers...", end="", flush=True)
-    try:
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
-        env = os.environ.copy()
-        env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_path)
-        npx_cmd = shutil.which("npx.cmd") if IS_WIN else "npx"
-        if not npx_cmd:
-            npx_cmd = "npx"
-        subprocess.run([npx_cmd, "-y", "@playwright/mcp", "install-browser", "chromium"], env=env, check=True, capture_output=True)
-        print(" done.")
-    except Exception as e:
-        print(f"\n  Warning: Failed to install Playwright browsers: {e}")
+    if has_chromium and has_mcp_browser:
         return
+
+    npx_cmd = shutil.which("npx.cmd") if IS_WIN else "npx"
+    if not npx_cmd:
+        npx_cmd = "npx"
+    env = os.environ.copy()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_path)
+
+    if not has_chromium:
+        print("Installing Playwright browsers...", end="", flush=True)
+        try:
+            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
+            print(" done.")
+        except Exception as e:
+            print(f"\n  Warning: Failed to install Playwright browsers: {e}")
+
+    if not has_mcp_browser:
+        print("Installing browser for Browser Automation MCP server...", end="", flush=True)
+        try:
+            subprocess.run([npx_cmd, "-y", "@playwright/mcp", "install-browser", "chrome-for-testing"], env=env, check=True, capture_output=True)
+            print(" done.")
+        except Exception as e:
+            print(f"\n  Warning: Failed to install MCP browser: {e}")
+            return
 
     try:
         settings_file = DATA_DIR / "settings.json"
@@ -1091,26 +1114,56 @@ def _upgrade_command():
 
     # ── source / editable install path ───────────────────────────────────────
 
-    # 1. Stop running services first
-    print("\nStopping running services...")
-    _stop_command()
+    # Ensure the internal token exists before ANYTHING else so that any npm
+    # build in this upgrade (or the next) picks it up from the environment.
+    # This must run before the release download so the token is set even when
+    # the downloaded cli.py replaces us on disk mid-upgrade.
+    _ensure_internal_token()
+    _ensure_jwt_secret()
 
-    # 2. Download latest release from GitHub
-    print("\n==> Checking for latest release...")
-    current_ver = _get_current_version()
-    latest_tag, tarball_url = _get_latest_github_release()
+    # When we successfully apply a new release we re-exec this script using the
+    # freshly-downloaded cli.py so that any changes to the upgrade logic itself
+    # take effect immediately — no "run synapse upgrade twice" required.
+    # The re-exec'd process receives this flag and skips straight to the rebuild.
+    _skip_download = os.environ.get("SYNAPSE_UPGRADE_SKIP_DOWNLOAD") == "1"
 
-    if latest_tag and tarball_url:
-        if _parse_version(latest_tag) > _parse_version(current_ver):
-            print(f"  New version available: {latest_tag} (current: {current_ver})")
-            if _download_and_apply_release(tarball_url):
-                print(f"  Source updated to {latest_tag}.")
+    if not _skip_download:
+        # 1. Stop running services first
+        print("\nStopping running services...")
+        _stop_command()
+
+        # 2. Download latest release from GitHub
+        print("\n==> Checking for latest release...")
+        current_ver = _get_current_version()
+        latest_tag, tarball_url = _get_latest_github_release()
+
+        if latest_tag and tarball_url:
+            if _parse_version(latest_tag) > _parse_version(current_ver):
+                print(f"  New version available: {latest_tag} (current: {current_ver})")
+                if _download_and_apply_release(tarball_url):
+                    print(f"  Source updated to {latest_tag}.")
+                    # Re-exec with the newly-downloaded cli.py so the rest of
+                    # the upgrade (venv rebuild, npm build, etc.) runs with the
+                    # new code.  The environment — including SYNAPSE_INTERNAL_TOKEN
+                    # set above — is inherited by the child process.
+                    new_cli = ROOT_DIR / "synapse" / "cli.py"
+                    if new_cli.exists():
+                        print("  Restarting upgrade with updated CLI...")
+                        env = os.environ.copy()
+                        env["SYNAPSE_UPGRADE_SKIP_DOWNLOAD"] = "1"
+                        result = subprocess.run(
+                            [sys.executable, str(new_cli), "upgrade"],
+                            env=env,
+                        )
+                        sys.exit(result.returncode)
+                else:
+                    print("  Warning: file apply failed — continuing with existing code.")
             else:
-                print("  Warning: file apply failed — continuing with existing code.")
+                print(f"  Already at latest version ({current_ver}).")
         else:
-            print(f"  Already at latest version ({current_ver}).")
+            print("  Warning: could not reach GitHub releases — continuing with existing code.")
     else:
-        print("  Warning: could not reach GitHub releases — continuing with existing code.")
+        print("\n(Continuing upgrade with updated CLI...)")
 
     # 3. Rebuild Python venv
     print("\n==> Rebuilding backend virtual environment...")
