@@ -68,9 +68,6 @@ const nextConfig: NextConfig = {
     // Expose backend port to client-side code (e.g., for UI instructions)
     NEXT_PUBLIC_BACKEND_PORT: BACKEND_PORT,
     NEXT_PUBLIC_FRONTEND_PORT: _frontendPort,
-    // Explicitly bundle the internal token so Edge Middleware always has it,
-    // regardless of how the runtime handles process.env in the edge bundle.
-    SYNAPSE_INTERNAL_TOKEN: process.env.SYNAPSE_INTERNAL_TOKEN || '',
   },
   async rewrites() {
     return {
