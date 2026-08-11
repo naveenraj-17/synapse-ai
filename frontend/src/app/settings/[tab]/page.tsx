@@ -10,5 +10,6 @@ export default async function SettingsPage(props: {
     const searchParams = await props.searchParams;
     const tab = params.tab;
     const subTab = typeof searchParams.tab === 'string' ? searchParams.tab : undefined;
-    return <SettingsView initialTab={tab} initialSubTab={subTab} />;
+    const runId = typeof searchParams.run === 'string' ? searchParams.run : undefined;
+    return <SettingsView initialTab={tab} initialSubTab={subTab} initialRunId={runId} />;
 }

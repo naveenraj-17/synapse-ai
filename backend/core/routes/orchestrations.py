@@ -38,10 +38,16 @@ async def list_orchestrations():
 
 
 @router.get("/api/orchestrations/runs")
-async def list_runs():
-    """List recent orchestration runs."""
+async def list_runs(limit: int = 20):
+    """List recent orchestration runs (newest first).
+
+    Runs whose orchestration has since been deleted are omitted — the UI
+    cannot open them (there is no definition to render), so listing them
+    would only produce rows that do nothing when clicked.
+    """
     from core.orchestration.state import SharedState
-    return SharedState.list_runs()
+    known_ids = {o["id"] for o in load_orchestrations() if o.get("id")}
+    return SharedState.list_runs(limit=max(1, min(limit, 200)), orchestration_ids=known_ids)
 
 
 def _run_summary(run_id: str) -> dict | None:

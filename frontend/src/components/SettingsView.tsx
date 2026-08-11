@@ -36,7 +36,7 @@ import { APIKeysTab } from './settings/APIKeysTab';
 import { ScaleTab } from './settings/ScaleTab';
 
 
-export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
+export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRunId }: { initialTab?: string; initialSubTab?: string; initialRunId?: string }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { agents, mcpServers, customTools, models: rModels, initialized, loading: loadingAgents } = useSelector((state: RootState) => state.settings);
 
@@ -887,7 +887,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
             {/* Orchestrations tab: full-bleed layout, no scroll wrapper */}
             {activeTab === 'orchestrations' && (
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    <OrchestrationTab />
+                    <OrchestrationTab initialRunId={initialRunId} />
                 </div>
             )}
 

@@ -5,6 +5,7 @@ import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, Chev
 
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
+import { ActiveRunsBanner } from '@/components/ActiveRunsBanner';
 
 import { renderTextContent, cn } from '@/lib/utils';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -481,6 +482,9 @@ export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [streamingActivity, setStreamingActivity] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  // First line of the model's latest reasoning/progress message — shown next
+  // to the 💭 indicator so "Thinking" is never a blank box.
+  const [thinkingPreview, setThinkingPreview] = useState<string | null>(null);
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -784,6 +788,7 @@ export default function Home() {
     setIsLoading(true);
     setStreamingActivity(null);
     setIsThinking(false);
+    setThinkingPreview(null);
     pendingThoughtsRef.current = [];
     pendingReasoningRef.current = [];
     lastToolRef.current = null;
@@ -799,6 +804,7 @@ export default function Home() {
       setIsLoading(false);
       setStreamingActivity(null);
       setIsThinking(false);
+      setThinkingPreview(null);
       pendingThoughtsRef.current = [];
       pendingReasoningRef.current = [];
       // Reset session after orchestration so next query starts fresh (no sub-agent history)
@@ -827,6 +833,9 @@ export default function Home() {
 
       case 'thinking':
         setIsThinking(true);
+        // Progress messages ("Analyzing your request…", "Delegating to X…")
+        // used to be discarded — surface them in the thinking line.
+        if (data.message) setThinkingPreview(String(data.message));
         break;
 
       case 'tool_execution': {
@@ -871,6 +880,9 @@ export default function Home() {
           stepState.reasoning = [...stepState.reasoning, data.reasoning as string];
         } else {
           pendingReasoningRef.current = [...pendingReasoningRef.current, data.reasoning as string];
+        }
+        if (data.reasoning) {
+          setThinkingPreview(String(data.reasoning).split('\n')[0].slice(0, 140));
         }
         setIsThinking(true);
         break;
@@ -1636,6 +1648,9 @@ export default function Home() {
 
         </header>
 
+        {/* Running / paused orchestrations — click through to the live run view */}
+        <ActiveRunsBanner />
+
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto scroll-smooth custom-scrollbar relative">
 
@@ -1679,8 +1694,8 @@ export default function Home() {
                       </div>
 
                       {isThinking && (
-                        <div className="flex items-baseline gap-0.5">
-                          <span className="text-xs text-zinc-500 font-mono">💭 Thinking</span>
+                        <div className="flex items-baseline gap-0.5 max-w-2xl">
+                          <span className="text-xs text-zinc-500 font-mono truncate">💭 {thinkingPreview || 'Thinking'}</span>
                           <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
                             <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
                             <span className="inline-block w-0.5 h-0.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>

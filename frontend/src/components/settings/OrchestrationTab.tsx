@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles, Braces, GitFork, ArrowLeftRight, FileText } from 'lucide-react';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles, Braces, GitFork, ArrowLeftRight, FileText, ArrowLeft } from 'lucide-react';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -19,10 +19,11 @@ import { ToastNotification } from './ToastNotification';
 type ToolCallLogEntry = { kind: 'tool_call'; tool_name: string; args: Record<string, any>; step_name?: string };
 type ToolResultLogEntry = { kind: 'tool_result'; tool_name: string; preview: string };
 type StepResultLogEntry = { kind: 'step_result'; step_name: string; step_type: 'agent' | 'llm' | 'print' | 'extract_json'; content: string };
-// A block of recovered persisted-log lines rendered on reconnect. Kept as a
-// single <pre> node (not N markdown entries) so a large log stays cheap to render.
-type RecoveredLogEntry = { kind: 'recovered_log'; lines: string[] };
-type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry | StepResultLogEntry | RecoveredLogEntry;
+// Model reasoning ([REASONING] blocks) and inter-tool prose, collapsible so a
+// chatty agent doesn't drown the structural log lines.
+type ReasoningLogEntry = { kind: 'reasoning'; step_name?: string; content: string };
+type ThoughtLogEntry = { kind: 'thought'; step_name?: string; content: string };
+type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry | StepResultLogEntry | ReasoningLogEntry | ThoughtLogEntry;
 
 type RunStepStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed';
 
@@ -37,24 +38,6 @@ function applyStepHistory(
         if (h?.step_id) next[h.step_id] = h.status === 'failed' ? 'failed' : 'completed';
     }
     return next;
-}
-
-// Fetch the persisted detailed orchestration log (plain text) for a run and
-// return it as lines, capped to the last `maxLines` to bound render cost.
-// Returns [] on any error (log not yet written, network failure, etc.).
-async function fetchRecoveredLog(runId: string, maxLines = 800): Promise<string[]> {
-    try {
-        const res = await fetch(`/api/logs/orchestrations/${runId}`);
-        if (!res.ok) return [];
-        const text = await res.text();
-        const lines = text.split('\n');
-        if (lines.length > maxLines) {
-            return [`…(showing last ${maxLines} of ${lines.length} log lines)…`, ...lines.slice(-maxLines)];
-        }
-        return lines;
-    } catch {
-        return [];
-    }
 }
 
 const STEP_ICONS: Record<StepType, React.FC<{ size?: number }>> = {
@@ -93,7 +76,7 @@ function newStep(type: StepType, position: { x: number; y: number }): StepConfig
     };
 }
 
-export function OrchestrationTab() {
+export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {}) {
     // --- Orchestration list ---
     const [orchestrations, setOrchestrations] = useState<Orchestration[]>([]);
     const [selectedOrchId, setSelectedOrchId] = useState<string | null>(null);
@@ -127,6 +110,11 @@ export function OrchestrationTab() {
     const currentRunIdRef = useRef<string | null>(null);
     const lastChunkAtRef = useRef(0);
     const reattachActiveRef = useRef(false);
+    // Highest journal event id seen on the reattach stream (`id:` lines) — a
+    // reconnect resumes with ?after=<this> instead of replaying everything.
+    const lastEventIdRef = useRef(0);
+    // One-line "what the model is doing right now" indicator for the Run Log.
+    const [liveActivity, setLiveActivity] = useState<string | null>(null);
     // Map of orch_step_id -> pending step result (supports parallel branches)
     const pendingStepResultRef = useRef<Map<string, { step_name: string; step_type: 'agent' | 'llm' | 'print' | 'extract_json'; content: string }>>(new Map());
     const [responseModal, setResponseModal] = useState<{ step_name: string; step_type?: string; content: string } | null>(null);
@@ -135,20 +123,27 @@ export function OrchestrationTab() {
     const [builderSessionKey, setBuilderSessionKey] = useState(0);
 
     // --- Active runs (for reconnect banner) ---
-    const [activeRuns, setActiveRuns] = useState<Array<{
+    type RunSummary = {
         run_id: string;
         orchestration_id: string;
         status: string;
-        started_at: string | null;
-    }>>([]);
+        started_at?: string | null;
+        ended_at?: string | null;
+        current_step_id?: string | null;
+        steps_completed?: number;
+        last_step_name?: string | null;
+        waiting_for_human?: boolean;
+        total_cost_usd?: number | null;
+        session_id?: string | null;
+    };
+    const [activeRuns, setActiveRuns] = useState<RunSummary[]>([]);
     const activeRunsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const [pastRuns, setPastRuns] = useState<Array<{
-        run_id: string;
-        orchestration_id: string;
-        status: string;
-        started_at?: string;
-        ended_at?: string;
-    }>>([]);
+    const [pastRuns, setPastRuns] = useState<RunSummary[]>([]);
+    // Landing dashboard: which table is shown when no orchestration is open.
+    const [schedules, setSchedules] = useState<Array<{ id: string; name: string }>>([]);
+    const [landingTab, setLandingTab] = useState<'orchestrations' | 'active' | 'recent' | 'all'>('orchestrations');
+    const [allRuns, setAllRuns] = useState<RunSummary[]>([]);
+    const autoTabRef = useRef(false);
 
     // --- Fetch orchestrations + agents ---
     useEffect(() => {
@@ -162,6 +157,11 @@ export function OrchestrationTab() {
 
         fetch('/api/models').then(r => r.json()).then(data => {
             setAvailableModels(data.all_available || []);
+        }).catch(() => {});
+
+        // Schedule names, for labelling schedule-triggered runs.
+        fetch('/api/schedules').then(r => r.json()).then(data => {
+            setSchedules(Array.isArray(data) ? data : []);
         }).catch(() => {});
     }, []);
 
@@ -186,20 +186,178 @@ export function OrchestrationTab() {
         };
     }, [fetchActiveRuns]);
 
-    // --- Restore a run from the active runs banner / recent runs ---
-    // Standalone mode has no replayable event stream, so we reconstruct as much
-    // as we can on reconnect: hydrate step statuses from the step-boundary
-    // checkpoint, load the persisted detailed log (which DOES contain the
-    // parallel branch / sub-step activity the checkpoint can't expose), then
-    // resume live tracking for a still-running run.
+    // Land on the Active table when something is running/paused (once).
+    useEffect(() => {
+        if (!autoTabRef.current && activeRuns.length > 0) {
+            autoTabRef.current = true;
+            setLandingTab('active');
+        }
+    }, [activeRuns]);
+
+    // The All-runs table is heavier (up to 100 checkpoints) — fetch it only
+    // while that tab is open, on a slower cadence than the active poll.
+    useEffect(() => {
+        if (landingTab !== 'all') return;
+        const fetchAll = () => {
+            fetch('/api/orchestrations/runs?limit=100')
+                .then(r => r.json())
+                .then(d => { if (Array.isArray(d)) setAllRuns(d); })
+                .catch(() => {});
+        };
+        fetchAll();
+        const interval = setInterval(fetchAll, 10000);
+        return () => clearInterval(interval);
+    }, [landingTab]);
+
+    // --- Landing-table helpers ---
+    const orchNameOf = (id: string) => orchestrations.find(o => o.id === id)?.name ?? id;
+    const currentStepNameOf = (run: RunSummary): string | null => {
+        const orch = orchestrations.find(o => o.id === run.orchestration_id);
+        const byId = run.current_step_id
+            ? orch?.steps.find(s => s.id === run.current_step_id)?.name
+            : null;
+        return byId || run.last_step_name || null;
+    };
+    // What kicked this run off. Derived from session_id, which the scheduler
+    // sets to `schedule_<schedule_id>` and the orchestrator-agent path sets to
+    // the chat session id; manual UI and API runs carry none.
+    const triggerOf = (run: RunSummary): string => {
+        const session = run.session_id || '';
+        if (session.startsWith('schedule_')) {
+            const schedId = session.slice('schedule_'.length);
+            const sched = schedules.find(s => s.id === schedId);
+            return sched ? `Schedule · ${sched.name}` : 'Schedule';
+        }
+        if (session) return 'Agent chat';
+        return 'Manual';
+    };
+
+    const fmtDuration = (start?: string | null, end?: string | null): string => {
+        if (!start) return '—';
+        const s = new Date(start).getTime();
+        const e = end ? new Date(end).getTime() : Date.now();
+        const sec = Math.max(0, Math.round((e - s) / 1000));
+        if (sec < 60) return `${sec}s`;
+        const m = Math.floor(sec / 60);
+        if (m < 60) return `${m}m ${sec % 60}s`;
+        return `${Math.floor(m / 60)}h ${m % 60}m`;
+    };
+    const runStatusMeta = (run: RunSummary): { dot: string; label: string; text: string } => {
+        switch (run.status) {
+            case 'running': return { dot: 'bg-blue-400 animate-pulse', label: 'Running', text: 'text-blue-300' };
+            case 'paused': return run.waiting_for_human
+                ? { dot: 'bg-yellow-400', label: 'Needs input', text: 'text-yellow-300' }
+                : { dot: 'bg-yellow-400', label: 'Paused', text: 'text-yellow-300' };
+            case 'completed': return { dot: 'bg-green-500', label: 'Completed', text: 'text-zinc-400' };
+            case 'cancelled': return { dot: 'bg-zinc-500', label: 'Cancelled', text: 'text-zinc-500' };
+            default: return { dot: 'bg-red-500', label: 'Failed', text: 'text-red-300' };
+        }
+    };
+
+    const thCls = 'px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500 whitespace-nowrap';
+    const tdCls = 'px-4 py-2.5 text-xs';
+
+    const renderRunsTable = (rows: RunSummary[], empty: string) => (
+        <div className="border border-white/5 bg-zinc-900/60">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="border-b border-white/5 bg-zinc-950/40">
+                            <th className={thCls}>Status</th>
+                            <th className={thCls}>Orchestration</th>
+                            <th className={thCls}>Step</th>
+                            <th className={thCls}>Trigger</th>
+                            <th className={`${thCls} text-right`}>Progress</th>
+                            <th className={`${thCls} text-right`}>Cost</th>
+                            <th className={`${thCls} text-right`}>Started</th>
+                            <th className={`${thCls} text-right`}>Duration</th>
+                            <th className={thCls}></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.length === 0 ? (
+                            <tr>
+                                <td colSpan={9} className="px-4 py-10 text-center text-xs text-zinc-600 italic">
+                                    {empty}
+                                </td>
+                            </tr>
+                        ) : rows.map(run => {
+                            const meta = runStatusMeta(run);
+                            const stepName = currentStepNameOf(run);
+                            const isLive = run.status === 'running' || run.status === 'paused';
+                            return (
+                                <tr
+                                    key={run.run_id}
+                                    onClick={() => restoreRun(run)}
+                                    className="border-b border-white/3 last:border-b-0 hover:bg-white/2 cursor-pointer transition-colors group"
+                                >
+                                    <td className={`${tdCls} whitespace-nowrap`}>
+                                        <span className="inline-flex items-center gap-2">
+                                            <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
+                                            <span className={meta.text}>{meta.label}</span>
+                                        </span>
+                                    </td>
+                                    <td className={`${tdCls} text-zinc-200 max-w-[220px]`}>
+                                        <span className="block truncate">{orchNameOf(run.orchestration_id)}</span>
+                                        <span className="block text-[10px] text-zinc-600 truncate">{run.run_id}</span>
+                                    </td>
+                                    <td className={`${tdCls} max-w-[200px]`}>
+                                        {stepName ? (
+                                            <span className={`block truncate ${isLive ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                                                {run.status === 'running' ? '▶ ' : run.status === 'paused' ? '⏸ ' : ''}{stepName}
+                                            </span>
+                                        ) : <span className="text-zinc-600">—</span>}
+                                    </td>
+                                    <td className={`${tdCls} text-zinc-500 max-w-[160px]`}>
+                                        <span className="block truncate">{triggerOf(run)}</span>
+                                    </td>
+                                    <td className={`${tdCls} text-right text-zinc-400 whitespace-nowrap`}>
+                                        {run.steps_completed ?? 0} step{(run.steps_completed ?? 0) === 1 ? '' : 's'}
+                                    </td>
+                                    <td className={`${tdCls} text-right text-zinc-500 whitespace-nowrap`}>
+                                        {run.total_cost_usd ? `$${run.total_cost_usd.toFixed(4)}` : '—'}
+                                    </td>
+                                    <td className={`${tdCls} text-right text-zinc-500 whitespace-nowrap`}>
+                                        {run.started_at ? new Date(run.started_at).toLocaleString() : '—'}
+                                    </td>
+                                    <td className={`${tdCls} text-right text-zinc-500 whitespace-nowrap`}>
+                                        {fmtDuration(run.started_at, run.ended_at)}
+                                    </td>
+                                    <td className={`${tdCls} text-right whitespace-nowrap`}>
+                                        <span className="text-[11px] text-zinc-600 group-hover:text-zinc-300 transition-colors">
+                                            View →
+                                        </span>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+
+    // --- Restore a run from the active runs banner / recent runs / deep link ---
+    // The run's event journal is replayable, so restoring = hydrate step
+    // statuses from the checkpoint (fast canvas paint), then replay the journal
+    // from the start — which rebuilds the exact same Run Log as live viewing —
+    // and keep tailing live events until the run ends.
     const restoreRun = useCallback(async (runInfo: { run_id: string; orchestration_id: string; status: string }) => {
         const orch = orchestrations.find(o => o.id === runInfo.orchestration_id);
+        if (!orch) {
+            // No definition to render the canvas from — bail loudly rather than
+            // setting draft to null, which would silently re-render the landing
+            // page and look like the click did nothing. The runs API filters
+            // these out, so this is a backstop (e.g. deleted mid-session).
+            showToast('That run\'s orchestration no longer exists', 'error');
+            return;
+        }
         setSelectedOrchId(runInfo.orchestration_id);
         setSelectedStepId(null);
-        setDraft(orch ? { ...orch } : null);
+        setDraft({ ...orch });
         setRunId(runInfo.run_id);
         // Sync the ref synchronously — the useEffect that mirrors runId only runs
-        // after render, but reattachRun's guard reads currentRunIdRef immediately.
+        // after render, but streamRunJournal's guard reads currentRunIdRef immediately.
         currentRunIdRef.current = runInfo.run_id;
         setRunStatus(runInfo.status as 'running' | 'paused' | 'completed' | 'failed' | 'cancelled');
         setHumanPrompt(null);
@@ -207,14 +365,13 @@ export function OrchestrationTab() {
 
         // Baseline: mark all steps pending (like a fresh run) before overlaying
         // completed/failed from the checkpoint.
-        if (orch) {
-            const seeded: Record<string, RunStepStatus> = {};
-            orch.steps.forEach(s => { seeded[s.id] = 'pending'; });
-            setRunStepStatuses(seeded);
-        }
+        const seeded: Record<string, RunStepStatus> = {};
+        orch.steps.forEach(s => { seeded[s.id] = 'pending'; });
+        setRunStepStatuses(seeded);
 
-        // Restore step statuses + human-input state from the persisted checkpoint.
-        let waitingForHuman = false;
+        // Restore step statuses + human-input state from the persisted checkpoint
+        // so the canvas is meaningful before (and in case of a pre-journal run,
+        // without) the journal replay.
         try {
             const res = await fetch(`/api/orchestrations/runs/${runInfo.run_id}`);
             if (res.ok) {
@@ -222,7 +379,6 @@ export function OrchestrationTab() {
                 if (Array.isArray(data.step_history)) {
                     setRunStepStatuses(prev => applyStepHistory(prev, data.step_history));
                 }
-                waitingForHuman = !!data.waiting_for_human;
                 if (data.waiting_for_human && data.human_prompt) {
                     setHumanPrompt(data.human_prompt);
                     setHumanContext(data.human_context || null);
@@ -230,23 +386,17 @@ export function OrchestrationTab() {
             }
         } catch { /* ignore */ }
 
-        // Load and display the persisted detailed log as recovered context.
-        const logLines = await fetchRecoveredLog(runInfo.run_id);
-        const logBlock: LogEntry[] = logLines.length > 0
-            ? ['── Recovered log (persisted) ──', { kind: 'recovered_log', lines: logLines }]
-            : ['── Recovered log (persisted) ──', '[No persisted log available yet.]'];
-        setRunLog([
-            ...logBlock,
-            '[Standalone reconnect: restored step-boundary checkpoint + persisted log. Live updates resume at the next step boundary.]',
-        ]);
-
-        // Keep tracking a live run to completion / human-input. A paused run
-        // already waiting for input needs no poll loop.
-        if (runInfo.status === 'running' || (runInfo.status === 'paused' && !waitingForHuman)) {
-            reattachRun(runInfo.run_id, { silent: true });
+        // Full-fidelity replay + live tail from the event journal. Falls back to
+        // status polling for runs that predate the journal.
+        const hasJournal = await streamRunJournal(runInfo.run_id, 0);
+        if (!hasJournal) {
+            setRunLog(['[This run predates event journaling — showing checkpoint status only.]']);
+            if (runInfo.status === 'running') {
+                reattachRun(runInfo.run_id, { silent: true });
+            }
         }
-        // reattachRun is a stable useCallback([]) declared below; adding it to the
-        // deps array would be a temporal-dead-zone read during render.
+        // streamRunJournal/reattachRun are stable useCallback([])s declared below;
+        // adding them to the deps array would be a temporal-dead-zone read during render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [orchestrations]);
 
@@ -265,6 +415,19 @@ export function OrchestrationTab() {
             setDraft(null);
         }
     }, [orchestrations]);
+
+    // --- Back to the landing dashboard ---
+    // Detaches this browser from the run's event stream; the run itself keeps
+    // executing server-side on the runner pump and stays listed under Active,
+    // so leaving the view never interrupts work.
+    const backToList = useCallback(() => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        currentRunIdRef.current = null;  // stops streamRunJournal's tail loop
+        setRunId(null);
+        setLiveActivity(null);
+        selectOrchestration(null);
+    }, [selectOrchestration]);
 
     // --- Create new orchestration ---
     const createNew = () => {
@@ -476,23 +639,105 @@ export function OrchestrationTab() {
         setDraft(orch);
     }, []);
 
-    // --- Re-attach to a run after the SSE connection drops ---
+    // --- Reattach stream: replay the run's event journal, then tail it live ---
     // The engine runs in a background task on the server and keeps executing
-    // even if this client disconnects (e.g. the laptop slept). So a lost
-    // connection is NOT a failure: poll the persisted run state and track it to
-    // completion, rather than marking it failed and offering resume_failed
-    // (which correctly refuses a still-running run).
+    // even if this client disconnects (e.g. the laptop slept), journaling every
+    // event. Reattaching = GET the journal SSE stream: full replay from
+    // `after`, then live tail until the run truly ends. Reconnects resume from
+    // the last seen event id. Returns false iff the run has no journal
+    // (predates the feature) so callers can fall back to status polling.
+    const streamRunJournal = useCallback(async (rid: string, after: number): Promise<boolean> => {
+        lastEventIdRef.current = after;
+        let attempts = 0;
+        while (true) {
+            if (currentRunIdRef.current !== rid) return true;  // user switched runs
+            const controller = new AbortController();
+            abortRef.current?.abort();                          // never two feeds at once
+            abortRef.current = controller;
+            lastChunkAtRef.current = Date.now();
+            try {
+                const res = await fetch(
+                    `/api/orchestrations/runs/${rid}/events/stream?after=${lastEventIdRef.current}`,
+                    { signal: controller.signal },
+                );
+                if (res.status === 404) return false;           // pre-journal run
+                if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+                if (lastEventIdRef.current === 0) {
+                    // Full replay rebuilds the log from scratch — identical to
+                    // having watched the run live, with no duplicated entries.
+                    setRunLog([]);
+                }
+                attempts = 0;
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await readWithStallTimeout(reader, controller);
+                    if (done) break;
+                    lastChunkAtRef.current = Date.now();
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    // Events in one chunk are processed synchronously — React
+                    // batches the state updates, so a multi-hundred-event replay
+                    // costs a handful of renders instead of one per event.
+                    for (const line of lines) {
+                        if (line.startsWith('id: ')) {
+                            const id = parseInt(line.slice(4), 10);
+                            if (!Number.isNaN(id)) lastEventIdRef.current = id;
+                        } else if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.type === 'stream_complete') return true;  // run truly over
+                                handleSSEEvent(data, true);
+                            } catch { /* ignore parse errors */ }
+                        }
+                    }
+                }
+                // Stream ended without stream_complete (proxy drop, server
+                // restart) — reconnect from where we left off.
+                throw new Error('stream ended early');
+            } catch (e: any) {
+                // A terminal event handler or run switch aborts us on purpose;
+                // 'recover' (wake handler) and transport errors mean reconnect.
+                const intentional = e?.name === 'AbortError' && controller.signal.reason !== 'recover';
+                if (intentional) return true;
+                if (++attempts > 20) {
+                    setRunLog(prev => [...prev, '[Reconnect failed — see Active Runs to rejoin]']);
+                    return true;
+                }
+                await new Promise<void>(r => setTimeout(r, Math.min(3000, 500 * attempts)));
+            } finally {
+                if (abortRef.current === controller) abortRef.current = null;
+            }
+        }
+    }, []);
+
+    // --- Re-attach to a run after the SSE connection drops ---
+    // Journal replay is the primary path; polling remains only for runs that
+    // predate event journaling.
     const reattachRun = useCallback(async (rid: string | null, opts?: { silent?: boolean }) => {
         if (!rid) { setRunStatus('failed'); setRunLog(prev => [...prev, '[Connection lost]']); return; }
         if (reattachActiveRef.current) return;       // already reconnecting
         reattachActiveRef.current = true;
-        // On a deliberate restore (silent) the "Connection lost" framing is wrong —
-        // nothing was lost; the user is re-opening a still-running run.
+        try {
+            const hasJournal = await streamRunJournal(rid, 0);
+            if (!hasJournal) await pollRunStatus(rid, opts);
+        } finally {
+            reattachActiveRef.current = false;
+        }
+        // streamRunJournal/pollRunStatus are stable useCallback([])s.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Legacy fallback: track a pre-journal run to completion by polling its
+    // step-boundary checkpoint.
+    const pollRunStatus = useCallback(async (rid: string, opts?: { silent?: boolean }) => {
         if (!opts?.silent) setRunLog(prev => [...prev, '[Connection lost — reconnecting to run…]']);
         const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
         const deadline = Date.now() + 10 * 60 * 1000; // give up after 10 min
         let notFound = 0; // tolerate brief 404 windows at run start/end before giving up
-        try {
+        {
             while (Date.now() < deadline) {
                 if (currentRunIdRef.current !== rid) return;  // user started/restored a different run
                 let data: any;
@@ -533,18 +778,19 @@ export function OrchestrationTab() {
                 // Terminal: completed / failed / cancelled
                 const final = data.status === 'completed' ? 'completed' : data.status === 'cancelled' ? 'cancelled' : 'failed';
                 setRunStatus(final);
+                setHumanPrompt(null);
+                setHumanContext(null);
                 setRunLog(prev => [...prev, `[Reconnected — run ${data.status}]`]);
                 return;
             }
             setRunLog(prev => [...prev, '[Reconnect timed out — see Active Runs to rejoin]']);
-        } finally {
-            reattachActiveRef.current = false;
         }
     }, []);
 
-    // --- SSE stream reader helper ---
+    // --- SSE stream reader helper (POST run/resume/human-input streams) ---
     const streamSSE = async (url: string, body: Record<string, any>) => {
         const controller = new AbortController();
+        abortRef.current?.abort();  // e.g. close a reattach tail before resuming
         abortRef.current = controller;
         lastChunkAtRef.current = Date.now();
 
@@ -608,11 +854,18 @@ export function OrchestrationTab() {
         setRunStatus('running');
         setRunLog([]);
         setHumanPrompt(null);
+        setLiveActivity(null);
+        lastEventIdRef.current = 0;  // fresh run, fresh journal
 
         streamSSE(`/api/orchestrations/${draft.id}/run`, { message: runInput });
     };
 
-    const handleSSEEvent = (data: any) => {
+    // `fromJournal` marks events arriving from the replay/tail stream. A
+    // journal can contain a terminal event mid-file (cancel, then resume
+    // appends more events to the same run), so terminal handlers must NOT
+    // abort the feed there — the server signals the real end with
+    // `stream_complete`. Aborting on the live POST stream stays correct.
+    const handleSSEEvent = (data: any, fromJournal = false) => {
         switch (data.type) {
             case 'orchestration_start':
                 setRunId(data.run_id);
@@ -620,6 +873,12 @@ export function OrchestrationTab() {
                 break;
 
             case 'step_start': {
+                // Progress after a pause means the pending input was consumed
+                // (submitted here, in another tab, or via messaging) — drop the
+                // stale form. Matters for journal replay of resumed runs too.
+                setHumanPrompt(null);
+                setHumanContext(null);
+                setRunStatus('running');
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'running' }));
                 setRunLog(prev => [...prev, `▶ ${data.step_name} (${data.step_type})`]);
                 // Begin tracking response for agent/llm/print/extract_json steps, keyed by step id
@@ -636,6 +895,7 @@ export function OrchestrationTab() {
             }
 
             case 'step_complete': {
+                setLiveActivity(null);
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'completed' }));
                 const pendingForStep = pendingStepResultRef.current.get(data.orch_step_id);
                 setRunLog(prev => {
@@ -655,9 +915,50 @@ export function OrchestrationTab() {
             }
 
             case 'step_error':
+                setLiveActivity(null);
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'failed' }));
                 setRunLog(prev => [...prev, `✗ Step error: ${data.error}`]);
                 pendingStepResultRef.current.delete(data.orch_step_id);
+                break;
+
+            case 'llm_reasoning':
+                if (data.reasoning) {
+                    setLiveActivity(`🧠 ${String(data.reasoning).split('\n')[0].slice(0, 140)}`);
+                    setRunLog(prev => [...prev, {
+                        kind: 'reasoning',
+                        step_name: data.step_name,
+                        content: String(data.reasoning),
+                    } as ReasoningLogEntry]);
+                }
+                break;
+
+            case 'llm_thought':
+                if (data.thought) {
+                    setRunLog(prev => [...prev, {
+                        kind: 'thought',
+                        step_name: data.step_name,
+                        content: String(data.thought),
+                    } as ThoughtLogEntry]);
+                }
+                break;
+
+            case 'thinking':
+                // Chatty progress line ("Analyzing...", "Delegating to X...") —
+                // shown as the live activity indicator, not appended to the log.
+                if (data.message) setLiveActivity(`💭 ${data.message}`);
+                break;
+
+            case 'status':
+                if (data.message) setRunLog(prev => [...prev, `ℹ ${data.message}`]);
+                break;
+
+            case 'step_warning':
+                setRunLog(prev => [...prev, `⚠ ${data.message || 'Step warning'}`]);
+                break;
+
+            case 'context_compact':
+                setRunLog(prev => [...prev,
+                    `⇲ Context compacted (${data.chars_before ?? '?'} → ${data.chars_after ?? '?'} chars)`]);
                 break;
 
             case 'final': {
@@ -707,6 +1008,7 @@ export function OrchestrationTab() {
                 break;
 
             case 'human_input_required':
+                setLiveActivity(null);
                 setRunStatus('paused');
                 if (data.orch_step_id) setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'paused' }));
                 setHumanPrompt(data.prompt || 'Please provide input:');
@@ -719,20 +1021,31 @@ export function OrchestrationTab() {
                 break;
 
             case 'orchestration_complete':
+                setLiveActivity(null);
+                setHumanPrompt(null);
+                setHumanContext(null);
                 setRunStatus(data.status === 'completed' ? 'completed' : 'failed');
                 setRunLog(prev => [...prev, `Done — status: ${data.status}`]);
-                abortRef.current?.abort();
-                abortRef.current = null;
+                if (!fromJournal) {
+                    abortRef.current?.abort();
+                    abortRef.current = null;
+                }
                 break;
 
             case 'orchestration_error':
+                setLiveActivity(null);
+                setHumanPrompt(null);
+                setHumanContext(null);
                 setRunStatus('failed');
                 setRunLog(prev => [...prev, `Error: ${data.error}`]);
-                abortRef.current?.abort();
-                abortRef.current = null;
+                if (!fromJournal) {
+                    abortRef.current?.abort();
+                    abortRef.current = null;
+                }
                 break;
 
             case 'tool_execution':
+                setLiveActivity(`🔧 ${data.tool_name}`);
                 setRunLog(prev => [...prev, {
                     kind: 'tool_call',
                     tool_name: data.tool_name,
@@ -770,6 +1083,7 @@ export function OrchestrationTab() {
     };
 
     const cancelRun = async () => {
+        setLiveActivity(null);
         abortRef.current?.abort();
         abortRef.current = null;
         if (runId) {
@@ -807,6 +1121,29 @@ export function OrchestrationTab() {
 
     // Keep a ref mirror of runId so async handlers read the live value.
     useEffect(() => { currentRunIdRef.current = runId; }, [runId]);
+
+    // Deep link (?run=<run_id>): once orchestrations are loaded, open that run
+    // exactly as if it was clicked in the Active Runs banner.
+    const initialRunConsumedRef = useRef(false);
+    useEffect(() => {
+        if (!initialRunId || initialRunConsumedRef.current || orchestrations.length === 0) return;
+        initialRunConsumedRef.current = true;
+        (async () => {
+            try {
+                const res = await fetch(`/api/orchestrations/runs/${initialRunId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                restoreRun({
+                    run_id: initialRunId,
+                    orchestration_id: data.orchestration_id || '',
+                    status: data.status || 'running',
+                });
+            } catch { /* ignore */ }
+        })();
+        // restoreRun is recreated when orchestrations load; the consumed ref
+        // keeps this one-shot.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialRunId, orchestrations]);
 
     // Wake / network recovery: on refocus or network-back, if a run's stream has
     // gone silent past several heartbeat windows (≈ dead socket after sleep),
@@ -866,8 +1203,17 @@ export function OrchestrationTab() {
             {/* Toolbar: orchestration picker + actions */}
             <div className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800 shrink-0">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {draft && (
+                        <button
+                            onClick={backToList}
+                            title="Back to all orchestrations and runs"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-white transition-colors shrink-0"
+                        >
+                            <ArrowLeft size={14} /> Back
+                        </button>
+                    )}
                     <select
-                        className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 outline-none max-w-[240px]"
+                        className="bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 outline-none max-w-[240px]"
                         value={selectedOrchId || ''}
                         onChange={(e) => selectOrchestration(e.target.value || null)}
                     >
@@ -878,7 +1224,7 @@ export function OrchestrationTab() {
                     </select>
                     <button
                         onClick={createNew}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white transition-colors"
                     >
                         <Plus size={14} /> New
                     </button>
@@ -888,7 +1234,7 @@ export function OrchestrationTab() {
                             setBuilderOpen(true); 
                             setBuilderSessionKey(k => k + 1); 
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white transition-colors"
                     >
                         <Sparkles size={13} /> Build with AI
                     </button>
@@ -899,42 +1245,42 @@ export function OrchestrationTab() {
                         <button
                             onClick={handleSave}
                             disabled={saving}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded transition-colors disabled:opacity-50"
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors disabled:opacity-50"
                         >
                             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
                         </button>
                         {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled' ? (
                             <button
                                 onClick={startRun}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white rounded transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white transition-colors"
                             >
                                 <Play size={14} /> Run
                             </button>
                         ) : (
                             <button
                                 onClick={cancelRun}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white transition-colors"
                             >
                                 <Square size={14} /> Cancel
                             </button>
                         )}
                         <button
                             onClick={handleDeploy}
-                            className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded transition-colors"
+                            className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white transition-colors"
                         >
                             Deploy as Agent
                         </button>
                         <button
                             onClick={handleDuplicate}
                             disabled={saving}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded transition-colors disabled:opacity-50"
+                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors disabled:opacity-50"
                         >
                             <Copy size={13} /> Duplicate
                         </button>
                         <div className="w-px h-5 bg-zinc-700 mx-1" />
                         <button
                             onClick={handleDelete}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
                         >
                             <Trash size={13} /> Delete
                         </button>
@@ -955,7 +1301,7 @@ export function OrchestrationTab() {
                                 <button
                                     key={run.run_id}
                                     onClick={() => restoreRun(run)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors"
+                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors"
                                 >
                                     <span className={`w-1.5 h-1.5 rounded-full ${
                                         run.status === 'running' ? 'bg-blue-400 animate-pulse' : 'bg-yellow-400'
@@ -970,8 +1316,117 @@ export function OrchestrationTab() {
             )}
 
             {!draft ? (
-                <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
-                    Select an orchestration or create a new one to get started.
+                /* ── Landing dashboard: tabbed tables ────────────────────── */
+                <div className="flex-1 overflow-y-auto modern-scrollbar">
+                    <div className="px-4 pb-8">
+                        {/* Tab bar */}
+                        <div className="flex items-end border-b border-white/5 mb-4">
+                            <div className="flex items-center">
+                                {([
+                                    { id: 'orchestrations', label: 'Orchestrations', count: orchestrations.length },
+                                    { id: 'active', label: 'Active', count: activeRuns.length },
+                                    { id: 'recent', label: 'Recent', count: null },
+                                    { id: 'all', label: 'All runs', count: null },
+                                ] as const).map(t => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setLandingTab(t.id)}
+                                        className={`px-4 py-2.5 text-xs font-medium border-b -mb-px transition-colors ${
+                                            landingTab === t.id
+                                                ? 'text-zinc-100 border-zinc-100'
+                                                : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                                        }`}
+                                    >
+                                        {t.label}
+                                        {t.count !== null && t.count > 0 && (
+                                            <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] ${
+                                                t.id === 'active'
+                                                    ? 'bg-blue-500/20 text-blue-300'
+                                                    : 'bg-white/5 text-zinc-400'
+                                            }`}>{t.count}</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {landingTab === 'orchestrations' && (
+                            <div className="border border-white/5 bg-zinc-900/60">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-white/5 bg-zinc-950/40">
+                                                <th className={thCls}>Name</th>
+                                                <th className={thCls}>Description</th>
+                                                <th className={`${thCls} text-right`}>Steps</th>
+                                                <th className={`${thCls} text-right`}>Last run</th>
+                                                <th className={thCls}></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {orchestrations.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className="px-4 py-10 text-center text-xs text-zinc-600 italic">
+                                                        No orchestrations yet — create one or build with AI.
+                                                    </td>
+                                                </tr>
+                                            ) : orchestrations.map(o => {
+                                                const lastRun = pastRuns.find(r => r.orchestration_id === o.id);
+                                                const lastMeta = lastRun ? runStatusMeta(lastRun) : null;
+                                                return (
+                                                    <tr
+                                                        key={o.id}
+                                                        onClick={() => selectOrchestration(o.id)}
+                                                        className="border-b border-white/3 last:border-b-0 hover:bg-white/2 cursor-pointer transition-colors group"
+                                                    >
+                                                        <td className={`${tdCls} text-zinc-200 font-medium whitespace-nowrap max-w-[240px]`}>
+                                                            <span className="block truncate">{o.name}</span>
+                                                        </td>
+                                                        <td className={`${tdCls} text-zinc-500 max-w-[380px]`}>
+                                                            <span className="block truncate">{o.description || '—'}</span>
+                                                        </td>
+                                                        <td className={`${tdCls} text-right text-zinc-400 whitespace-nowrap`}>
+                                                            {o.steps.length}
+                                                        </td>
+                                                        <td className={`${tdCls} text-right whitespace-nowrap`}>
+                                                            {lastRun && lastMeta ? (
+                                                                <span className="inline-flex items-center gap-1.5 justify-end">
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${lastMeta.dot}`} />
+                                                                    <span className="text-zinc-500">
+                                                                        {lastRun.started_at ? new Date(lastRun.started_at).toLocaleString() : lastMeta.label}
+                                                                    </span>
+                                                                </span>
+                                                            ) : <span className="text-zinc-600">never</span>}
+                                                        </td>
+                                                        <td className={`${tdCls} text-right whitespace-nowrap`}>
+                                                            <span className="text-[11px] text-zinc-600 group-hover:text-zinc-300 transition-colors">
+                                                                Open →
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {landingTab === 'active' && renderRunsTable(
+                            activeRuns,
+                            'No active runs — start one from the Orchestrations tab.',
+                        )}
+
+                        {landingTab === 'recent' && renderRunsTable(
+                            pastRuns.filter(r => r.status !== 'running' && r.status !== 'paused').slice(0, 10),
+                            'No finished runs yet.',
+                        )}
+
+                        {landingTab === 'all' && renderRunsTable(
+                            allRuns.length > 0 ? allRuns : pastRuns,
+                            'No runs recorded yet.',
+                        )}
+                    </div>
                 </div>
             ) : (
                 <div className="flex-1 flex flex-col min-h-0">
@@ -1048,6 +1503,7 @@ export function OrchestrationTab() {
                             draft={draft}
                             setDraft={setDraft}
                             runStatus={runStatus}
+                            liveActivity={liveActivity}
                             runLog={runLog}
                             runInput={runInput}
                             setRunInput={setRunInput}
@@ -1254,13 +1710,14 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
 
 // --- Bottom panel with collapsible sections ---
 function BottomPanel({
-    draft, setDraft, runStatus, runLog, runInput, setRunInput, onStartRun,
+    draft, setDraft, runStatus, liveActivity, runLog, runInput, setRunInput, onStartRun,
     humanPrompt, humanContext, humanResponse, setHumanResponse, onSubmitHuman, onOpenResponseModal,
     runId, onResumeRun, pastRuns, onRestoreRun,
 }: {
     draft: Orchestration;
     setDraft: (o: Orchestration) => void;
     runStatus: string;
+    liveActivity: string | null;
     runLog: LogEntry[];
     runInput: string;
     setRunInput: (v: string) => void;
@@ -1273,7 +1730,7 @@ function BottomPanel({
     onOpenResponseModal: (entry: { step_name: string; step_type?: string; content: string }) => void;
     runId: string | null;
     onResumeRun: () => void;
-    pastRuns: { run_id: string; orchestration_id: string; status: string; started_at?: string; ended_at?: string }[];
+    pastRuns: { run_id: string; orchestration_id: string; status: string; started_at?: string | null; ended_at?: string | null }[];
     onRestoreRun: (run: { run_id: string; orchestration_id: string; status: string }) => void;
 }) {
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run' | 'recent'>('run');
@@ -1532,6 +1989,14 @@ function BottomPanel({
                             </div>
                         )}
 
+                        {/* Live activity: what the model is doing right now */}
+                        {runStatus === 'running' && liveActivity && (
+                            <div className="flex items-center gap-2 text-[11px] text-sky-300/90 bg-sky-950/30 border border-sky-900/40 rounded px-2.5 py-1.5">
+                                <Loader2 size={11} className="animate-spin shrink-0" />
+                                <span className="truncate">{liveActivity}</span>
+                            </div>
+                        )}
+
                         {/* Log output */}
                         <div ref={logRef} className="font-mono text-[11px] text-zinc-400 space-y-0.5">
                             {runLog.length === 0 ? (
@@ -1599,16 +2064,21 @@ function BottomPanel({
                                                 </div>
                                             );
                                         }
-                                        if (entry.kind === 'recovered_log') {
+                                        if (entry.kind === 'reasoning' || entry.kind === 'thought') {
+                                            const isReasoning = entry.kind === 'reasoning';
+                                            const firstLine = entry.content.split('\n')[0].slice(0, 120);
                                             return (
-                                                <details key={i} open className="my-1.5">
-                                                    <summary className="cursor-pointer list-none text-[10px] text-zinc-500 uppercase tracking-wider">
-                                                        Recovered log ({entry.lines.length} lines)
-                                                    </summary>
-                                                    <pre className="mt-1 bg-zinc-900/60 border border-zinc-800 rounded p-2 text-[10px] text-zinc-400 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
-                                                        {entry.lines.join('\n')}
-                                                    </pre>
-                                                </details>
+                                                <div key={i} className="pl-2 my-0.5">
+                                                    <details>
+                                                        <summary className={`cursor-pointer list-none text-[10px] ${isReasoning ? 'text-sky-400/80' : 'text-zinc-500'}`}>
+                                                            {isReasoning ? '🧠' : '💬'} {firstLine}{entry.content.length > firstLine.length ? '…' : ''}
+                                                            {entry.step_name && <span className="text-zinc-600"> · {entry.step_name}</span>}
+                                                        </summary>
+                                                        <div className="mt-0.5 bg-zinc-800/40 border border-zinc-800 rounded p-2 text-[10px] text-zinc-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                                                            {entry.content}
+                                                        </div>
+                                                    </details>
+                                                </div>
                                             );
                                         }
                                         return null;

@@ -142,6 +142,88 @@ class TestInitialCheckpoint:
         assert ckpt["status"] == "completed"
 
 
+class TestRunSummaryFields:
+    async def test_list_runs_exposes_live_progress(self, tmp_path, monkeypatch):
+        """The runs table needs current step / progress / waiting state, not
+        just status + timestamps."""
+        import core.orchestration.state as state_mod
+        from core.models_orchestration import OrchestrationRun
+
+        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
+        run = OrchestrationRun(
+            run_id="run_sum", orchestration_id="o1", status="paused",
+            current_step_id="s2", waiting_for_human=True, total_cost_usd=0.0125,
+            step_history=[{"step_id": "s1", "step_name": "Fetch", "status": "completed"}],
+        )
+        state_mod.SharedState(run).checkpoint()
+
+        [summary] = state_mod.SharedState.list_runs()
+        assert summary["current_step_id"] == "s2"
+        assert summary["steps_completed"] == 1
+        assert summary["last_step_name"] == "Fetch"
+        assert summary["waiting_for_human"] is True
+        assert summary["total_cost_usd"] == 0.0125
+
+    async def test_list_runs_limit_is_clamped(self, client, tmp_path, monkeypatch,
+                                              seed_orchestration):
+        import core.orchestration.state as state_mod
+        from core.models_orchestration import OrchestrationRun
+
+        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
+        orch = seed_orchestration()  # endpoint lists only runs of live orchestrations
+        for n in range(3):
+            state_mod.SharedState(
+                OrchestrationRun(run_id=f"run_{n}", orchestration_id=orch["id"], status="completed")
+            ).checkpoint()
+
+        assert len((await client.get("/api/orchestrations/runs?limit=2")).json()) == 2
+        # Out-of-range values clamp instead of erroring.
+        assert len((await client.get("/api/orchestrations/runs?limit=0")).json()) == 1
+        assert len((await client.get("/api/orchestrations/runs?limit=9999")).json()) == 3
+
+    async def test_list_runs_filters_structural_and_orphaned(self, tmp_path, monkeypatch):
+        """Builder sessions and nested sub-runs are implementation details;
+        runs of deleted orchestrations can't be opened. None should be listed."""
+        import core.orchestration.state as state_mod
+        from core.models_orchestration import OrchestrationRun
+
+        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
+        for run_id, orch_id in [
+            ("run_real_1", "o_live"),
+            ("builder_abc123", "o_live"),          # builder session
+            ("run_real_1__step2_d1", "o_live"),    # nested sub-run
+            ("run_orphan", "o_deleted"),           # orchestration since deleted
+        ]:
+            state_mod.SharedState(
+                OrchestrationRun(run_id=run_id, orchestration_id=orch_id,
+                                 status="completed", session_id="schedule_sched_9")
+            ).checkpoint()
+
+        listed = state_mod.SharedState.list_runs(orchestration_ids={"o_live"})
+        assert [r["run_id"] for r in listed] == ["run_real_1"]
+        assert listed[0]["session_id"] == "schedule_sched_9"  # trigger source
+
+        # Without the id filter, only the structural runs are dropped.
+        ids = {r["run_id"] for r in state_mod.SharedState.list_runs()}
+        assert ids == {"run_real_1", "run_orphan"}
+
+    async def test_limit_applies_after_filtering(self, tmp_path, monkeypatch):
+        """A backlog of orphaned runs must not crowd live runs out of the
+        limit window (they are newer by mtime here)."""
+        import core.orchestration.state as state_mod
+        from core.models_orchestration import OrchestrationRun
+
+        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
+        state_mod.SharedState(
+            OrchestrationRun(run_id="run_keep", orchestration_id="o_live", status="completed")
+        ).checkpoint()
+        for n in range(5):  # written after → newer mtime
+            state_mod.SharedState(
+                OrchestrationRun(run_id=f"run_dead_{n}", orchestration_id="o_gone", status="failed")
+            ).checkpoint()
+
+        listed = state_mod.SharedState.list_runs(limit=3, orchestration_ids={"o_live"})
+        assert [r["run_id"] for r in listed] == ["run_keep"]
 class TestResumeVisibility:
     """A resumed run must read as 'running' on disk immediately, not only
     after its first step boundary — otherwise the active-runs list keeps
