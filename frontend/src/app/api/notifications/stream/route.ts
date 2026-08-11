@@ -1,0 +1,62 @@
+import { NextResponse } from 'next/server';
+import * as http from 'http';
+import { URL } from 'url';
+import { internalTokenHeader } from '@/lib/backend';
+
+const _backendUrl = new URL(process.env.BACKEND_URL || 'http://127.0.0.1:8765');
+const BACKEND_HOST = _backendUrl.hostname;
+const BACKEND_PORT = parseInt(_backendUrl.port || '8765', 10);
+
+export const maxDuration = 600;
+export const dynamic = 'force-dynamic';
+
+// Notification stream: ring replay + live tail. Raw-http proxy because the
+// Next fallback rewrite (undici) buffers responses, which defeats SSE.
+export async function GET(req: Request) {
+    const reqUrl = new URL(req.url);
+    const after = reqUrl.searchParams.get('after') || '0';
+    const lastEventId = req.headers.get('last-event-id');
+
+    const upstream = await new Promise<{ stream: ReadableStream; status: number }>((resolve, reject) => {
+        const options: http.RequestOptions = {
+            hostname: BACKEND_HOST,
+            port: BACKEND_PORT,
+            path: `/api/notifications/stream?after=${encodeURIComponent(after)}`,
+            method: 'GET',
+            headers: {
+                'Accept-Encoding': 'identity',
+                ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
+                ...internalTokenHeader(),
+            },
+        };
+
+        const proxyReq = http.request(options, (proxyRes) => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    proxyRes.on('data', (chunk: Buffer) => controller.enqueue(chunk));
+                    proxyRes.on('end', () => controller.close());
+                    proxyRes.on('error', (err) => controller.error(err));
+                },
+                cancel() {
+                    proxyReq.destroy();
+                },
+            });
+            resolve({ stream, status: proxyRes.statusCode || 200 });
+        });
+
+        proxyReq.on('error', reject);
+        proxyReq.end();
+    });
+
+    if (upstream.status !== 200) {
+        return new NextResponse(upstream.stream, { status: upstream.status });
+    }
+    return new NextResponse(upstream.stream, {
+        headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        },
+    });
+}

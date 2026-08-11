@@ -6,6 +6,7 @@ import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, Chev
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
 import { ActiveRunsBanner } from '@/components/ActiveRunsBanner';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 import { renderTextContent, cn } from '@/lib/utils';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -1613,6 +1614,8 @@ export default function Home() {
               >
                 <History className="h-4 w-4" />
               </button>
+
+              <NotificationBell />
 
               <button
                 onClick={() => setTheme(prev => {

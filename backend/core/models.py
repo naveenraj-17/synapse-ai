@@ -131,6 +131,10 @@ class Settings(BaseModel):
     login_username: str = ""
     login_password_hash: str = ""
 
+    # Run notifications: messaging channel id to mirror run notifications to
+    # (human-input pauses, completions, failures). Empty = in-app only.
+    run_notification_channel_id: str = ""
+
     # Scale / distributed execution settings
     redis_url: str = ""
     scale_postgres_url: str = ""

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter, JetBrains_Mono, IBM_Plex_Sans } from "next/fo
 // @ts-ignore: CSS module declarations are not present in this repo setup
 import "./globals.css";
 import { StoreProvider } from "./StoreProvider";
+import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,7 +47,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${jetbrainsMono.variable} ${ibmPlexSans.variable} antialiased`}
       >
         <StoreProvider>
-          {children}
+          <NotificationProvider>
+            {children}
+          </NotificationProvider>
         </StoreProvider>
       </body>
     </html>

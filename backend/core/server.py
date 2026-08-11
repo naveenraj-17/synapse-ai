@@ -58,6 +58,7 @@ from core.routes.api_keys import router as api_keys_router
 from core.routes.api_v1 import router as api_v1_router
 from core.routes.api_v2 import router as api_v2_router
 from core.routes.scale import router as scale_router
+from core.routes.notifications import router as notifications_router
 from core.profiling import TimingMiddleware
 from core.internal_auth import InternalTokenMiddleware
 
@@ -558,6 +559,18 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Warning: Zombie run sweep failed: {e}")
 
+        # --- Notification hub: observe run events + surface missed pauses ---
+        try:
+            import core.server as _server_mod
+            from core.notifications import hub as _notification_hub
+            from core.orchestration.runner import event_observers as _event_observers
+            _notification_hub.configure(_server_mod)
+            if _notification_hub.observe_run_event not in _event_observers:
+                _event_observers.append(_notification_hub.observe_run_event)
+            _notification_hub.reconstruct_missed()
+        except Exception as e:
+            print(f"Warning: Notification hub setup failed: {e}")
+
         # --- Initialize Telemetry (OpenTelemetry + Prometheus) ---
         try:
             from core.scale.config import get_scale_config as _get_scale_cfg
@@ -777,6 +790,7 @@ app.include_router(api_keys_router)
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(api_v2_router, prefix="/api/v2")
 app.include_router(scale_router, prefix="/api")
+app.include_router(notifications_router)
 
 if __name__ == "__main__":
     import uvicorn

@@ -110,6 +110,20 @@ def _isolate_run_checkpoints(tmp_path, monkeypatch):
     monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "orchestration_runs")
 
 
+# ── notification store isolation (autouse) ───────────────────────────────────
+@pytest.fixture(autouse=True)
+def _isolate_notifications(tmp_path, monkeypatch):
+    """Keep the module-level notification hub off the real store.
+
+    Same reason as RUNS_DIR: NOTIFICATIONS_FILE lives under backend/logs, so a
+    test that publishes through the singleton would append to the user's real
+    notification list.
+    """
+    import core.notifications as notif_mod
+    monkeypatch.setattr(notif_mod, "NOTIFICATIONS_FILE", tmp_path / "notifications.json")
+    monkeypatch.setattr(notif_mod.hub, "_path", tmp_path / "notifications.json")
+
+
 # ── fake LLM (autouse) ───────────────────────────────────────────────────────
 @pytest.fixture(autouse=True)
 def fake_llm(monkeypatch):

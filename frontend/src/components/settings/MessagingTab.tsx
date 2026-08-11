@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     MessageSquare, Plus, Trash, Save, Play, Square, FlaskConical,
     ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle,
@@ -163,6 +163,34 @@ export const MessagingTab = () => {
     const [waMode, setWaMode] = useState<'meta_api' | 'unofficial'>('meta_api');
     const [waRiskAck, setWaRiskAck] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    // Channel that mirrors run notifications ("" = in-app only)
+    const [notifyChannelId, setNotifyChannelId] = useState('');
+    const agentNameRef = useRef('');  // Settings.agent_name is required on POST
+    useEffect(() => {
+        fetch('/api/settings').then(r => r.json())
+            .then(d => {
+                setNotifyChannelId(d.run_notification_channel_id || '');
+                agentNameRef.current = d.agent_name || 'Synapse';
+            })
+            .catch(() => {});
+    }, []);
+    const saveNotifyChannel = async (channelId: string) => {
+        setNotifyChannelId(channelId);
+        try {
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    agent_name: agentNameRef.current,
+                    run_notification_channel_id: channelId,
+                }),
+            });
+            showToast(channelId ? 'Run notifications enabled for channel' : 'Run notifications set to in-app only');
+        } catch {
+            showToast('Failed to save notification channel');
+        }
+    };
 
     const showToast = (msg: string) => {
         setToastMsg(msg);
@@ -361,6 +389,27 @@ export const MessagingTab = () => {
                             </div>
                         );
                     })}
+                </div>
+
+                {/* ── Run notifications channel ─────────────────────── */}
+                <div className="mt-3 pt-3 border-t border-zinc-800">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">
+                        Run notifications
+                    </label>
+                    <select
+                        value={notifyChannelId}
+                        onChange={e => saveNotifyChannel(e.target.value)}
+                        className="w-full bg-black border border-zinc-800 text-xs text-zinc-300 px-2 py-1.5 outline-none focus:border-zinc-600"
+                    >
+                        <option value="">Off (in-app only)</option>
+                        {channels.map(ch => (
+                            <option key={ch.id} value={ch.id}>{ch.name}</option>
+                        ))}
+                    </select>
+                    <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
+                        Mirror orchestration notifications (needs input, completed, failed)
+                        to this channel&apos;s notify chat.
+                    </p>
                 </div>
             </div>
 

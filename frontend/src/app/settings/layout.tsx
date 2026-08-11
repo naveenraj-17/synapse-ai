@@ -2,6 +2,7 @@
 import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, DollarSign, Clock, ArrowLeftRight, Vault, LifeBuoy, Key } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useNotifications } from '@/components/notifications/NotificationProvider';
 
 const tabs = [
     { id: 'general', label: 'General', icon: LayoutGrid },
@@ -39,6 +40,7 @@ export default function SettingsLayout({
     const [messagingEnabled, setMessagingEnabled] = useState(false);
     const [codingEnabled, setCodingEnabled] = useState(false);
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+    const { unseenCount } = useNotifications();
 
     // Read persisted theme AFTER hydration to avoid SSR mismatch
     useEffect(() => {
@@ -103,6 +105,11 @@ export default function SettingsLayout({
                                 >
                                     <Icon className={`h-4 w-4 ${isActive ? 'text-zinc-950' : 'text-zinc-500'}`} />
                                     {tab.label}
+                                    {tab.id === 'orchestrations' && unseenCount > 0 && (
+                                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                                            {unseenCount > 9 ? '9+' : unseenCount}
+                                        </span>
+                                    )}
                                 </button>
                             );
                         })}

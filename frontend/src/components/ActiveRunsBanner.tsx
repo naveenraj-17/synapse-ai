@@ -35,9 +35,13 @@ export function ActiveRunsBanner({ pollMs = 10000 }: { pollMs?: number }) {
         // Refresh immediately when the tab becomes visible again.
         const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
         document.addEventListener('visibilitychange', onVisible);
+        // Run notifications (needs-input / completed / failed) invalidate the
+        // list instantly instead of waiting for the next poll tick.
+        window.addEventListener('synapse-notification', refresh);
         return () => {
             clearInterval(interval);
             document.removeEventListener('visibilitychange', onVisible);
+            window.removeEventListener('synapse-notification', refresh);
         };
     }, [refresh, pollMs]);
 
