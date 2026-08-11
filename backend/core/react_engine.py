@@ -631,6 +631,9 @@ async def run_agent_step(
     post_tool_hook=None,                  # async gen (name, raw_output) -> yields extra events
     history_override: list | None = None, # use instead of get_recent_history_messages
     model_override: str | None = None,    # per-step model override (from StepConfig.model)
+    # ── mid-node crash recovery (used by AgentStepExecutor) ───────────────────
+    resume_state: dict | None = None,     # prior interrupted attempt's loop state; continues mid-step
+    progress_events: bool = False,        # yield _step_progress after each completed tool turn
 ):
     """Lower-level single-agent ReAct execution.
 
@@ -803,6 +806,25 @@ async def run_agent_step(
     browser_action_history: list[str] = []
     _has_compacted = False  # anti-thrash: only compact once per run
 
+    # ── Mid-node resume: seed the loop from a prior interrupted attempt ──────
+    # The orchestration executor checkpoints a _step_progress snapshot after
+    # each completed tool turn; on resume_failed it hands it back here so the
+    # agent continues from its last observation instead of redoing every tool
+    # call (side effects included).
+    start_turn = 0
+    _resumed_mid_step = False
+    if resume_state and resume_state.get("context_text"):
+        current_context_text = resume_state["context_text"] + (
+            "\n[System: this task was interrupted and has been resumed. Continue from the "
+            "last observation above; do not repeat tool calls that already succeeded.]\n"
+        )
+        _has_compacted = bool(resume_state.get("has_compacted"))
+        browser_action_history = list(resume_state.get("browser_actions") or [])
+        tools_used_summary = list(resume_state.get("tools_used") or [])
+        start_turn = min(int(resume_state.get("turn") or 0), max(0, max_turns - 1))
+        _resumed_mid_step = True
+        print(f"DEBUG RUN_AGENT: ⏯ resuming mid-step from turn {start_turn + 1}/{max_turns}", flush=True)
+
     # Build type-aware set of always-allowed tools
     always_allowed = set(DEFAULT_TOOLS_BY_TYPE.get("all_types", set()))
     always_allowed |= set(DEFAULT_TOOLS_BY_TYPE.get(agent_type, set()))
@@ -822,7 +844,7 @@ async def run_agent_step(
         return name.startswith(BROWSER_TOOL_PREFIXES)
 
     async with httpx.AsyncClient() as client:
-        for turn in range(max_turns):
+        for turn in range(start_turn, max_turns):
             print(f"\n{'#'*60}\n### TURN {turn + 1}/{max_turns} ###\n{'#'*60}\n")
 
             yield {"type": "thinking", "message": "Analyzing your request..."}
@@ -844,8 +866,9 @@ async def run_agent_step(
             if system_prompt_prefix:
                 active_sys_prompt = system_prompt_prefix + "\n\n" + active_sys_prompt
 
-            # Determine prompt
-            if turn == 0:
+            # Determine prompt. A mid-step resume always continues from the
+            # seeded context (the original user message is already inside it).
+            if turn == 0 and not _resumed_mid_step:
                 active_prompt = user_message
                 active_history = recent_history_messages
             else:
@@ -1552,6 +1575,19 @@ async def run_agent_step(
                     except Exception:
                         pass
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Error: {error_msg}"}
+
+            if progress_events:
+                # Turn-boundary snapshot for mid-node crash recovery: everything
+                # needed to continue this loop after a process death. Consumed
+                # (persisted + swallowed) by AgentStepExecutor — never reaches SSE.
+                yield {
+                    "type": "_step_progress",
+                    "turn": turn + 1,
+                    "context_text": current_context_text[-200_000:],
+                    "has_compacted": _has_compacted,
+                    "browser_actions": browser_action_history[-50:],
+                    "tools_used": [s[:500] for s in tools_used_summary[-20:]],
+                }
 
     if not final_response:
         final_response = "I completed the requested actions."

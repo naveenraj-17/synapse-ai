@@ -87,6 +87,29 @@ class AgentStepExecutor:
         # Log the prompt in the agent log too
         agent_log.log_event({"type": "_log_prompt", "prompt": prompt})
 
+        # ── Mid-node crash recovery ──────────────────────────────────────
+        # A prior interrupted attempt leaves a turn-boundary transcript in
+        # shared_state; seed run_agent_step from it so completed tool calls
+        # are not re-executed. After two failed resume attempts the
+        # transcript is considered poisoned and we fall back to a fresh
+        # rerun (which still sees the prior attempt via _exec_memory).
+        from core.orchestration.state import SharedState
+        progress_key = f"_step_progress_{step.id}"
+        resume_state = None
+        resume_attempt = 1
+        saved_progress = run.shared_state.get(progress_key)
+        if isinstance(saved_progress, dict) and saved_progress.get("context_text"):
+            prior_attempts = int(saved_progress.get("attempt") or 1)
+            if prior_attempts >= 3:
+                run.shared_state.pop(progress_key, None)
+                print(f"DEBUG AGENT EXEC: ⚠ discarding step progress for '{step.id}' "
+                      f"after {prior_attempts} attempts — fresh rerun", flush=True)
+            else:
+                resume_state = saved_progress
+                resume_attempt = prior_attempts + 1
+                print(f"DEBUG AGENT EXEC: ⏯ resuming step '{step.id}' mid-node "
+                      f"(attempt {resume_attempt}, turn {saved_progress.get('turn')})", flush=True)
+
         final_response = None
         _log_status = "completed"
         execution_events: list[dict] = []
@@ -103,7 +126,26 @@ class AgentStepExecutor:
                 system_prompt_extra=system_prompt_extra,
                 system_prompt_prefix=system_prompt_prefix,
                 model_override=step.model,
+                resume_state=resume_state,
+                progress_events=True,
             ):
+                if event.get("type") == "_step_progress":
+                    # Turn-boundary transcript checkpoint: persist so a crash
+                    # resumes mid-step. Swallowed here — never logged, never
+                    # forwarded to SSE/journal.
+                    run.shared_state[progress_key] = {
+                        "turn": event.get("turn"),
+                        "context_text": event.get("context_text"),
+                        "has_compacted": event.get("has_compacted"),
+                        "browser_actions": event.get("browser_actions"),
+                        "tools_used": event.get("tools_used"),
+                        "attempt": resume_attempt,
+                    }
+                    try:
+                        SharedState(run).checkpoint()
+                    except Exception as ckpt_err:
+                        print(f"WARNING: step-progress checkpoint failed: {ckpt_err}", flush=True)
+                    continue
                 execution_events.append(event)
                 agent_log.log_event(event)
                 yield {**event, "orch_step_id": step.id, "step_name": step.name}
@@ -118,6 +160,11 @@ class AgentStepExecutor:
 
         if final_response is None:
             raise RuntimeError(f"Agent step '{step.name}' ended without producing a final response")
+
+        # Clean completion leaves no transcript residue (deliberate
+        # re-invocations — loops, evaluator retries — rely on _exec_memory,
+        # not on step progress).
+        run.shared_state.pop(progress_key, None)
 
         if step.output_key:
             run.shared_state[step.output_key] = final_response
@@ -806,8 +853,34 @@ class ParallelStepExecutor:
 
         yield {"type": "parallel_start", "orch_step_id": step.id, "branch_count": len(resolved_branches)}
 
+        # ── Mid-node crash recovery: skip branches/sub-steps that completed ──
+        # Their outputs are already in shared_state from the checkpoint; only
+        # the interrupted (or never-started) work reruns.
+        from core.orchestration.state import SharedState
+        progress_key = f"_parallel_progress_{step.id}"
+        saved = run.shared_state.get(progress_key) or {}
+        completed_branches: set[int] = set(saved.get("completed_branches") or [])
+        completed_steps: set[str] = set(saved.get("completed_steps") or [])
+        if completed_branches or completed_steps:
+            print(f"DEBUG PARALLEL: ⏯ resuming — branches done={sorted(completed_branches)} "
+                  f"sub-steps done={sorted(completed_steps)}", flush=True)
+
+        def _checkpoint_progress():
+            run.shared_state[progress_key] = {
+                "completed_branches": sorted(completed_branches),
+                "completed_steps": sorted(completed_steps),
+            }
+            try:
+                SharedState(run).checkpoint()
+            except Exception as ckpt_err:
+                print(f"WARNING: parallel-progress checkpoint failed: {ckpt_err}", flush=True)
+
         # Run branches sequentially to avoid MCP/browser resource contention
         for branch_index, branch_step_ids in enumerate(resolved_branches):
+            if branch_index in completed_branches:
+                print(f"DEBUG PARALLEL: ├─ branch {branch_index} already complete — skipping", flush=True)
+                continue
+
             # Checkpoint between branches — give MCP background tasks time
             await anyio.sleep(0)
 
@@ -816,6 +889,9 @@ class ParallelStepExecutor:
                    "branch_index": branch_index, "branch_count": len(resolved_branches)}
 
             for sid in branch_step_ids:
+                if sid in completed_steps:
+                    print(f"DEBUG PARALLEL:   ↷ sub-step '{sid}' already complete — skipping", flush=True)
+                    continue
                 sub_step = engine.step_map.get(sid)
                 if not sub_step:
                     yield {"type": "step_warning", "orch_step_id": sid,
@@ -833,9 +909,17 @@ class ParallelStepExecutor:
                 yield {"type": "step_start", "orch_step_id": sub_step.id,
                        "step_name": sub_step.name, "step_type": sub_step.type.value}
 
+                # Human events must be yielded OUTSIDE the fail_after scope —
+                # yielding inside suspends this generator with the scope
+                # active and breaks the engine's own scope exit (issue #356
+                # family). Same pattern as the loop executor.
+                pending_human_event = None
                 try:
                     with anyio.fail_after(sub_timeout):
                         async for event in executor.execute(sub_step, run, engine):
+                            if event.get("type") == "human_input_required":
+                                pending_human_event = event
+                                break
                             yield event
                 except TimeoutError:
                     duration = round(time.time() - step_start, 2)
@@ -849,6 +933,14 @@ class ParallelStepExecutor:
                            "error": f"Step '{sub_step.name}' timed out after {sub_timeout}s"}
                     continue
 
+                if pending_human_event is not None:
+                    # The engine resumes PAST the parallel node after human
+                    # input — drop branch progress so a later legitimate
+                    # re-entry starts fresh.
+                    run.shared_state.pop(progress_key, None)
+                    yield pending_human_event
+                    return
+
                 duration = round(time.time() - step_start, 2)
                 print(f"DEBUG PARALLEL:   ✓ sub-step '{sub_step.name}' done in {duration}s", flush=True)
                 run.step_history.append({
@@ -858,7 +950,15 @@ class ParallelStepExecutor:
                 })
                 yield {"type": "step_complete", "orch_step_id": sub_step.id,
                        "step_name": sub_step.name, "duration_seconds": duration}
+                # Sub-step done (its output is in shared_state) — checkpoint so
+                # a crash resumes at the next sub-step, not the whole branch.
+                completed_steps.add(sid)
+                _checkpoint_progress()
 
+            completed_branches.add(branch_index)
+            _checkpoint_progress()
+
+        run.shared_state.pop(progress_key, None)
         print(f"DEBUG PARALLEL: ✅ all {len(resolved_branches)} branches complete", flush=True)
         yield {"type": "parallel_complete", "orch_step_id": step.id, "branch_count": len(resolved_branches)}
 
@@ -923,7 +1023,20 @@ class LoopStepExecutor:
             yield {"type": "step_warning", "orch_step_id": step.id, "message": "No loop body steps defined"}
             return
 
-        for iteration in range(1, loop_count + 1):
+        # ── Mid-node crash recovery: skip iterations that already completed ──
+        # Each finished iteration checkpoints its count below; the accumulated
+        # _loop_* results ride along in shared_state, so a resumed run picks up
+        # exactly where the crash cut it off.
+        from core.orchestration.state import SharedState
+        progress_key = f"_loop_progress_{step.id}"
+        completed_iterations = 0
+        saved = run.shared_state.get(progress_key)
+        if isinstance(saved, dict):
+            completed_iterations = min(int(saved.get("completed_iterations") or 0), loop_count)
+            if completed_iterations:
+                print(f"DEBUG LOOP: ⏯ resuming from iteration {completed_iterations + 1}/{loop_count}", flush=True)
+
+        for iteration in range(completed_iterations + 1, loop_count + 1):
             yield {
                 "type": "loop_iteration", "orch_step_id": step.id,
                 "iteration": iteration, "total": loop_count,
@@ -947,13 +1060,19 @@ class LoopStepExecutor:
                 yield {"type": "step_start", "orch_step_id": sub_step.id,
                        "step_name": sub_step.name, "step_type": sub_step.type.value}
 
+                # Human input within a loop body pauses the whole run. The
+                # event must be yielded OUTSIDE the fail_after scope: yielding
+                # inside it suspends this generator with the scope active, and
+                # the engine exiting its own step-timeout scope then blows up
+                # with "exit cancel scope that isn't the current" (issue #356
+                # family). Same pattern as the engine's own human-pause path.
+                pending_human_event = None
                 try:
                     with anyio.fail_after(sub_timeout):
                         async for event in executor.execute(sub_step, run, engine):
-                            # Human input within loop body — propagate up
                             if event.get("type") == "human_input_required":
-                                yield event
-                                return
+                                pending_human_event = event
+                                break
                             yield event
                 except TimeoutError:
                     duration = round(time.time() - step_start, 2)
@@ -966,6 +1085,14 @@ class LoopStepExecutor:
                     yield {"type": "step_error", "orch_step_id": sub_step.id,
                            "error": f"Step '{sub_step.name}' timed out after {sub_timeout}s"}
                     continue
+
+                if pending_human_event is not None:
+                    # The engine resumes PAST the loop after human input, so
+                    # drop the iteration progress: a later legitimate re-entry
+                    # must start fresh, not skip iterations.
+                    run.shared_state.pop(progress_key, None)
+                    yield pending_human_event
+                    return
 
                 duration = round(time.time() - step_start, 2)
                 run.step_history.append({
@@ -993,6 +1120,15 @@ class LoopStepExecutor:
                     "agent": agent_name,
                     "result": run.shared_state[sub_step.output_key],
                 })
+
+            # Iteration finished — checkpoint so a crash resumes at the next one.
+            run.shared_state[progress_key] = {"completed_iterations": iteration}
+            try:
+                SharedState(run).checkpoint()
+            except Exception as ckpt_err:
+                print(f"WARNING: loop-progress checkpoint failed: {ckpt_err}", flush=True)
+
+        run.shared_state.pop(progress_key, None)
 
         # After all iterations, promote accumulated results to output keys
         for sid in body_ids:

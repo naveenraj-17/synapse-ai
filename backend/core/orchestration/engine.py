@@ -364,6 +364,13 @@ class OrchestrationEngine:
         For failed runs: the failed step's history entry is removed so it re-executes.
         For cancelled runs: resumes from current_step_id (which was never started).
         All state accumulated by prior steps is preserved.
+
+        Mid-node continuity: agent/loop/parallel executors checkpoint private
+        progress keys in shared_state (_step_progress_*, _loop_progress_*,
+        _parallel_progress_*) as work completes, so the re-executed node
+        continues from its last turn/iteration/branch instead of starting
+        from scratch. The seeding happens inside the executors — this method
+        just replays the node.
         """
         from .state import SharedState as SS, _cancelled_run_ids
 
