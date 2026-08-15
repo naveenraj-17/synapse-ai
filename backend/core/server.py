@@ -402,6 +402,16 @@ async def lifespan(app: FastAPI):
     print("Starting Multi-Agent Orchestrator...")
     _log_security_posture()
     exit_stack = AsyncExitStack()
+
+    # Bring a pre-store install's JSON files across, once, on first boot after
+    # the upgrade. No-ops when the store already holds content, so this is safe
+    # on every start. Deliberately not a command the user has to run: an upgrade
+    # step that can be missed becomes a support thread for everyone who misses it.
+    try:
+        from core.store.importer import import_legacy_data_if_present
+        await import_legacy_data_if_present(DATA_DIR)
+    except Exception as e:
+        print(f"Warning: legacy data import skipped: {e}")
     
     if _settings.get("coding_agent_enabled"):
         try:
