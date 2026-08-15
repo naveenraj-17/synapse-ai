@@ -82,7 +82,11 @@ else:
     DATA_DIR = BACKEND_ROOT / "data"
 GOOGLE_CREDENTIALS_DIR = DATA_DIR / "google-credentials"
 
-_settings = load_settings()
+# Settings are deliberately NOT read at import time. There is no store, no
+# event loop and no settings provider installed yet at import, so a module-level
+# load_settings() would capture the shipped defaults and hold them for the
+# process's life — silently discarding anything the user had configured. Every
+# reader below calls load_settings() itself, after lifespan has bound them.
 
 # ollama_base_url is NOT copied into os.environ here. Writing one tenant's
 # setting into the process environment made it the default for every tenant the
@@ -200,6 +204,7 @@ def _build_native_mcp_servers() -> list[dict]:
     })
 
     # --- Playwright MCP Server (browser automation) ---
+    _settings = load_settings()
     if _settings.get("browser_automation_enabled", True):
         env_dict = {}
         pw_path = _settings.get("playwright_browsers_path")
@@ -388,7 +393,7 @@ def _log_security_posture() -> None:
     try:
         from core.mcp_client import stdio_mcp_allowed
         no_token = not os.getenv("SYNAPSE_INTERNAL_TOKEN", "")
-        login_off = not _settings.get("login_enabled")
+        login_off = not load_settings().get("login_enabled")
         if no_token and login_off and stdio_mcp_allowed():
             print(
                 "[SECURITY] No SYNAPSE_INTERNAL_TOKEN set and login is disabled. "
@@ -405,7 +410,6 @@ def _log_security_posture() -> None:
 async def lifespan(app: FastAPI):
     global exit_stack
     print("Starting Multi-Agent Orchestrator...")
-    _log_security_posture()
     exit_stack = AsyncExitStack()
 
     # Bring a pre-store install's JSON files across, once, on first boot after
@@ -417,8 +421,22 @@ async def lifespan(app: FastAPI):
         await import_legacy_data_if_present(DATA_DIR)
     except Exception as e:
         print(f"Warning: legacy data import skipped: {e}")
-    
-    if _settings.get("coding_agent_enabled"):
+
+    # Settings come from the store from here on. Order matters: after the
+    # importer, which is what puts an upgrading install's settings.json into the
+    # store, and before _build_native_mcp_servers() and _init_memory_store()
+    # below, both of which read settings and would otherwise see bare defaults.
+    from core import settings_runtime
+    settings_runtime.install_provider()
+    await settings_runtime.refresh()
+
+    # After the refresh, not before: this reads login_enabled and asks whether
+    # stdio MCP is allowed, and both answers are meaningless while settings are
+    # still the shipped defaults.
+    _log_security_posture()
+
+
+    if load_settings().get("coding_agent_enabled"):
         try:
             from services.code_indexer import init_cocoindex
             init_cocoindex()
@@ -673,7 +691,7 @@ async def lifespan(app: FastAPI):
             app.state.pg_session_factory = None
 
         # --- Initialize Messaging Manager (if enabled) ---
-        if _settings.get("messaging_enabled", False):
+        if load_settings().get("messaging_enabled", False):
             try:
                 from core.messaging.manager import MessagingManager
                 global messaging_manager
@@ -803,6 +821,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(TimingMiddleware)
+
+
+# Installed here rather than in lifespan: installing is only setting a function
+# pointer — no I/O, no event loop, no store — and doing it at app construction
+# means the settings a request reads and the settings a request writes are the
+# same store even when the app is driven without its lifespan, as tests do.
+# The *refresh* still belongs in lifespan, after the legacy import.
+from core import settings_runtime as _settings_runtime
+
+_settings_runtime.install_provider()
+
+
+@app.middleware("http")
+async def bind_settings(request, call_next):
+    """Bind the request's settings so `load_settings()` can stay synchronous.
+
+    This is not a read per request: `bind()` only touches the store when the
+    cached snapshot has aged past SYNAPSE_SETTINGS_TTL. In a single-process
+    install the write path invalidates the cache directly, so the TTL never
+    fires anything; it exists for deployments where another replica can write
+    the row. Binding per request is also what gives an embedded multi-tenant
+    host its per-request isolation for free.
+    """
+    from core import settings_runtime
+
+    token = await settings_runtime.bind()
+    try:
+        return await call_next(request)
+    finally:
+        settings_runtime.reset(token)
+
 
 # --- Include Route Routers ---
 app.include_router(auth_router)

@@ -58,7 +58,16 @@ def stdio_mcp_allowed() -> bool:
     Disabled in scale mode (multi-tenant / network-exposed) and toggleable via
     the ``allow_stdio_mcp`` setting. Fails open only if settings are unreadable,
     to preserve local behaviour when config is unavailable.
+
+    "Unreadable" deliberately includes *not yet read*. ``allow_stdio_mcp``
+    defaults to True, so a settings provider that has nothing bound returns a
+    dict saying "allowed" — indistinguishable, at this call site, from the user
+    having chosen it. That is not a default worth failing open on.
     """
+    from core import settings_runtime
+
+    if not settings_runtime.is_loaded():
+        return False
     try:
         s = load_settings()
     except Exception:

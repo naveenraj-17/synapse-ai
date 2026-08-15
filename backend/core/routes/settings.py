@@ -38,8 +38,18 @@ class LoginConfigRequest(BaseModel):
 _EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "examples")
 
 
-def save_settings(settings: dict):
-    _settings_store.save(settings)
+async def save_settings(settings: dict):
+    """Persist settings for the current tenant and refresh the live snapshot.
+
+    Refreshes rather than merely invalidating, because the rest of this request
+    must see the write: update_settings restarts the Filesystem MCP server from
+    the new bash_allowed_dirs immediately after saving.
+    """
+    from core import settings_runtime
+    from core.store.settings import save_many
+
+    await save_many(settings)
+    await settings_runtime.refresh()
 
 
 def _init_memory_store(settings: dict):
@@ -110,7 +120,7 @@ async def update_login_settings(body: LoginConfigRequest):
             existing["login_password_hash"] = hash_password(body.login_password)
         elif not existing.get("login_password_hash"):
             raise HTTPException(status_code=400, detail="Password is required for first-time login setup")
-    save_settings(existing)
+    await save_settings(existing)
     return {"status": "ok", "login_enabled": body.login_enabled}
 
 
@@ -131,7 +141,7 @@ async def update_settings(settings: Settings):
     existing.update(data)
     data = existing
 
-    save_settings(data)
+    await save_settings(data)
 
     # Reinitialize memory so embeddings provider matches the new mode.
     import core.server as _server
@@ -235,7 +245,7 @@ async def setup_embed(body: EmbedSetupRequest):
         # Persist the connection string
         existing = load_settings()
         existing["sql_connection_string"] = db_url
-        save_settings(existing)
+        await save_settings(existing)
 
         return {"status": "ok", "connection_string": db_url}
     except ImportError:

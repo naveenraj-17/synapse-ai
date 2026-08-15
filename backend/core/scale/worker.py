@@ -10,13 +10,13 @@ import socket
 import time
 import traceback
 import uuid
-from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
 from arq import ArqRedis
 from arq.connections import RedisSettings
 
+from core import settings_runtime
 from core.scale.config import QUEUE_NAME, get_scale_config
 from core.tenancy import get_tenant
 
@@ -34,45 +34,21 @@ def _get_active_jobs() -> int:
     return _active_jobs
 
 
-#: The current job's settings. A ContextVar rather than a module global for the
-#: same reason the tenant is one: `max_jobs` > 1 means many jobs share this
-#: process, and each must see its own tenant's keys.
-_job_settings: ContextVar[dict | None] = ContextVar("synapse_job_settings", default=None)
-
-
-def _install_settings_provider() -> None:
-    """Point `load_settings()` at this job's settings.
-
-    The provider is synchronous because `load_settings()` is called from ~16
-    synchronous places on the execution path; making it async would touch all
-    of them. So the async database read happens once, at job entry
-    (`_load_job_settings`), and the provider just reads the ContextVar.
-    """
-    from core.config import default_settings, set_settings_provider
-
-    def _provider() -> dict:
-        settings = _job_settings.get()
-        # A job that never called _load_job_settings (or engine code running
-        # outside a job at all) gets the defaults rather than another tenant's
-        # settings. Failing closed matters more here than convenience.
-        return settings if settings is not None else default_settings()
-
-    set_settings_provider(_provider)
-
-
 async def _load_job_settings() -> None:
     """Read the current tenant's settings into the job's context.
 
     Called at the top of every job function, after the tenant is established.
     Once per job rather than per step: a long run would otherwise re-read the
-    database at every `load_settings()` call, of which there are ~16 per step.
+    database at every `load_settings()` call, of which there are ~16 per step —
+    hence `force=True`, which skips the staleness check the HTTP path wants and
+    always reads.
+
+    The machinery lives in `core.settings_runtime`; this is just where a job
+    happens to be the boundary. `load_settings()` stays synchronous either way.
     """
-    from core.store.settings import load_settings_for_tenant
-    try:
-        _job_settings.set(await load_settings_for_tenant())
-    except Exception as exc:
-        print(f"[worker] could not load settings for tenant: {exc}", flush=True)
-        _job_settings.set(None)
+    from core import settings_runtime
+
+    await settings_runtime.bind(force=True)
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +541,7 @@ async def worker_startup(ctx: dict) -> None:
     # Nothing is written to the process environment: a provider key there is
     # readable in /proc/<pid>/environ and inherited by every stdio MCP server
     # and sandbox the worker spawns.
-    _install_settings_provider()
+    settings_runtime.install_provider()
 
     # Build WorkerServerModule (connects to available tools/MCP servers)
     from core.scale.worker_server_module import WorkerServerModule

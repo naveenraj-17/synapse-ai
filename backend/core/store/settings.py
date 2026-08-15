@@ -66,3 +66,43 @@ async def save_setting(key: str, value) -> None:
             values={"tenant_id": get_tenant(), "key": key, "value": json.dumps(value)},
             index_elements=["tenant_id", "key"],
         )
+
+
+async def delete_setting(key: str) -> None:
+    """Remove one setting, returning it to the shipped default."""
+    from sqlalchemy import delete
+
+    from core.store import session
+    from core.store.models import SettingDB
+
+    async with session() as s:
+        await s.execute(
+            delete(SettingDB).where(
+                SettingDB.tenant_id == get_tenant(),
+                SettingDB.key == key,
+            )
+        )
+
+
+async def save_many(settings: dict) -> None:
+    """Write a whole settings dict, storing only what differs from the defaults.
+
+    The settings route reads the current settings, applies the request on top,
+    and saves the result — so it hands over all ~85 keys, most of them untouched
+    defaults. Writing those verbatim would materialise a row per default on the
+    first save and pin the install to *today's* defaults forever: a later change
+    to `_DEFAULTS` would never reach it, because every key already has a row
+    overriding it.
+
+    So a value equal to its default deletes any row instead of writing one.
+    This is exactly symmetric with the read side, which overlays stored rows
+    onto `default_settings()`.
+    """
+    from core.config import default_settings
+
+    defaults = default_settings()
+    for key, value in settings.items():
+        if key in defaults and value == defaults[key]:
+            await delete_setting(key)
+        else:
+            await save_setting(key, value)
