@@ -84,9 +84,10 @@ GOOGLE_CREDENTIALS_DIR = DATA_DIR / "google-credentials"
 
 _settings = load_settings()
 
-# Propagate ollama_base_url from settings to env so llm_providers picks it up
-if _settings.get("ollama_base_url"):
-    os.environ["OLLAMA_BASE_URL"] = _settings["ollama_base_url"]
+# ollama_base_url is NOT copied into os.environ here. Writing one tenant's
+# setting into the process environment made it the default for every tenant the
+# process later served. llm_providers._ollama_base_url() reads the setting it is
+# given and falls back to the OLLAMA_BASE_URL env var as a deployment default.
 
 from core.tools_registry import ALL_NATIVE_TOOLS
 TOOLS_LIST = dict(ALL_NATIVE_TOOLS)

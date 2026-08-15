@@ -192,21 +192,13 @@ def _load_settings_from_disk():
             print(f"DEBUG: Error loading settings: {e}")
             file_settings = {}
 
-    settings = {**_DEFAULTS, **file_settings}
-
-    # In scale worker mode, inject_llm_env() populates SYNAPSE_SETTING_* env vars
-    # from Postgres. Overlay them here so all callers of load_settings() see the
-    # Postgres-sourced values without needing access to the local settings.json.
-    _prefix = "SYNAPSE_SETTING_"
-    for _env_key, _env_val in os.environ.items():
-        if _env_key.startswith(_prefix):
-            _setting_key = _env_key[len(_prefix):].lower()
-            try:
-                settings[_setting_key] = json.loads(_env_val)
-            except Exception:
-                settings[_setting_key] = _env_val
-
-    return settings
+    # No SYNAPSE_SETTING_* overlay. Workers used to receive their settings by
+    # having every one of them — provider API keys included — written into the
+    # process environment at startup, then read back out here. That put secrets
+    # in /proc/<pid>/environ and in every subprocess the worker spawns, and it
+    # fixed a worker's settings for its lifetime, which one shared fleet cannot
+    # do. Settings now come from a provider; see set_settings_provider above.
+    return {**_DEFAULTS, **file_settings}
 
 
 def get_or_create_jwt_secret() -> str:

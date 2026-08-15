@@ -25,9 +25,13 @@ from botocore.config import Config
 
 from core.config import LLM_REQUEST_TIMEOUT
 
-# Lock to guard the process-level AWS_BEARER_TOKEN_BEDROCK env var.
-# Multiple threads (via asyncio.to_thread) could otherwise race on set/clear.
-_aws_env_lock = threading.Lock()
+# No process-level AWS_BEARER_TOKEN_BEDROCK. It used to be set here and never
+# cleared, so one tenant's Bedrock key stayed in the environment of a worker
+# that then ran another tenant's job — visible in /proc/<pid>/environ and
+# inherited by every stdio MCP server and sandbox the worker spawned. The
+# bearer token is attached per client instead, by the request handler at
+# `_bedrock_bearer_auth` below, which was already the mechanism for the
+# non-boto3 path.
 
 
 # ─── CLI auth-failure detection ──────────────────────────────────────────────
@@ -128,9 +132,13 @@ class LLMError(Exception):
     pass
 
 
-# Configuration — read at call time so OLLAMA_BASE_URL set after import is respected
-def _ollama_base_url() -> str:
-    return os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+# Configuration — read at call time. `settings` wins over the environment so a
+# tenant's own ollama_base_url is used; the env var stays as the deployment-wide
+# default. This used to be the other way round, with server startup copying one
+# tenant's setting into os.environ for every tenant to pick up.
+def _ollama_base_url(settings: dict | None = None) -> str:
+    configured = (settings or {}).get("ollama_base_url") or ""
+    return configured.strip() or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 OLLAMA_MODEL = "llama3"
 
@@ -275,25 +283,41 @@ def _make_aws_client(service_name: str, region: str, settings: dict):
     # Standard retries are often insufficient for high-concurrency Bedrock usage.
     # Adaptive mode allows standard retry logic to dynamically adjust for
     # optimal request rates.
-    retry_config = Config(
-        retries={
-            'max_attempts': 10,
-            'mode': 'adaptive'
-        },
-        read_timeout=900,
-        connect_timeout=900,
-    )
-    kwargs["config"] = retry_config
+    config_kwargs: dict = {
+        "retries": {"max_attempts": 10, "mode": "adaptive"},
+        "read_timeout": 900,
+        "connect_timeout": 900,
+    }
+    if bedrock_api_key:
+        # UNSIGNED, not merely "no credentials configured". botocore would
+        # otherwise run SigV4 and raise NoCredentialsError *before* the
+        # before-send hook that attaches the bearer token ever fires — which is
+        # precisely the deployment this change is for, where no AWS credentials
+        # exist in the environment at all. Matches the pre-existing bearer path
+        # at `_invoke_bedrock_with_bearer`.
+        config_kwargs["signature_version"] = _BEDROCK_UNSIGNED
+    kwargs["config"] = Config(**config_kwargs)
 
-    # Guard the process-level env var with a lock so concurrent threads don't
-    # race on set/clear (AWS_BEARER_TOKEN_BEDROCK is read by botocore at client
-    # creation time for the bedrock-runtime bearer-token auth path).
-    with _aws_env_lock:
-        if bedrock_api_key:
-            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_api_key
-        else:
-            os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
-        return boto3.client(**kwargs)
+    client = boto3.client(**kwargs)
+
+    if bedrock_api_key:
+        # Sign this client's requests with the tenant's bearer token, rather
+        # than putting it in the process environment for botocore to find.
+        # Scoped to the client, so two tenants' clients cannot see each other's
+        # key no matter how their calls interleave.
+        client.meta.events.register(
+            "before-send.bedrock-runtime.*",
+            _bearer_auth_handler(bedrock_api_key),
+        )
+    return client
+
+
+def _bearer_auth_handler(api_key: str):
+    """A botocore before-send hook that replaces SigV4 with a bearer token."""
+    def _handler(request, **_kwargs):
+        request.headers["Authorization"] = f"Bearer {api_key}"
+        return None
+    return _handler
 
 
 # ─── CLI Session Providers ──────────────────────────────────────────────────────

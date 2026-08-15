@@ -10,6 +10,7 @@ import socket
 import time
 import traceback
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,6 +32,47 @@ _active_jobs: int = 0        # approximate counter updated by jobs
 
 def _get_active_jobs() -> int:
     return _active_jobs
+
+
+#: The current job's settings. A ContextVar rather than a module global for the
+#: same reason the tenant is one: `max_jobs` > 1 means many jobs share this
+#: process, and each must see its own tenant's keys.
+_job_settings: ContextVar[dict | None] = ContextVar("synapse_job_settings", default=None)
+
+
+def _install_settings_provider() -> None:
+    """Point `load_settings()` at this job's settings.
+
+    The provider is synchronous because `load_settings()` is called from ~16
+    synchronous places on the execution path; making it async would touch all
+    of them. So the async database read happens once, at job entry
+    (`_load_job_settings`), and the provider just reads the ContextVar.
+    """
+    from core.config import default_settings, set_settings_provider
+
+    def _provider() -> dict:
+        settings = _job_settings.get()
+        # A job that never called _load_job_settings (or engine code running
+        # outside a job at all) gets the defaults rather than another tenant's
+        # settings. Failing closed matters more here than convenience.
+        return settings if settings is not None else default_settings()
+
+    set_settings_provider(_provider)
+
+
+async def _load_job_settings() -> None:
+    """Read the current tenant's settings into the job's context.
+
+    Called at the top of every job function, after the tenant is established.
+    Once per job rather than per step: a long run would otherwise re-read the
+    database at every `load_settings()` call, of which there are ~16 per step.
+    """
+    from core.store.settings import load_settings_for_tenant
+    try:
+        _job_settings.set(await load_settings_for_tenant())
+    except Exception as exc:
+        print(f"[worker] could not load settings for tenant: {exc}", flush=True)
+        _job_settings.set(None)
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +102,7 @@ async def run_orchestration_job(
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
+    await _load_job_settings()
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
@@ -201,6 +244,7 @@ async def resume_orchestration_job(
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
+    await _load_job_settings()
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
@@ -315,6 +359,7 @@ async def resume_failed_job(ctx: dict, run_id: str) -> dict:
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
+    await _load_job_settings()
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
@@ -378,6 +423,7 @@ async def run_agent_chat_job(
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
+    await _load_job_settings()
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
@@ -515,11 +561,11 @@ async def worker_startup(ctx: dict) -> None:
     # Redis client (already provided by ARQ as ctx["redis"])
     redis = ctx["redis"]
 
-    # Load LLM keys from Postgres
-    async with session_factory() as session:
-        from core.scale.llm_keys import load_llm_settings_from_pg, inject_llm_env
-        settings = await load_llm_settings_from_pg(session)
-        inject_llm_env(settings)
+    # Settings come from the store, per job, for the tenant in context.
+    # Nothing is written to the process environment: a provider key there is
+    # readable in /proc/<pid>/environ and inherited by every stdio MCP server
+    # and sandbox the worker spawns.
+    _install_settings_provider()
 
     # Build WorkerServerModule (connects to available tools/MCP servers)
     from core.scale.worker_server_module import WorkerServerModule
