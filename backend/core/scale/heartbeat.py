@@ -6,11 +6,11 @@ import asyncio
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.scale.models_db import WorkerDB
 from core.scale.pubsub import publish_worker_heartbeat
+from core.store import upsert
+from core.store.models import WorkerDB
 
 
 async def run_heartbeat(
@@ -31,28 +31,27 @@ async def run_heartbeat(
         try:
             active = get_active_jobs_fn()
 
-            # Update Postgres workers table
+            # Update the workers table
             async with session_factory() as session:
-                stmt = pg_insert(WorkerDB).values(
-                    worker_id=worker_id,
-                    hostname=hostname,
-                    address=address,
-                    status="online",
-                    active_jobs=active,
-                    max_jobs=max_jobs,
-                    last_heartbeat=datetime.now(timezone.utc),
-                    mcp_disabled=mcp_disabled,
-                ).on_conflict_do_update(
-                    index_elements=["worker_id"],
-                    set_={
+                await upsert(
+                    session,
+                    WorkerDB,
+                    values={
+                        "worker_id": worker_id,
+                        "hostname": hostname,
+                        "address": address,
                         "status": "online",
                         "active_jobs": active,
                         "max_jobs": max_jobs,
                         "last_heartbeat": datetime.now(timezone.utc),
                         "mcp_disabled": mcp_disabled,
                     },
+                    index_elements=["worker_id"],
+                    # hostname/address are set once at registration; a heartbeat
+                    # that rewrote them would mask a worker_id collision rather
+                    # than surfacing it.
+                    update=["status", "active_jobs", "max_jobs", "last_heartbeat", "mcp_disabled"],
                 )
-                await session.execute(stmt)
                 await session.commit()
 
             # Publish to Redis pub/sub for real-time UI updates

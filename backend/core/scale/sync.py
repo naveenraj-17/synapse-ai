@@ -11,7 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from core.scale.models_db import (
+from core.store import upsert
+from core.store.models import (
     AgentDB,
     MCPServerDB,
     OrchestrationDB,
@@ -205,22 +206,20 @@ async def sync_mcp_servers_to_pg(
             continue
         try:
             safe_def = {k: v for k, v in item.items() if k not in _STRIP_FIELDS}
-            stmt = pg_insert(MCPServerDB).values(
-                name=name,
-                label=item.get("label", name),
-                definition=safe_def,
-                tenant_id=tenant_id,
-                updated_at=datetime.now(timezone.utc),
-            ).on_conflict_do_update(
-                index_elements=["name"],
-                set_={
+            # Conflict target is the composite key: an MCP server name is unique
+            # per tenant, never globally.
+            await upsert(
+                session,
+                MCPServerDB,
+                values={
+                    "tenant_id": tenant_id,
+                    "name": name,
                     "label": item.get("label", name),
                     "definition": safe_def,
-                    "tenant_id": tenant_id,
                     "updated_at": datetime.now(timezone.utc),
                 },
+                index_elements=["tenant_id", "name"],
             )
-            await session.execute(stmt)
             synced += 1
         except Exception as e:
             errors.append(f"mcp_server {name}: {e}")
@@ -229,7 +228,10 @@ async def sync_mcp_servers_to_pg(
     return {"synced": synced, "errors": errors}
 
 
-async def sync_settings_to_pg(session: AsyncSession) -> dict:
+async def sync_settings_to_pg(
+    session: AsyncSession,
+    tenant_id: str = "default",
+) -> dict:
     """Upsert relevant settings from local settings.json into Postgres."""
     try:
         from core.config import load_settings
@@ -244,18 +246,17 @@ async def sync_settings_to_pg(session: AsyncSession) -> dict:
         if value is None:
             continue
         try:
-            stmt = pg_insert(SettingDB).values(
-                key=key,
-                value=json.dumps(value),
-                updated_at=datetime.now(timezone.utc),
-            ).on_conflict_do_update(
-                index_elements=["key"],
-                set_={
+            await upsert(
+                session,
+                SettingDB,
+                values={
+                    "tenant_id": tenant_id,
+                    "key": key,
                     "value": json.dumps(value),
                     "updated_at": datetime.now(timezone.utc),
                 },
+                index_elements=["tenant_id", "key"],
             )
-            await session.execute(stmt)
             synced += 1
         except Exception as e:
             errors.append(f"setting {key}: {e}")
@@ -275,7 +276,7 @@ async def full_sync(
     results["agents"] = await sync_agents_to_pg(session, tenant_id)
     results["tools"] = await sync_tools_to_pg(session, tenant_id)
     results["mcp_servers"] = await sync_mcp_servers_to_pg(session, tenant_id)
-    results["settings"] = await sync_settings_to_pg(session)
+    results["settings"] = await sync_settings_to_pg(session, tenant_id)
 
     total_synced = sum(r.get("synced", 0) for r in results.values())
     all_errors = [e for r in results.values() for e in r.get("errors", [])]

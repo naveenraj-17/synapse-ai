@@ -41,7 +41,10 @@ dependencies = [
     "playwright>=1.44,<2",
     "duckduckgo-search>=6.0,<9",
     "boto3>=1.34,<2",
-    "sqlalchemy>=2.0,<3",
+    # The engine's store. `pip install` gets SQLite and needs nothing running;
+    # asyncpg is only reached when SYNAPSE_DB_URL points at Postgres.
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "aiosqlite>=0.19,<1",
     "psycopg2-binary>=2.9,<3",
     "pymysql>=1.1,<2",
     "pypdf>=4.0,<7",
