@@ -191,9 +191,12 @@ def _get_native_mcp_servers(tools_dir: Path, backend_root: Path) -> dict:
     for name, args in WORKER_NPX_TOOLS.items():
         servers[name] = StdioServerParameters(command=_NPX_CMD, args=args)
 
-    # Filesystem MCP (Node.js) — point to SYNAPSE_DATA_DIR
-    data_dir = os.getenv("SYNAPSE_DATA_DIR", str(backend_root / "data"))
-    worker_fs_paths = os.getenv("WORKER_FILESYSTEM_PATHS", data_dir)
+    # Filesystem MCP (Node.js) — rooted at the current tenant's vault, which is
+    # the only directory a worker has any business exposing. It used to be
+    # SYNAPSE_DATA_DIR, i.e. every tenant's config and credentials on a shared
+    # worker, and that variable is going away besides.
+    from core.vault import _vault_root
+    worker_fs_paths = os.getenv("WORKER_FILESYSTEM_PATHS", str(_vault_root()))
     filesystem_paths = [p.strip() for p in worker_fs_paths.split(",") if p.strip()]
     if filesystem_paths:
         servers["filesystem"] = StdioServerParameters(

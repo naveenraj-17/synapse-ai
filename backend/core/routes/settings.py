@@ -362,10 +362,19 @@ async def get_config():
 
 @router.get("/api/file")
 async def get_file(path: str):
-    """Serve a local file. Restricted to the user's home directory and data dir."""
+    """Serve a local file. Restricted to the tenant's vault and configured repos.
+
+    This used to allow the whole home directory alongside DATA_DIR. Once the
+    vault moved out of DATA_DIR, "home directory" became the only allowance that
+    matched anything — turning a vault-file endpoint into a read primitive over
+    every file the server user owns. The allowance is now the two directories
+    whose contents this endpoint exists to serve.
+    """
+    from core.server import _get_repo_paths
+    from core.vault import _vault_root
+
     resolved = os.path.realpath(path)
-    home_dir = os.path.expanduser("~")
-    allowed_bases = [home_dir, DATA_DIR]
+    allowed_bases = [str(_vault_root())] + _get_repo_paths()
     if not any(resolved.startswith(os.path.realpath(base)) for base in allowed_bases):
         raise HTTPException(status_code=403, detail="Access denied: path outside allowed directories")
     if not os.path.exists(resolved) or not os.path.isfile(resolved):

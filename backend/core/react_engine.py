@@ -1232,7 +1232,6 @@ async def run_agent_step(
                                 import asyncio as _asyncio
                                 import shutil as _shutil
                                 import tempfile as _tempfile
-                                from pathlib import Path as _Path
 
                                 python_code = target_tool.get("code", "")
                                 if not python_code.strip():
@@ -1249,8 +1248,14 @@ async def run_agent_step(
                                     + python_code
                                 )
 
-                                DATA_DIR_PATH = _Path(__file__).resolve().parent.parent / "data"
-                                vault_root = DATA_DIR_PATH / "vault"
+                                # The tenant's vault, read-only at /data. From the
+                                # blob store, not __file__ — the vault left
+                                # backend/data in the tenant-scoped storage
+                                # change and this mount is .exists()-guarded, so
+                                # a stale path degrades silently. D8's CodeRunner
+                                # replaces this in Release 2.
+                                from core.vault import _vault_root
+                                vault_root = _vault_root()
                                 docker_image = "sandbox-python:latest"
 
                                 tmp_dir = _tempfile.mkdtemp(prefix="pytool_")

@@ -13,10 +13,18 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from core.config import DATA_DIR
 from core.usage_tracker import log_compaction_event
 
-COMPACT_ARCHIVE_DIR = Path(DATA_DIR) / "vault" / "compaction_archives"
+
+def _archive_dir() -> Path:
+    """Compaction archives live inside the current tenant's vault.
+
+    Resolved per call rather than bound at import: the vault is tenant-scoped,
+    so a module-level constant would pin every tenant in the process to
+    whichever one happened to import this module first.
+    """
+    from core.vault import _vault_root
+    return _vault_root() / "compaction_archives"
 
 _COMPACTION_SYS_PROMPT = (
     "You are a context compaction assistant. Your only job is to compress conversation "
@@ -33,10 +41,11 @@ _COMPACTION_SYS_PROMPT = (
 
 
 def _make_archive_path(session_id: str) -> Path:
-    COMPACT_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    archive_dir = _archive_dir()
+    archive_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]
     safe_id = re.sub(r"[^\w]", "_", session_id or "session")[:40]
-    return COMPACT_ARCHIVE_DIR / f"{safe_id}_{timestamp}.txt"
+    return archive_dir / f"{safe_id}_{timestamp}.txt"
 
 
 def _build_context_block(current_context_text: str, recent_history_messages: list) -> str:

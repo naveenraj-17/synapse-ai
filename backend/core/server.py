@@ -169,7 +169,12 @@ def _build_native_mcp_servers() -> list[dict]:
 
     # --- Filesystem MCP Server ---
     repo_paths = _get_repo_paths()
-    vault_path = str(DATA_DIR / "vault")
+    # The tenant's vault, from the blob store. Was DATA_DIR/"vault", which the
+    # tenant-scoped storage change left pointing at a directory the vault no
+    # longer writes to — so the filesystem server's one guaranteed root was
+    # stale content.
+    from core.vault import _vault_root
+    vault_path = str(_vault_root())
     # Always start with vault; include any configured repo paths on top.
     fs_paths = repo_paths + [vault_path]
     # Also include user-configured directories from General Settings ("Allowed

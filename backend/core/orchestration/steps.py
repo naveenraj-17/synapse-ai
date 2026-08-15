@@ -518,7 +518,6 @@ class ToolStepExecutor:
         """Execute a custom Python tool in the Docker sandbox (sandbox-python:latest)."""
         import shutil
         import tempfile
-        from pathlib import Path
 
         python_code = tool.get("code", "")
         if not python_code.strip():
@@ -533,8 +532,14 @@ class ToolStepExecutor:
             + python_code
         )
 
-        DATA_DIR_PATH = Path(__file__).resolve().parent.parent.parent / "data"
-        vault_root = DATA_DIR_PATH / "vault"
+        # The tenant's vault, mounted read-only at /data so tool code can read
+        # vaulted results. Derived from the blob store rather than __file__: the
+        # vault moved out of backend/data in the tenant-scoped storage change,
+        # and this mount is guarded by .exists() below, so a stale path degrades
+        # silently instead of failing. D8's CodeRunner replaces this whole
+        # bind-mount arrangement in Release 2.
+        from core.vault import _vault_root
+        vault_root = _vault_root()
         docker_image = "sandbox-python:latest"
 
         tmp_dir = tempfile.mkdtemp(prefix="pytool_")
@@ -1332,15 +1337,15 @@ class TransformStepExecutor:
         """Run Python code in the Docker sandbox (sandbox-python:latest)."""
         import shutil
         import tempfile
-        from pathlib import Path
 
         if not shutil.which("docker"):
             raise RuntimeError("Docker is not available. Cannot execute transform code in sandbox.")
 
         script_content = self._build_script(code, state)
 
-        DATA_DIR_PATH = Path(__file__).resolve().parent.parent.parent / "data"
-        vault_root = DATA_DIR_PATH / "vault"
+        # See _execute_tool's mount above: the tenant's vault, not backend/data.
+        from core.vault import _vault_root
+        vault_root = _vault_root()
         docker_image = "sandbox-python:latest"
 
         tmp_dir = tempfile.mkdtemp(prefix="transform_")
