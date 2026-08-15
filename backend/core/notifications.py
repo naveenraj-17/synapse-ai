@@ -241,7 +241,7 @@ class NotificationHub:
             if adapter is None:
                 return
             from core.messaging import store as channel_store
-            channel = channel_store.get_channel(channel_id) or {}
+            channel = await channel_store.get_channel(channel_id) or {}
             chat_id = channel.get("notify_chat_id") or getattr(adapter, "_last_chat_id", None)
             if not chat_id:
                 return

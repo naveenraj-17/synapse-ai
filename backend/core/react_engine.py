@@ -308,7 +308,7 @@ async def _resolve_agent_by_id(agent_id):
     return await get_active_agent_data()  # raises RuntimeError if none configured
 
 
-def _inject_db_context(agent_data, system_template):
+async def _inject_db_context(agent_data, system_template):
     """Inject linked DB schema context into system prompt for code agents. Returns updated template."""
     if agent_data.get("type") != "code":
         return system_template
@@ -317,7 +317,7 @@ def _inject_db_context(agent_data, system_template):
         return system_template
     try:
         from core.routes.db_configs import load_db_configs
-        all_configs = load_db_configs()
+        all_configs = await load_db_configs()
         linked_configs = [c for c in all_configs if c.get("id") in db_configs_list]
         if not linked_configs:
             return system_template
@@ -361,7 +361,7 @@ def _inject_db_context(agent_data, system_template):
         return system_template
 
 
-def _inject_repo_context(agent_data, system_template):
+async def _inject_repo_context(agent_data, system_template):
     """Inject repo context into system prompt for code agents. Returns updated template."""
     if agent_data.get("type") != "code":
         return system_template
@@ -372,7 +372,7 @@ def _inject_repo_context(agent_data, system_template):
         return system_template
     try:
         from core.routes.repos import load_repos
-        all_repos = load_repos()
+        all_repos = await load_repos()
         linked_repos = [r for r in all_repos if r.get("id") in repos_list]
         if not linked_repos:
             return system_template
@@ -661,8 +661,8 @@ async def run_agent_step(
 
     # Build system prompt with repo and DB context injection
     agent_system_template = active_agent.get("system_prompt", "")
-    agent_system_template = _inject_repo_context(active_agent, agent_system_template)
-    agent_system_template = _inject_db_context(active_agent, agent_system_template)
+    agent_system_template = await _inject_repo_context(active_agent, agent_system_template)
+    agent_system_template = await _inject_db_context(active_agent, agent_system_template)
 
     current_settings = load_settings()
     # Per-agent model override: use agent's model if set, else fall back to default.

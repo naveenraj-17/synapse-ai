@@ -59,15 +59,6 @@ def _isolate_data():
     """
     import core.routes.agents as agents_mod
     agents_mod.active_agent_id = None
-    for reset in (
-        lambda: __import__("core.api_keys", fromlist=["_save_keys"])._save_keys([]),
-        lambda: __import__("core.routes.repos", fromlist=["save_repos"]).save_repos([]),
-        lambda: __import__("core.routes.db_configs", fromlist=["save_db_configs"]).save_db_configs([]),
-    ):
-        try:
-            reset()
-        except Exception:
-            pass
     yield
 
 
@@ -126,6 +117,11 @@ def _isolate_run_checkpoints(tmp_path, monkeypatch):
     # Scratch too — logs and run-event journals are appended there before being
     # published, and the default sits inside the repo.
     monkeypatch.setenv("SYNAPSE_SCRATCH_DIR", str(tmp_path / "scratch"))
+
+    # The store's read-through cache is a module global, so it outlives the
+    # database that tmp_path just replaced.
+    import core.store.cache as cache_mod
+    cache_mod.invalidate_all()
 
 
 # ── notification store isolation (autouse) ───────────────────────────────────
@@ -218,10 +214,10 @@ def seed_orchestration():
     return _make
 
 
-@pytest.fixture
-def api_key():
+@pytest_asyncio.fixture
+async def api_key():
     """A real API key + ready-to-use Authorization header."""
-    raw, record = _seed.seed_api_key("test-suite")
+    raw, record = await _seed.seed_api_key("test-suite")
     return {"raw": raw, "record": record, "headers": {"Authorization": f"Bearer {raw}"}}
 
 

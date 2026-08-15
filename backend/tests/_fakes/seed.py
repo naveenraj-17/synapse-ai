@@ -85,7 +85,7 @@ async def seed_orchestrations(orchs: list[dict]) -> list[dict]:
     return orchs
 
 
-def seed_api_key(name: str = "test") -> tuple[str, dict]:
+async def seed_api_key(name: str = "test") -> tuple[str, dict]:
     """Create a real API key. Returns (raw_key, record). raw_key -> Bearer token."""
     from core.api_keys import generate_api_key
-    return generate_api_key(name)
+    return await generate_api_key(name)

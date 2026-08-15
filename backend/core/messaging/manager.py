@@ -64,7 +64,7 @@ class MessagingManager:
 
     async def start_all(self) -> None:
         """Start all enabled channels from the store."""
-        channels = channel_store.list_channels()
+        channels = await channel_store.list_channels()
         for ch in channels:
             if ch.get("enabled", True):
                 await self.start_channel(ch["id"])
@@ -76,7 +76,7 @@ class MessagingManager:
 
     async def start_channel(self, channel_id: str) -> None:
         """Load channel config, build adapter, and start it."""
-        ch = channel_store.get_channel(channel_id)
+        ch = await channel_store.get_channel(channel_id)
         if not ch:
             logger.warning("[Manager] Channel %s not found in store", channel_id)
             return
@@ -91,11 +91,11 @@ class MessagingManager:
             adapter = AdapterClass(ch, self)
             await adapter.start()
             self._adapters[channel_id] = adapter
-            channel_store.update_channel_status(channel_id, "running")
+            await channel_store.update_channel_status(channel_id, "running")
             logger.info("[Manager] Channel %s (%s) started", channel_id, platform)
         except Exception as e:
             logger.error("[Manager] Failed to start channel %s: %s", channel_id, e)
-            channel_store.update_channel_status(channel_id, "error", str(e))
+            await channel_store.update_channel_status(channel_id, "error", str(e))
 
     async def stop_channel(self, channel_id: str) -> None:
         """Stop and remove an adapter."""
@@ -105,7 +105,7 @@ class MessagingManager:
                 await adapter.stop()
             except Exception as e:
                 logger.warning("[Manager] Error stopping channel %s: %s", channel_id, e)
-        channel_store.update_channel_status(channel_id, "stopped")
+        await channel_store.update_channel_status(channel_id, "stopped")
         logger.info("[Manager] Channel %s stopped", channel_id)
 
     async def restart_channel(self, channel_id: str) -> None:
@@ -116,9 +116,9 @@ class MessagingManager:
     # Status
     # ------------------------------------------------------------------ #
 
-    def get_status(self) -> list[dict]:
+    async def get_status(self) -> list[dict]:
         """Return live status for all channels (merges store + runtime info)."""
-        channels = channel_store.list_channels()
+        channels = await channel_store.list_channels()
         running_ids = set(self._adapters.keys())
         for ch in channels:
             if ch["id"] in running_ids:

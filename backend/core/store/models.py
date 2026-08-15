@@ -222,6 +222,73 @@ class OrchestrationRunDB(Base):
 
 
 # ---------------------------------------------------------------------------
+# API keys
+# ---------------------------------------------------------------------------
+
+class ApiKeyDB(Base):
+    """An API key, stored as a SHA-256 hash of the key it authenticates.
+
+    A real table rather than a document collection, because this one *is*
+    queried: every authenticated request looks a key up by its hash. As a
+    document blob that means loading every key the tenant owns and scanning
+    them in Python on each request; here it is an indexed point lookup.
+
+    `key_hash` is unique globally, not per tenant. The tenant is a property of
+    the key, not part of its identity — a request arrives with nothing but the
+    key, so the lookup is what *establishes* the tenant and cannot be scoped by
+    one. 256 bits of hash makes a collision across tenants not a practical
+    concern; a per-tenant key would allow the same key to authenticate as two
+    different tenants, which is worse.
+    """
+    __tablename__ = "api_keys"
+
+    id = Column(String(255), primary_key=True)
+    tenant_id = _tenant_column()
+    name = Column(String(500), nullable=False, default="")
+    key_hash = Column(String(64), nullable=False, unique=True)
+    key_prefix = Column(String(32), nullable=False, default="")   # for display
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    last_used_at = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("idx_api_keys_hash", "key_hash"),
+        Index("idx_api_keys_tenant", "tenant_id", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Small document collections
+# ---------------------------------------------------------------------------
+
+class CollectionDB(Base):
+    """A generic per-tenant document collection.
+
+    Repos, database configs, API keys, personal details and messaging channels
+    were five JSON files. None of them is ever queried by anything but its own
+    key — no filtering, no ordering beyond insertion, no joins — so five tables
+    would be five schemas to migrate for no query the engine actually makes.
+
+    Collections that *are* queried get real tables instead: schedules are
+    selected by "enabled and overdue" on every scheduler tick, and usage logs
+    are aggregated. Those do not belong here.
+    """
+    __tablename__ = "collections"
+
+    tenant_id = _tenant_column()
+    collection = Column(String(100), nullable=False)   # "repos", "api_keys", …
+    key = Column(String(255), nullable=False)          # item id, or "" for singletons
+    value = Column(JSONType, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("tenant_id", "collection", "key", name="collections_pkey"),
+        Index("idx_collections_tenant_name", "tenant_id", "collection", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Chat sessions
 # ---------------------------------------------------------------------------
 

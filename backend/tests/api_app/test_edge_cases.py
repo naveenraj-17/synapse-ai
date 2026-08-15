@@ -18,11 +18,8 @@ class TestApiKeyEdges:
     async def test_revoked_key_is_rejected(self, client, seed_agent):
         await seed_agent()
         import core.api_keys as ak
-        raw, rec = ak.generate_api_key("to-revoke")
-        keys = ak._load_keys()
-        for k in keys:
-            k["is_active"] = False
-        ak._save_keys(keys)
+        raw, rec = await ak.generate_api_key("to-revoke")
+        assert await ak.revoke_api_key(rec["id"]) is True
         resp = await client.post("/api/v1/chat", json={"message": "hi"},
                                  headers={"Authorization": f"Bearer {raw}"})
         assert resp.status_code == 401

@@ -6,8 +6,7 @@ import json
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from pydantic import BaseModel
 from core.models import Repo
-from core.config import DATA_DIR, load_settings
-from core.json_store import JsonStore
+from core.config import load_settings
 
 
 class ReindexOptions(BaseModel):
@@ -15,19 +14,18 @@ class ReindexOptions(BaseModel):
 
 router = APIRouter()
 
-_repos_store = JsonStore(os.path.join(DATA_DIR, "repos.json"))
+async def load_repos() -> list[dict]:
+    from core.store import collections
+    return await collections.load("repos")
 
 
-def load_repos() -> list[dict]:
-    return _repos_store.load()
-
-
-def save_repos(repos: list[dict]):
-    _repos_store.save(repos)
+async def save_repos(repos: list[dict]):
+    from core.store import collections
+    await collections.save("repos", repos, key_field="path")
 
 @router.get("/api/repos")
 async def get_repos():
-    repos = load_repos()
+    repos = await load_repos()
 
     if load_settings().get("embed_code", False):
         try:
@@ -69,7 +67,7 @@ async def get_repos():
                         r["error_message"] = msg
                         updated = True
             if updated:
-                save_repos(repos)
+                await save_repos(repos)
         except ImportError:
             pass
     else:
@@ -81,17 +79,17 @@ async def get_repos():
                 r["status"] = "pending"
                 updated = True
         if updated:
-            save_repos(repos)
+            await save_repos(repos)
 
     return repos
 
 @router.post("/api/repos")
 async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
-    repos = load_repos()
+    repos = await load_repos()
     for i, r in enumerate(repos):
         if r["id"] == repo.id:
             repos[i] = repo.dict()
-            save_repos(repos)
+            await save_repos(repos)
             try:
                 import core.server as _server
                 await _server.restart_filesystem_mcp()
@@ -100,7 +98,7 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
             return repo
 
     repos.append(repo.dict())
-    save_repos(repos)
+    await save_repos(repos)
 
     try:
         import core.server as _server
@@ -117,7 +115,7 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
                 if r["id"] == repo.id:
                     r["status"] = "indexing"
                     break
-            save_repos(repos)
+            await save_repos(repos)
             background_tasks.add_task(run_index, repo.id, real_path, repo.included_patterns, repo.excluded_patterns)
         except ImportError:
             pass
@@ -126,9 +124,9 @@ async def create_repo(repo: Repo, background_tasks: BackgroundTasks):
 
 @router.delete("/api/repos/{repo_id}")
 async def delete_repo(repo_id: str):
-    repos = load_repos()
+    repos = await load_repos()
     repos = [r for r in repos if r["id"] != repo_id]
-    save_repos(repos)
+    await save_repos(repos)
 
     # Remove deleted repo from all agents' repos list
     try:
@@ -162,7 +160,7 @@ async def delete_repo(repo_id: str):
 @router.post("/api/repos/{repo_id}/reindex")
 async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks,
                        opts: ReindexOptions = Body(default=ReindexOptions())):
-    repos = load_repos()
+    repos = await load_repos()
     repo = next((r for r in repos if r["id"] == repo_id), None)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
@@ -184,7 +182,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks,
         if r["id"] == repo_id:
             repos[i] = repo
             break
-    save_repos(repos)
+    await save_repos(repos)
 
     # Run in background
     try:
@@ -197,7 +195,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks,
                 f"Install the correct version into the backend venv: "
                 f"pip install 'cocoindex>=0.3.30,<1.0' psycopg, then restart Synapse."
             )
-            save_repos(repos)
+            await save_repos(repos)
             raise HTTPException(
                 status_code=500,
                 detail=f"CocoIndex not available: {detail}. "
@@ -212,7 +210,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks,
         print("Indexer unavailable:", e)
         repo["status"] = "error"
         repo["error_message"] = f"Indexer import failed: {e}"
-        save_repos(repos)
+        await save_repos(repos)
         raise HTTPException(status_code=500, detail=f"Indexer service not available: {e}")
 
     return {"status": "indexing_started", "full_reindex": opts.full_reindex}
@@ -220,7 +218,7 @@ async def reindex_repo(repo_id: str, background_tasks: BackgroundTasks,
 
 @router.post("/api/repos/{repo_id}/stop-index")
 async def stop_index_repo(repo_id: str):
-    repos = load_repos()
+    repos = await load_repos()
     repo = next((r for r in repos if r["id"] == repo_id), None)
     if not repo:
         raise HTTPException(status_code=404, detail="Repo not found")
@@ -241,6 +239,6 @@ async def stop_index_repo(repo_id: str):
         if r["id"] == repo_id:
             repos[i]["status"] = new_status
             break
-    save_repos(repos)
+    await save_repos(repos)
 
     return {"status": new_status, "was_running": was_running}

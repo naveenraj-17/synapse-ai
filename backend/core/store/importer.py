@@ -115,6 +115,11 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
             )
             counts["settings"] += 1
 
+    # These rows went in through upsert() directly rather than through the CRUD
+    # helpers, so nothing has invalidated the store's read-through cache.
+    from core.store import cache
+    cache.invalidate_all()
+
     return counts
 
 

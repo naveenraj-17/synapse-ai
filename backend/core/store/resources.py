@@ -92,6 +92,19 @@ def mcp_server_values(item: dict, tenant_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _list(model) -> list[dict]:
+    """Every item in this tenant's collection, cached.
+
+    Read on the per-turn path — `resolve_custom_tools()` runs before each model
+    call — so this is one of the queries the cache exists for. Writes below
+    invalidate it, so a cached list is never stale for the process that changed
+    it. See core/store/cache.py.
+    """
+    from core.store import cache
+
+    return await cache.get_or_load(model.__tablename__, "*", lambda: _list_uncached(model))
+
+
+async def _list_uncached(model) -> list[dict]:
     from core.store import session
 
     async with session() as s:
@@ -111,10 +124,19 @@ def _natural_key(model):
 
 
 async def _get(model, key_column, key_value) -> dict | None:
-    from core.store import session
+    from core.store import cache
 
     if not key_value:
         return None
+    return await cache.get_or_load(
+        model.__tablename__, f"id:{key_value}",
+        lambda: _get_uncached(model, key_column, key_value),
+    )
+
+
+async def _get_uncached(model, key_column, key_value) -> dict | None:
+    from core.store import session
+
     async with session() as s:
         row = (
             await s.execute(
@@ -164,9 +186,12 @@ async def _save(s, model, values: dict, index_elements: list[str], key_column) -
         update=[c for c in values if c not in protected],
     )
 
+    from core.store import cache
+    cache.invalidate(model.__tablename__)
+
 
 async def _delete(model, key_column, key_value) -> bool:
-    from core.store import session
+    from core.store import cache, session
 
     if not key_value:
         return False
@@ -177,6 +202,7 @@ async def _delete(model, key_column, key_value) -> bool:
                 model.tenant_id == get_tenant(),
             )
         )
+    cache.invalidate(model.__tablename__)
     return bool(result.rowcount)
 
 
@@ -201,6 +227,9 @@ async def _replace(model, items: list[dict], build, index_elements, key_column, 
         if keys:
             stmt = stmt.where(key_column.notin_(keys))
         await s.execute(stmt)
+
+    from core.store import cache
+    cache.invalidate(model.__tablename__)
 
 
 # ---------------------------------------------------------------------------

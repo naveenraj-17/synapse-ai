@@ -258,13 +258,13 @@ async def setup_embed(body: EmbedSetupRequest):
 
 @router.get("/api/personal-details")
 async def get_personal_details_api():
-    return load_personal_details()
+    return await load_personal_details()
 
 
 @router.post("/api/personal-details")
 async def update_personal_details_api(details: PersonalDetails):
     data = details.dict()
-    return save_personal_details(data)
+    return await save_personal_details(data)
 
 
 # --- Google Credentials & Config ---

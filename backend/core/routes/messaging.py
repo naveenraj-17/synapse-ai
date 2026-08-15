@@ -31,7 +31,7 @@ def _get_manager(request: Request):
 async def list_channels(request: Request, agent_id: str | None = None):
     """List all channels with live status, optionally filtered by agent."""
     manager = _get_manager(request)
-    channels = manager.get_status()
+    channels = await manager.get_status()
     if agent_id:
         channels = [c for c in channels if c.get("agent_id") == agent_id]
     return channels
@@ -44,7 +44,7 @@ async def create_or_update_channel(request: Request):
     # Strip runtime-only fields from client payload
     body.pop("status", None)
     body.pop("last_error", None)
-    saved = channel_store.save_channel(body)
+    saved = await channel_store.save_channel(body)
     return saved
 
 
@@ -53,7 +53,7 @@ async def delete_channel(channel_id: str, request: Request):
     """Stop and delete a channel."""
     manager = _get_manager(request)
     await manager.stop_channel(channel_id)
-    deleted = channel_store.delete_channel(channel_id)
+    deleted = await channel_store.delete_channel(channel_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Channel not found")
     return {"status": "deleted", "channel_id": channel_id}
@@ -65,16 +65,16 @@ async def delete_channel(channel_id: str, request: Request):
 async def enable_channel(channel_id: str, request: Request):
     """Start the adapter for a channel."""
     manager = _get_manager(request)
-    ch = channel_store.get_channel(channel_id)
+    ch = await channel_store.get_channel(channel_id)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
     # Mark as enabled in store before starting
     ch["enabled"] = True
-    channel_store.save_channel(ch)
+    await channel_store.save_channel(ch)
     await manager.start_channel(channel_id)
 
-    updated = channel_store.get_channel(channel_id)
+    updated = await channel_store.get_channel(channel_id)
     return updated
 
 
@@ -82,14 +82,14 @@ async def enable_channel(channel_id: str, request: Request):
 async def disable_channel(channel_id: str, request: Request):
     """Stop the adapter for a channel."""
     manager = _get_manager(request)
-    ch = channel_store.get_channel(channel_id)
+    ch = await channel_store.get_channel(channel_id)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
     await manager.stop_channel(channel_id)
 
     ch["enabled"] = False
-    channel_store.save_channel(ch)
+    await channel_store.save_channel(ch)
     return {"status": "stopped", "channel_id": channel_id}
 
 
@@ -105,7 +105,7 @@ async def test_channel(channel_id: str, request: Request):
     For webhook adapters (Teams, WhatsApp) we validate credential fields.
     """
     manager = _get_manager(request)
-    ch = channel_store.get_channel(channel_id)
+    ch = await channel_store.get_channel(channel_id)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 

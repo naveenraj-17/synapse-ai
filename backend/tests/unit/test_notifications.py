@@ -186,8 +186,10 @@ class TestMessagingDispatch:
         monkeypatch.setattr(config_mod, "load_settings",
                             lambda: {"run_notification_channel_id": "ch1"})
         import core.messaging.store as store_mod
-        monkeypatch.setattr(store_mod, "get_channel",
-                            lambda cid: {"id": cid, "notify_chat_id": "chat9"})
+        async def _get_channel(cid):
+            return {"id": cid, "notify_chat_id": "chat9"}
+
+        monkeypatch.setattr(store_mod, "get_channel", _get_channel)
 
         hub.publish("human_input", "Orch needs your input", body="Approve?")
         await asyncio.sleep(0)  # let the dispatch task run

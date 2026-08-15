@@ -354,7 +354,7 @@ class ScheduleManager:
 
         try:
             from core.messaging import store as channel_store
-            channels = channel_store.get_channels_for_agent(schedule.get("target_id", ""))
+            channels = await channel_store.get_channels_for_agent(schedule.get("target_id", ""))
         except Exception:
             return
 

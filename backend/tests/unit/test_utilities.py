@@ -141,11 +141,11 @@ class TestConfig:
 
 
 class TestPersonalDetails:
-    def test_default_load_save(self):
+    async def test_default_load_save(self):
         from core import personal_details as pd
         assert isinstance(pd.default_personal_details(), dict)
-        pd.save_personal_details({"first_name": "Grace", "last_name": "Hopper"})
-        assert pd.load_personal_details()["first_name"] == "Grace"
+        await pd.save_personal_details({"first_name": "Grace", "last_name": "Hopper"})
+        assert (await pd.load_personal_details())["first_name"] == "Grace"
 
 
 class TestUserAuth:
