@@ -98,6 +98,7 @@ class AgentDB(Base):
     name = Column(String(500), nullable=False)
     definition = Column(JSONType, nullable=False)   # full Agent dict
     tenant_id = _tenant_column()
+    created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     __table_args__ = (
@@ -112,6 +113,7 @@ class ToolDB(Base):
     name = Column(String(500), nullable=False)
     definition = Column(JSONType, nullable=False)   # full custom tool dict
     tenant_id = _tenant_column()
+    created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     __table_args__ = (
@@ -133,6 +135,7 @@ class MCPServerDB(Base):
     name = Column(String(255), nullable=False)
     label = Column(String(500), nullable=False, default="")
     definition = Column(JSONType, nullable=False)   # full config dict (token stripped)
+    created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     __table_args__ = (

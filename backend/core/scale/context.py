@@ -23,19 +23,22 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from sqlalchemy import select
-
-from core.tenancy import disable_multi_tenancy, enable_multi_tenancy, get_tenant
+from core.tenancy import disable_multi_tenancy, enable_multi_tenancy
 
 
 class ResourceProvider(Protocol):
-    """How an embedder answers the engine's three resource lookups.
+    """How an embedder answers the engine's resource lookups.
 
     Every method is called with the tenant already established in the context;
     implementations read ``core.tenancy.get_tenant()``.
+
+    ``resolve_orchestration`` is a lookup by id, not a listing. Listing every
+    orchestration is a UI concern, and requiring an embedder to expose one to
+    run a workflow would be the wrong default; the store answers those directly.
     """
 
     async def resolve_agent(self, agent_id: str) -> dict | None: ...
+    async def resolve_orchestration(self, orch_id: str) -> dict | None: ...
     async def resolve_custom_tools(self) -> list[dict]: ...
     async def resolve_mcp_servers(self) -> list[dict]: ...
 
@@ -74,19 +77,28 @@ async def resolve_agent(agent_id: str) -> dict | None:
     if _provider is not None:
         return await _provider.resolve_agent(agent_id)
 
-    from core.store import session
-    from core.store.models import AgentDB
+    from core.store.resources import get_agent
 
-    async with session() as s:
-        row = (
-            await s.execute(
-                select(AgentDB).where(
-                    AgentDB.id == agent_id,
-                    AgentDB.tenant_id == get_tenant(),
-                )
-            )
-        ).scalar_one_or_none()
-    return row.definition if row is not None else None
+    return await get_agent(agent_id)
+
+
+async def resolve_orchestration(orch_id: str) -> dict | None:
+    """The orchestration definition for `orch_id`, within the current tenant.
+
+    Routed through the provider like the others, because an orchestration is the
+    resource that *names* every other one — its steps carry agent ids, forced
+    tools and sub-orchestration ids. Resolving those through an embedder's
+    row-level security while loading the orchestration itself straight from the
+    store would bypass the boundary at the one place it matters most.
+    """
+    if not orch_id:
+        return None
+    if _provider is not None:
+        return await _provider.resolve_orchestration(orch_id)
+
+    from core.store.resources import get_orchestration
+
+    return await get_orchestration(orch_id)
 
 
 async def resolve_custom_tools() -> list[dict]:
@@ -94,14 +106,9 @@ async def resolve_custom_tools() -> list[dict]:
     if _provider is not None:
         return await _provider.resolve_custom_tools()
 
-    from core.store import session
-    from core.store.models import ToolDB
+    from core.store.resources import load_tools
 
-    async with session() as s:
-        rows = (
-            await s.execute(select(ToolDB).where(ToolDB.tenant_id == get_tenant()))
-        ).scalars().all()
-    return [r.definition for r in rows]
+    return await load_tools()
 
 
 async def resolve_mcp_servers() -> list[dict]:
@@ -109,13 +116,6 @@ async def resolve_mcp_servers() -> list[dict]:
     if _provider is not None:
         return await _provider.resolve_mcp_servers()
 
-    from core.store import session
-    from core.store.models import MCPServerDB
+    from core.store.resources import load_mcp_servers
 
-    async with session() as s:
-        rows = (
-            await s.execute(
-                select(MCPServerDB).where(MCPServerDB.tenant_id == get_tenant())
-            )
-        ).scalars().all()
-    return [r.definition for r in rows]
+    return await load_mcp_servers()

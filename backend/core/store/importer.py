@@ -67,85 +67,43 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
         SettingDB,
         ToolDB,
     )
+    from core.store.resources import (
+        agent_values,
+        mcp_server_values,
+        orchestration_values,
+        tool_values,
+    )
 
     root = Path(data_dir)
     counts = dict.fromkeys(_SOURCES, 0)
 
+    #: source file → (count key, model, conflict target, row builder, "is this
+    #: item importable"). The builders are the same ones the live CRUD path
+    #: uses, so an imported install and a natively-created one produce identical
+    #: rows — when these drifted, the importer became a second schema.
+    collections = (
+        ("orchestrations.json", "orchestrations", OrchestrationDB, ["id"],
+         orchestration_values, lambda i: bool(i.get("id"))),
+        ("user_agents.json", "user_agents", AgentDB, ["id"],
+         agent_values, lambda i: bool(i.get("id"))),
+        ("custom_tools.json", "custom_tools", ToolDB, ["id"],
+         tool_values, lambda i: bool(i.get("id") or i.get("name"))),
+        ("mcp_servers.json", "mcp_servers", MCPServerDB, ["tenant_id", "name"],
+         mcp_server_values, lambda i: bool(i.get("name"))),
+    )
+
     async with session() as s:
-        # ── orchestrations ──────────────────────────────────────────────────
-        items = _read(root / "orchestrations.json") or []
-        for item in items if isinstance(items, list) else []:
-            if not item.get("id"):
-                continue
-            await upsert(
-                s, OrchestrationDB,
-                values={
-                    "id": item["id"],
-                    "tenant_id": tenant_id,
-                    "name": item.get("name") or item["id"],
-                    "description": item.get("description") or "",
-                    "definition": item,
-                    # The engine treats NULL is_active as "not active", so an
-                    # imported orchestration would exist, list fine, and be
-                    # invisible on any screen that counts `WHERE is_active`.
-                    "is_active": bool(item.get("is_active", True)),
-                },
-                index_elements=["id"],
-            )
-            counts["orchestrations"] += 1
-
-        # ── agents ──────────────────────────────────────────────────────────
-        items = _read(root / "user_agents.json") or []
-        for item in items if isinstance(items, list) else []:
-            if not item.get("id"):
-                continue
-            await upsert(
-                s, AgentDB,
-                values={
-                    "id": item["id"],
-                    "tenant_id": tenant_id,
-                    "name": item.get("name") or item["id"],
-                    "definition": item,
-                },
-                index_elements=["id"],
-            )
-            counts["user_agents"] += 1
-
-        # ── custom tools ────────────────────────────────────────────────────
-        items = _read(root / "custom_tools.json") or []
-        for item in items if isinstance(items, list) else []:
-            tool_id = item.get("id") or item.get("name")
-            if not tool_id:
-                continue
-            await upsert(
-                s, ToolDB,
-                values={
-                    "id": tool_id,
-                    "tenant_id": tenant_id,
-                    "name": item.get("name") or tool_id,
-                    "definition": item,
-                },
-                index_elements=["id"],
-            )
-            counts["custom_tools"] += 1
-
-        # ── MCP servers ─────────────────────────────────────────────────────
-        items = _read(root / "mcp_servers.json") or []
-        for item in items if isinstance(items, list) else []:
-            name = item.get("name")
-            if not name:
-                continue
-            await upsert(
-                s, MCPServerDB,
-                values={
-                    "tenant_id": tenant_id,
-                    "name": name,
-                    "label": item.get("label") or name,
-                    "definition": item,
-                },
-                index_elements=["tenant_id", "name"],
-            )
-            counts["mcp_servers"] += 1
+        for filename, count_key, model, index_elements, build, importable in collections:
+            items = _read(root / filename) or []
+            for item in items if isinstance(items, list) else []:
+                if not isinstance(item, dict) or not importable(item):
+                    continue
+                await upsert(
+                    s, model,
+                    values=build(item, tenant_id),
+                    index_elements=index_elements,
+                )
+                counts[count_key] += 1
 
         # ── settings ────────────────────────────────────────────────────────
         settings = _read(root / "settings.json") or {}

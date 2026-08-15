@@ -25,6 +25,9 @@ class _Provider:
     async def resolve_agent(self, agent_id):
         return None
 
+    async def resolve_orchestration(self, orch_id):
+        return None
+
     async def resolve_custom_tools(self):
         return []
 

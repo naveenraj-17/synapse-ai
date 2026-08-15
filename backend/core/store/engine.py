@@ -124,9 +124,17 @@ def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
 
 
 async def init_db(engine: AsyncEngine) -> None:
-    """Create any missing tables (CREATE TABLE IF NOT EXISTS)."""
+    """Create any missing tables, then apply additive column changes.
+
+    `create_all` only ever creates whole tables — it will not add a column to
+    one that already exists, so an install that booted an earlier build needs
+    `run_migrations` to catch up. See `core/store/migrate.py`.
+    """
+    from core.store.migrate import run_migrations
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await run_migrations(engine)
 
 
 async def get_store() -> async_sessionmaker[AsyncSession]:
