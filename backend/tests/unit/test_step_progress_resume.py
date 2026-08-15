@@ -153,7 +153,7 @@ class TestExecutorInterception:
         from core.orchestration.engine import OrchestrationEngine
 
         orch = _agent_orch()
-        seed_orchestration(**orch)  # resume_failed loads the definition from disk
+        await seed_orchestration(**orch)  # resume_failed loads the definition from disk
 
         async def crashing(**kwargs):
             yield {"type": "_step_progress", "turn": 2, "context_text": "CTX2",

@@ -167,7 +167,7 @@ class TestRunSummaryFields:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        orch = seed_orchestration()  # endpoint lists only runs of live orchestrations
+        orch = await seed_orchestration()  # endpoint lists only runs of live orchestrations
         for n in range(3):
             await state_mod.SharedState(
                 OrchestrationRun(run_id=f"run_{n}", orchestration_id=orch["id"], status="completed")
@@ -241,7 +241,7 @@ class TestResumeVisibility:
         from core.orchestration.engine import OrchestrationEngine
 
         orch = self._orch()
-        seed_orchestration(**orch)
+        await seed_orchestration(**orch)
         await state_mod.SharedState(OrchestrationRun(
             run_id="run_res", orchestration_id=orch["id"], status="cancelled",
             current_step_id="p",
@@ -272,7 +272,7 @@ class TestResumeVisibility:
                  "output_key": "o", "next_step_id": None},
             ],
         )
-        seed_orchestration(**orch)
+        await seed_orchestration(**orch)
         await state_mod.SharedState(OrchestrationRun(
             run_id="run_hum", orchestration_id=orch["id"], status="paused",
             current_step_id="h", waiting_for_human=True, human_prompt="?",

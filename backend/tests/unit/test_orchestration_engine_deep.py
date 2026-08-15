@@ -36,7 +36,7 @@ class TestHumanResume:
                  "output_key": "final", "next_step_id": None},
             ],
         )
-        S.seed_orchestrations([orch_dict])  # so resume() can reload it from disk
+        await S.seed_orchestrations([orch_dict])  # so resume() can reload it from disk
         orch = Orchestration.model_validate(orch_dict)
         server = _server()
         run_id = "run_human_1"

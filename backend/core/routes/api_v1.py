@@ -47,10 +47,10 @@ class V1ResumeRequest(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _resolve_agent_for_api(agent_identifier: str | None) -> dict | None:
+async def _resolve_agent_for_api(agent_identifier: str | None) -> dict | None:
     """Find agent by name (case-insensitive) or ID. Falls back to first agent."""
     from core.routes.agents import load_user_agents
-    agents = load_user_agents()
+    agents = await load_user_agents()
     if not agents:
         return None
     if not agent_identifier:
@@ -94,7 +94,7 @@ def _format_sse_event(event: dict) -> str:
 @router.post("/chat")
 async def v1_chat(body: V1ChatRequest, key_record: dict = Depends(require_api_key)):
     """Synchronous chat — returns only the final response."""
-    agent = _resolve_agent_for_api(body.agent)
+    agent = await _resolve_agent_for_api(body.agent)
     if not agent:
         raise HTTPException(status_code=400, detail="No agents configured")
 
@@ -139,7 +139,7 @@ async def v1_chat(body: V1ChatRequest, key_record: dict = Depends(require_api_ke
 @router.post("/chat/stream")
 async def v1_chat_stream(body: V1ChatRequest, key_record: dict = Depends(require_api_key)):
     """SSE streaming chat — returns all events."""
-    agent = _resolve_agent_for_api(body.agent)
+    agent = await _resolve_agent_for_api(body.agent)
     if not agent:
         raise HTTPException(status_code=400, detail="No agents configured")
 
@@ -243,7 +243,7 @@ async def v1_orchestration_run(
     from core.orchestration.engine import OrchestrationEngine
     from core.orchestration.runner import stream_engine_events
 
-    orchs = load_orchestrations()
+    orchs = await load_orchestrations()
     orch_data = next((o for o in orchs if o["id"] == orch_id), None)
     if not orch_data:
         raise HTTPException(status_code=404, detail=f"Orchestration '{orch_id}' not found")
@@ -315,7 +315,7 @@ async def v1_orchestration_run_stream(
     from core.models_orchestration import Orchestration
     from core.orchestration.engine import OrchestrationEngine
 
-    orchs = load_orchestrations()
+    orchs = await load_orchestrations()
     orch_data = next((o for o in orchs if o["id"] == orch_id), None)
     if not orch_data:
         raise HTTPException(status_code=404, detail=f"Orchestration '{orch_id}' not found")
@@ -514,7 +514,7 @@ async def v1_orchestration_resume_stream(
 async def v1_list_agents(key_record: dict = Depends(require_api_key)):
     """List all configured agents (id, name, type, capabilities)."""
     from core.routes.agents import load_user_agents
-    agents = load_user_agents()
+    agents = await load_user_agents()
     return [
         {
             "id": a["id"],
@@ -531,7 +531,7 @@ async def v1_list_agents(key_record: dict = Depends(require_api_key)):
 async def v1_get_agent(agent_id: str, key_record: dict = Depends(require_api_key)):
     """Get details for a specific agent."""
     from core.routes.agents import load_user_agents
-    agents = load_user_agents()
+    agents = await load_user_agents()
     agent = next((a for a in agents if a["id"] == agent_id), None)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
@@ -549,7 +549,7 @@ async def v1_get_agent(agent_id: str, key_record: dict = Depends(require_api_key
 async def v1_list_orchestrations(key_record: dict = Depends(require_api_key)):
     """List all configured orchestrations (id, name, steps summary)."""
     from core.routes.orchestrations import load_orchestrations
-    orchs = load_orchestrations()
+    orchs = await load_orchestrations()
     return [
         {
             "id": o["id"],
@@ -565,7 +565,7 @@ async def v1_list_orchestrations(key_record: dict = Depends(require_api_key)):
 async def v1_get_orchestration(orch_id: str, key_record: dict = Depends(require_api_key)):
     """Get details for a specific orchestration including step definitions."""
     from core.routes.orchestrations import load_orchestrations
-    orchs = load_orchestrations()
+    orchs = await load_orchestrations()
     orch = next((o for o in orchs if o["id"] == orch_id), None)
     if not orch:
         raise HTTPException(status_code=404, detail=f"Orchestration '{orch_id}' not found")

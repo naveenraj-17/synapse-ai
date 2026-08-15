@@ -133,14 +133,14 @@ async def delete_repo(repo_id: str):
     # Remove deleted repo from all agents' repos list
     try:
         from core.routes.agents import load_user_agents, save_user_agents
-        agents = load_user_agents()
+        agents = await load_user_agents()
         modified = False
         for agent in agents:
             if repo_id in agent.get("repos", []):
                 agent["repos"] = [r for r in agent["repos"] if r != repo_id]
                 modified = True
         if modified:
-            save_user_agents(agents)
+            await save_user_agents(agents)
             print(f"Removed repo {repo_id} from agents.")
     except Exception as e:
         print(f"Warning: Failed to remove repo {repo_id} from agents: {e}")

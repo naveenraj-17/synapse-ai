@@ -10,28 +10,34 @@ from fastapi import APIRouter, HTTPException
 
 from pydantic import BaseModel
 from core.models import Agent, AgentActiveRequest, GeneratePromptRequest
-from core.config import DATA_DIR, load_settings
-from core.json_store import JsonStore
+from core.config import load_settings
 from core.llm_providers import generate_response as llm_generate_response, detect_mode_from_model
 
 router = APIRouter()
-
-_agents_store = JsonStore(os.path.join(DATA_DIR, "user_agents.json"), cache_ttl=2.0)
 
 # Module-level state
 active_agent_id: str | None = None
 
 
-def load_user_agents() -> list[dict]:
-    return _agents_store.load()
+async def load_user_agents() -> list[dict]:
+    from core.store.resources import load_agents
+    return await load_agents()
 
 
-def save_user_agents(agents: list[dict]):
-    _agents_store.save(agents)
+async def save_user_agents(agents: list[dict]):
+    """Replace this tenant's agents with `agents`. Bulk only — see below."""
+    from core.store.resources import replace_agents
+    await replace_agents(agents)
 
 
-def get_active_agent_data():
-    agents = load_user_agents()
+async def get_active_agent_data():
+    """The selected agent, or the first one as a fallback.
+
+    "The first one" is why load_agents() sorts by (created_at, id) rather than
+    letting the database choose an order — otherwise which agent is the default
+    would change between restarts.
+    """
+    agents = await load_user_agents()
     if active_agent_id:
         for a in agents:
             if a["id"] == active_agent_id:
@@ -43,30 +49,22 @@ def get_active_agent_data():
 
 @router.get("/api/agents")
 async def get_agents():
-    return load_user_agents()
+    return await load_user_agents()
 
 
 @router.post("/api/agents")
 async def create_agent(agent: Agent):
-    agents = load_user_agents()
-    # Check if exists
-    for i, a in enumerate(agents):
-        if a["id"] == agent.id:
-            agents[i] = agent.dict()  # Update
-            save_user_agents(agents)
-            return agent
-
-    agents.append(agent.dict())
-    save_user_agents(agents)
+    # One upsert: read-list / mutate / write-list loses a concurrent edit.
+    from core.store.resources import save_agent
+    await save_agent(agent.dict())
     return agent
 
 
 @router.delete("/api/agents/{agent_id}")
 async def delete_agent(agent_id: str):
     global active_agent_id
-    agents = load_user_agents()
-    agents = [a for a in agents if a["id"] != agent_id]
-    save_user_agents(agents)
+    from core.store.resources import delete_agent as _delete
+    await _delete(agent_id)
     if active_agent_id == agent_id:
         active_agent_id = None
     return {"status": "success"}
@@ -75,7 +73,7 @@ async def delete_agent(agent_id: str):
 @router.get("/api/agents/active")
 async def get_active_agent_endpoint():
     try:
-        agent = get_active_agent_data()
+        agent = await get_active_agent_data()
         return {"active_agent_id": agent["id"]}
     except RuntimeError:
         return {"active_agent_id": None}
@@ -85,7 +83,7 @@ async def get_active_agent_endpoint():
 async def set_active_agent_endpoint(req: AgentActiveRequest):
     global active_agent_id
     # Validate
-    agents = load_user_agents()
+    agents = await load_user_agents()
     ids = [a["id"] for a in agents]
     if req.agent_id not in ids:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -260,9 +258,8 @@ async def build_agent(req: BuildAgentRequest):
         "delegate_agent_ids": [],
     }
 
-    agents = load_user_agents()
-    agents.append(agent_dict)
-    save_user_agents(agents)
+    from core.store.resources import save_agent
+    await save_agent(agent_dict)
     return agent_dict
 
 

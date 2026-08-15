@@ -17,41 +17,33 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core.config import DATA_DIR
-from core.json_store import JsonStore
-
 router = APIRouter()
 
 # --------------------------------------------------------------------------- #
-# Shared stores (mirrors what individual route files use)
+# Resources come from the store, through the same functions the CRUD routes
+# use. This module used to hold a second, independent set of JsonStore handles
+# over three of the four collections — with their own caches, so it could and
+# did disagree with core/routes/*.py about what was on disk.
 # --------------------------------------------------------------------------- #
-_agents_store = JsonStore(os.path.join(DATA_DIR, "user_agents.json"), cache_ttl=2.0)
-_orch_store = JsonStore(os.path.join(DATA_DIR, "orchestrations.json"), cache_ttl=2.0)
-_custom_tools_store = JsonStore(os.path.join(DATA_DIR, "custom_tools.json"), cache_ttl=2.0)
 
-MCP_SERVERS_FILE = os.path.join(DATA_DIR, "mcp_servers.json")
-
-
-def _load_agents() -> List[dict]:
-    return _agents_store.load()
+async def _load_agents() -> List[dict]:
+    from core.store.resources import load_agents
+    return await load_agents()
 
 
-def _load_orchestrations() -> List[dict]:
-    return _orch_store.load()
+async def _load_orchestrations() -> List[dict]:
+    from core.store.resources import load_orchestrations
+    return await load_orchestrations()
 
 
-def _load_custom_tools() -> List[dict]:
-    return _custom_tools_store.load()
+async def _load_custom_tools() -> List[dict]:
+    from core.store.resources import load_tools
+    return await load_tools()
 
 
-def _load_mcp_servers() -> List[dict]:
-    if not os.path.exists(MCP_SERVERS_FILE):
-        return []
-    try:
-        with open(MCP_SERVERS_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+async def _load_mcp_servers() -> List[dict]:
+    from core.store.resources import load_mcp_servers
+    return await load_mcp_servers()
 
 
 # --------------------------------------------------------------------------- #
@@ -65,10 +57,10 @@ async def get_export_data():
     MCP server env values and custom tool header values are replaced
     with empty strings so the UI can show keys without exposing secrets.
     """
-    orchestrations = _load_orchestrations()
-    agents = _load_agents()
-    mcp_servers = _sanitize_mcp_servers(_load_mcp_servers())
-    custom_tools = _sanitize_custom_tools(_load_custom_tools())
+    orchestrations = await _load_orchestrations()
+    agents = await _load_agents()
+    mcp_servers = _sanitize_mcp_servers(await _load_mcp_servers())
+    custom_tools = _sanitize_custom_tools(await _load_custom_tools())
 
     return {
         "orchestrations": orchestrations,
@@ -97,10 +89,10 @@ async def export_bundle(req: ExportRequest):
     - Custom HTTP tool headers: keys kept, values redacted to ""
     - Python tools: included as-is; has_python_tools flag set to True
     """
-    all_agents = _load_agents()
-    all_orchs = _load_orchestrations()
-    all_tools = _load_custom_tools()
-    all_mcp = _load_mcp_servers()
+    all_agents = await _load_agents()
+    all_orchs = await _load_orchestrations()
+    all_tools = await _load_custom_tools()
+    all_mcp = await _load_mcp_servers()
 
     # --- Filter selected entities ---
     selected_orchs = [o for o in all_orchs if o["id"] in req.orchestration_ids]
@@ -171,7 +163,7 @@ async def import_bundle(req: ImportRequest):
     }
 
     # ── Orchestrations ─────────────────────────────────────────────────────────
-    existing_orchs = _load_orchestrations()
+    existing_orchs = await _load_orchestrations()
     existing_orch_ids = {o["id"] for o in existing_orchs}
     orch_changed = False
 
@@ -191,10 +183,12 @@ async def import_bundle(req: ImportRequest):
         results["orchestrations"].append({"id": oid, "name": orch.get("name", oid), "status": "imported"})
 
     if orch_changed:
-        _orch_store.save(existing_orchs)
+        from core.store.resources import save_orchestration
+        for o in existing_orchs:
+            await save_orchestration(o)
 
     # ── Agents ─────────────────────────────────────────────────────────────────
-    existing_agents = _load_agents()
+    existing_agents = await _load_agents()
     agent_changed = False
 
     for agent in bundle.get("agents", []):
@@ -207,10 +201,12 @@ async def import_bundle(req: ImportRequest):
         results["agents"].append({"id": aid, "name": agent.get("name", aid), "status": "imported"})
 
     if agent_changed:
-        _agents_store.save(existing_agents)
+        from core.store.resources import save_agent
+        for a in existing_agents:
+            await save_agent(a)
 
     # ── MCP Servers ─────────────────────────────────────────────────────────────
-    existing_mcp = _load_mcp_servers()
+    existing_mcp = await _load_mcp_servers()
     existing_mcp_names = {m["name"] for m in existing_mcp}
     mcp_changed = False
 
@@ -252,16 +248,16 @@ async def import_bundle(req: ImportRequest):
         })
 
     if mcp_changed:
-        os.makedirs(os.path.dirname(MCP_SERVERS_FILE), exist_ok=True)
-        with open(MCP_SERVERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(existing_mcp, f, indent=4)
+        from core.store.resources import save_mcp_server
+        for m in existing_mcp:
+            await save_mcp_server(m)
 
     # Always sync manager with authoritative disk state and attempt connections
     # for all selected servers (covers both newly imported and previously saved
     # but not-yet-in-memory cases that happen after a server restart).
     import core.server as _server
     if _server.mcp_manager and req.selected_mcp_server_names:
-        _server.mcp_manager.servers_config = _load_mcp_servers()
+        _server.mcp_manager.servers_config = await _load_mcp_servers()
 
         for mcp_result in results["mcp_servers"]:
             if mcp_result["status"] not in ("imported", "skipped_existing"):
@@ -302,17 +298,17 @@ async def import_bundle(req: ImportRequest):
                 continue  # session check below doesn't apply for OAuth path
 
             if session:
-                _server.mcp_manager._set_status(name, "connected")
+                await _server.mcp_manager._set_status(name, "connected")
                 await _server.mcp_manager._auto_register(name)
                 mcp_result["status"] = "connected"
                 mcp_result["message"] = "Connected successfully"
             else:
-                _server.mcp_manager._set_status(name, "disconnected")
+                await _server.mcp_manager._set_status(name, "disconnected")
                 mcp_result["status"] = "disconnected"
                 mcp_result["message"] = "Saved — use 'Retry' in MCP Servers to connect"
 
     # ── Custom Tools ────────────────────────────────────────────────────────────
-    existing_tools = _load_custom_tools()
+    existing_tools = await _load_custom_tools()
     tool_changed = False
 
     for tool in bundle.get("custom_tools", []):
@@ -337,7 +333,8 @@ async def import_bundle(req: ImportRequest):
         })
 
     if tool_changed:
-        _custom_tools_store.save(existing_tools)
+        from core.store.resources import save_tools
+        await save_tools(existing_tools)
 
     return {"status": "success", "results": results}
 

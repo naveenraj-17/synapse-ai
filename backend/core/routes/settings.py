@@ -74,7 +74,7 @@ async def get_status():
     from core.routes.agents import load_user_agents, active_agent_id
     from core.llm_providers import detect_provider_from_model
 
-    user_agents = load_user_agents()
+    user_agents = await load_user_agents()
     agents_status = {}
     for a in user_agents:
         agents_status[a["id"]] = {"name": a["name"], "status": "online"}

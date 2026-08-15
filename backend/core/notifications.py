@@ -171,7 +171,7 @@ class NotificationHub:
             from core.orchestration.state import SharedState
             from core.routes.orchestrations import load_orchestrations
             orch_id = (await SharedState.restore(run_id)).run.orchestration_id
-            orch = next((o for o in load_orchestrations() if o["id"] == orch_id), None)
+            orch = next((o for o in await load_orchestrations() if o["id"] == orch_id), None)
             name = (orch or {}).get("name") or orch_id
         except Exception:
             name = "Orchestration"

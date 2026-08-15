@@ -19,7 +19,7 @@ def _valid_agent_body(**over):
 
 class TestAgentsCrud:
     async def test_list_reflects_seeded_agents(self, client, seed_agent):
-        a = seed_agent(name="Seeded One")
+        a = await seed_agent(name="Seeded One")
         resp = await client.get("/api/agents")
         assert resp.status_code == 200
         ids = [x["id"] for x in resp.json()]
@@ -43,7 +43,7 @@ class TestAgentsCrud:
         assert resp.status_code == 422
 
     async def test_set_and_get_active_agent(self, client, seed_agent):
-        a = seed_agent(id="agent_active_1", name="Active One")
+        a = await seed_agent(id="agent_active_1", name="Active One")
         resp = await client.post("/api/agents/active", json={"agent_id": a["id"]})
         assert resp.status_code == 200
         resp = await client.get("/api/agents/active")

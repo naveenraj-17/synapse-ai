@@ -14,15 +14,16 @@ from core.react_engine import run_react_loop, parse_tool_call, iter_with_heartbe
 router = APIRouter()
 
 
-def _resolve_agent(request: ChatRequest):
+async def _resolve_agent(request: ChatRequest):
     """Return the agent dict for the request's agent_id (or the active agent)."""
-    from core.routes.agents import load_user_agents, get_active_agent_data
+    from core.routes.agents import get_active_agent_data
+    from core.scale.context import resolve_agent
+
     agent_id = getattr(request, "agent_id", None)
     if agent_id:
-        agents = load_user_agents()
-        return next((a for a in agents if a["id"] == agent_id), None)
+        return await resolve_agent(agent_id)
     try:
-        return get_active_agent_data()
+        return await get_active_agent_data()
     except RuntimeError:
         return None
 
@@ -62,7 +63,7 @@ async def chat_stream(request: ChatRequest):
         import core.server as _server
 
         # Route builder agents to the dedicated builder stream
-        agent = _resolve_agent(request)
+        agent = await _resolve_agent(request)
         if agent and agent.get("type") == "builder":
             from core.routes.builder import run_builder_stream_compat
             async for chunk in run_builder_stream_compat(request, _server):

@@ -582,7 +582,7 @@ async def lifespan(app: FastAPI):
         # --- Seed the native builder orchestration (idempotent) ---
         try:
             from core.native_builder import seed_native_builder
-            seed_result = seed_native_builder()
+            seed_result = await seed_native_builder()
             if (seed_result["agents_added"] or seed_result["agents_updated"]
                     or seed_result.get("agents_removed")
                     or seed_result["orchestration"] != "unchanged"):

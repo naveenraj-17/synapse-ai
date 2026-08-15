@@ -135,7 +135,7 @@ class TestChatRealEngine:
         """Seed a real agent, prime the tool cache so MCP introspection is
         skipped, and let the REAL run_react_loop + run_agent_step run with the
         fake LLM returning a plain final answer."""
-        agent = seed_agent(tools=[], skip_default_tools=True)
+        agent = await seed_agent(tools=[], skip_default_tools=True)
         # Prime the per-session tool cache so aggregate_all_tools doesn't touch
         # the placeholder session object.
         import core.tools as tools

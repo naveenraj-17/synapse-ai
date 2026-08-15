@@ -7,13 +7,13 @@ from _fakes.fake_pg import fake_session_factory
 
 class TestV1ReadEndpoints:
     async def test_list_and_get_agents(self, client, api_key, seed_agent):
-        agent = seed_agent(id="v1a", name="V1A")
+        agent = await seed_agent(id="v1a", name="V1A")
         assert (await client.get("/api/v1/agents", headers=api_key["headers"])).status_code == 200
         got = await client.get(f"/api/v1/agents/{agent['id']}", headers=api_key["headers"])
         assert got.status_code == 200
 
     async def test_list_and_get_orchestrations(self, client, api_key, seed_orchestration):
-        orch = seed_orchestration(id="v1o")
+        orch = await seed_orchestration(id="v1o")
         assert (await client.get("/api/v1/orchestrations", headers=api_key["headers"])).status_code == 200
         got = await client.get(f"/api/v1/orchestrations/{orch['id']}", headers=api_key["headers"])
         assert got.status_code == 200
@@ -38,7 +38,7 @@ class TestV2ReadEndpoints:
 
 class TestOrchestrationReads:
     async def test_runs_list_and_estimate(self, client, seed_orchestration):
-        orch = seed_orchestration(id="est")
+        orch = await seed_orchestration(id="est")
         assert (await client.get("/api/orchestrations/runs")).status_code == 200
         est = await client.get(f"/api/orchestrations/{orch['id']}/estimate")
         assert est.status_code == 200

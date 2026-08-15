@@ -215,7 +215,7 @@ class AgentStepExecutor:
                 f"(max {MAX_NESTED_DEPTH}). Possible recursive agent loop."
             )
 
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         sub_orch_data = next((o for o in orchs if o["id"] == sub_orch_id), None)
         if not sub_orch_data:
             raise RuntimeError(
@@ -504,7 +504,7 @@ class ToolStepExecutor:
                 return result.content[0].text if result.content else ""
         # Custom tools — Python or HTTP
         from core.routes.tools import load_custom_tools
-        custom_tools = load_custom_tools()
+        custom_tools = await load_custom_tools()
         target_tool = next((t for t in custom_tools if t["name"] == tool_name), None)
         if target_tool:
             tool_type = target_tool.get("tool_type", "http")

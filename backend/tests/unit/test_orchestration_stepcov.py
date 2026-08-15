@@ -178,7 +178,7 @@ class TestLoopAndParallel:
 
 class TestAgentAndEvaluatorSteps:
     async def test_agent_step_runs_with_fake_llm(self, fake_llm, seed_agent):
-        agent = seed_agent(id="orch_agent", tools=[], skip_default_tools=True)
+        agent = await seed_agent(id="orch_agent", tools=[], skip_default_tools=True)
         fake_llm.set_default("agent output")
         orch = S.make_orchestration(
             entry_step_id="ag",

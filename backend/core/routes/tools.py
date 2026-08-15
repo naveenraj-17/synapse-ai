@@ -13,27 +13,25 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from core.models import AddMCPServerRequest
-from core.config import DATA_DIR
-from core.json_store import JsonStore
 from core.openapi_import import parse_openapi_spec
 import core.mcp_oauth_state as oauth_state
 
 router = APIRouter()
 
-_custom_tools_store = JsonStore(os.path.join(DATA_DIR, "custom_tools.json"), cache_ttl=2.0)
+async def load_custom_tools():
+    from core.store.resources import load_tools
+    return await load_tools()
 
 
-def load_custom_tools():
-    return _custom_tools_store.load()
-
-
-def save_custom_tools(tools):
-    _custom_tools_store.save(tools)
+async def save_custom_tools(tools):
+    """Replace this tenant's custom tools with `tools`. Bulk only — see below."""
+    from core.store.resources import replace_tools
+    await replace_tools(tools)
 
 
 @router.get("/api/tools/custom")
 async def get_custom_tools():
-    return load_custom_tools()
+    return await load_custom_tools()
 
 
 _NATIVE_SERVER_LABELS: dict[str, str] = {
@@ -89,7 +87,7 @@ async def get_available_tools():
 
     # 2. Custom HTTP + Python Tools
     try:
-        custom_tools = load_custom_tools()
+        custom_tools = await load_custom_tools()
         for t in custom_tools:
             tool_type = t.get("tool_type", "http")
             all_tools.append({
@@ -106,20 +104,19 @@ async def get_available_tools():
     return {"tools": all_tools}
 
 
-def _upsert_custom_tools(new_tools: list[dict]) -> None:
-    """Upsert tools by name into the custom-tools store, preserving existing order."""
-    tools = load_custom_tools()
-    for nt in new_tools:
-        if any(t['name'] == nt['name'] for t in tools):
-            tools = [t if t['name'] != nt['name'] else nt for t in tools]
-        else:
-            tools.append(nt)
-    save_custom_tools(tools)
+async def _upsert_custom_tools(new_tools: list[dict]) -> None:
+    """Upsert tools by name, leaving every other tool alone.
+
+    Was read-list / mutate / write-list, which loses a concurrent edit and
+    rewrites every row to change one.
+    """
+    from core.store.resources import save_tools
+    await save_tools(new_tools)
 
 
 @router.post("/api/tools/custom")
 async def create_custom_tool(tool: dict):
-    _upsert_custom_tools([tool])
+    await _upsert_custom_tools([tool])
     return {"status": "success", "tool": tool}
 
 
@@ -132,7 +129,7 @@ async def create_custom_tools_bulk(payload: dict):
     for t in tools:
         if not isinstance(t, dict) or not t.get("name"):
             raise HTTPException(status_code=400, detail="Each tool must be an object with a 'name'.")
-    _upsert_custom_tools(tools)
+    await _upsert_custom_tools(tools)
     return {"status": "success", "imported": len(tools)}
 
 
@@ -185,15 +182,14 @@ async def import_openapi(req: OpenAPIImportRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     if req.save:
-        _upsert_custom_tools(generated)
+        await _upsert_custom_tools(generated)
     return {"tools": generated, "count": len(generated), "saved": req.save}
 
 
 @router.delete("/api/tools/custom/{tool_name}")
 async def delete_custom_tool(tool_name: str):
-    tools = load_custom_tools()
-    tools = [t for t in tools if t['name'] != tool_name]
-    save_custom_tools(tools)
+    from core.store.resources import delete_tool
+    await delete_tool(tool_name)
     return {"status": "success"}
 
 

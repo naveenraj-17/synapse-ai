@@ -41,7 +41,7 @@ def _one_journaled_run_id():
 
 
 async def _run_orch(client, seed_orchestration, monkeypatch, events):
-    orch = seed_orchestration()
+    orch = await seed_orchestration()
     import core.orchestration.engine as engine_mod
     _FakeEngine.events = events
     monkeypatch.setattr(engine_mod, "OrchestrationEngine", _FakeEngine)

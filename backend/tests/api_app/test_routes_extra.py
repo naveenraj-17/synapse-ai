@@ -47,7 +47,7 @@ class TestSchedulesCrud:
 
 class TestImportExport:
     async def test_export_then_import_roundtrip(self, client, seed_agent):
-        agent = seed_agent(id="exp_agent", name="Exportable")
+        agent = await seed_agent(id="exp_agent", name="Exportable")
         exported = await client.post("/api/export", json={"agent_ids": [agent["id"]]})
         assert exported.status_code == 200
         bundle = exported.json()

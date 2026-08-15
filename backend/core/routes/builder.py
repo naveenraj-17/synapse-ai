@@ -53,15 +53,14 @@ def _format_history(history: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _resolve_current_orch_id(raw: str | None) -> str:
+async def _resolve_current_orch_id(raw: str | None) -> str:
     """Only pass through IDs that actually exist — the UI may send temp draft IDs."""
     if not raw:
         return ""
-    from core.routes.orchestrations import load_orchestrations
-    saved = load_orchestrations()
-    if any(o.get("id") == raw for o in saved):
-        return raw
-    return ""
+    # An indexed point lookup, rather than loading every orchestration to test
+    # one id for membership.
+    from core.store.resources import get_orchestration
+    return raw if await get_orchestration(raw) else ""
 
 
 class BuilderResumeRequest(BaseModel):
@@ -261,7 +260,7 @@ async def run_builder_stream(request: BuilderChatRequest, server_module):
     """
     from core.routes.orchestrations import load_orchestrations
 
-    orchs = load_orchestrations()
+    orchs = await load_orchestrations()
     orch_data = next((o for o in orchs if o.get("id") == NATIVE_BUILDER_ORCH_ID), None)
     if not orch_data:
         yield {"type": "error", "message": f"Native builder orchestration '{NATIVE_BUILDER_ORCH_ID}' not found. Seed it first."}
@@ -281,7 +280,7 @@ async def run_builder_stream(request: BuilderChatRequest, server_module):
         "chat_history": _format_history(request.history),
         "selected_agent_ids": list(request.selected_agent_ids or []),
         "can_create_agents": bool(request.can_create_agents),
-        "current_orchestration_id": _resolve_current_orch_id(request.current_orchestration_id),
+        "current_orchestration_id": await _resolve_current_orch_id(request.current_orchestration_id),
         "requirements": "",
         "human_response": "",
         "plan": "",
@@ -322,7 +321,7 @@ async def run_builder_resume_stream(
         restored = await SS.restore(run_id)
         run = restored.run
 
-        orchestrations = load_orchestrations()
+        orchestrations = await load_orchestrations()
         orch_data = next((o for o in orchestrations if o["id"] == run.orchestration_id), None)
         if not orch_data:
             yield {"type": "orchestration_error", "error": f"Orchestration '{run.orchestration_id}' not found"}

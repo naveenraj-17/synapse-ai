@@ -67,7 +67,7 @@ def _load_bundled_orchestration() -> dict:
     return _apply_cheatsheet_to_orch(_load_json(_ORCH_FILE))
 
 
-def seed_native_builder() -> dict:
+async def seed_native_builder() -> dict:
     """Sync the builder orchestration and sub-agents from the bundled definitions.
 
     Native-builder entries (ids starting with `agent_native_builder` / equal to
@@ -83,7 +83,7 @@ def seed_native_builder() -> dict:
     bundled_orch = _load_bundled_orchestration()
     bundled_agent_map = {a["id"]: a for a in bundled_agents}
 
-    existing_agents = load_user_agents()
+    existing_agents = await load_user_agents()
     agents_added: list[str] = []
     agents_updated: list[str] = []
     agents_removed: list[str] = []
@@ -107,9 +107,9 @@ def seed_native_builder() -> dict:
             new_agents.append(bundled)
             agents_added.append(aid)
     if agents_added or agents_updated or agents_removed:
-        save_user_agents(new_agents)
+        await save_user_agents(new_agents)
 
-    existing_orchs = load_orchestrations()
+    existing_orchs = await load_orchestrations()
     orch_status = "unchanged"
     new_orchs: list[dict] = []
     seen_orch = False
@@ -125,7 +125,7 @@ def seed_native_builder() -> dict:
         new_orchs.append(bundled_orch)
         orch_status = "added"
     if orch_status != "unchanged":
-        save_orchestrations(new_orchs)
+        await save_orchestrations(new_orchs)
 
     return {
         "agents_added": agents_added,

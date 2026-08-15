@@ -16,7 +16,7 @@ def _server():
 
 class TestApiKeyEdges:
     async def test_revoked_key_is_rejected(self, client, seed_agent):
-        seed_agent()
+        await seed_agent()
         import core.api_keys as ak
         raw, rec = ak.generate_api_key("to-revoke")
         keys = ak._load_keys()
@@ -28,13 +28,13 @@ class TestApiKeyEdges:
         assert resp.status_code == 401
 
     async def test_malformed_bearer_scheme(self, client, seed_agent):
-        seed_agent()
+        await seed_agent()
         resp = await client.post("/api/v1/chat", json={"message": "hi"},
                                  headers={"Authorization": "Token abc"})
         assert resp.status_code in (401, 403)
 
     async def test_wrong_prefix_key(self, client, seed_agent):
-        seed_agent()
+        await seed_agent()
         resp = await client.post("/api/v1/chat", json={"message": "hi"},
                                  headers={"Authorization": "Bearer totally-bogus"})
         assert resp.status_code == 401

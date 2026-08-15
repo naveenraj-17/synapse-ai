@@ -735,7 +735,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
     from core.routes.orchestrations import load_orchestrations, save_orchestrations
 
     if tool_name == "list_agents":
-        agents = load_user_agents()
+        agents = await load_user_agents()
         return [
             {
                 "id": a.get("id"),
@@ -750,14 +750,14 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         ]
 
     elif tool_name == "get_agent":
-        agents = load_user_agents()
+        agents = await load_user_agents()
         agent = next((a for a in agents if a["id"] == args["agent_id"]), None)
         if not agent:
             return {"error": f"Agent '{args['agent_id']}' not found"}
         return agent
 
     elif tool_name == "create_agent":
-        agents = load_user_agents()
+        agents = await load_user_agents()
         new_id = f"agent_{int(time.time() * 1000)}"
         agent = {
             "id": new_id,
@@ -776,14 +776,14 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             "delegate_agent_ids": args.get("delegate_agent_ids", []) or [],
         }
         agents.append(agent)
-        save_user_agents(agents)
+        await save_user_agents(agents)
         return {"status": "created", "agent": agent}
 
     elif tool_name == "create_agents":
         specs = args.get("agents") or []
         if not isinstance(specs, list) or not specs:
             return {"error": "agents must be a non-empty array of agent specs"}
-        agents = load_user_agents()
+        agents = await load_user_agents()
         existing_ids = {a.get("id") for a in agents}
         created = []
         errors = []
@@ -826,16 +826,16 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
                     "repos": agent["repos"],
                 })
         if created:
-            save_user_agents(agents)
+            await save_user_agents(agents)
         return {"status": "created", "agents": created, "errors": errors}
 
     elif tool_name == "update_agent":
-        agents = load_user_agents()
+        agents = await load_user_agents()
         idx = next((i for i, a in enumerate(agents) if a["id"] == args["agent_id"]), None)
         if idx is None:
             return {"error": f"Agent '{args['agent_id']}' not found"}
         agents[idx].update(args.get("fields", {}))
-        save_user_agents(agents)
+        await save_user_agents(agents)
         return {"status": "updated", "agent": agents[idx]}
 
     elif tool_name == "list_all_tools":
@@ -865,7 +865,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
                 from core.routes.agents import load_user_agents as _lau
                 _agents = _lau()
                 active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
-                custom_tools = load_custom_tools()
+                custom_tools = await load_custom_tools()
                 all_tools, _, _, _ = await aggregate_all_tools(
                     server_module.agent_sessions, active_agent, custom_tools
                 )
@@ -883,7 +883,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             from core.routes.agents import load_user_agents as _lau
             _agents = _lau()
             active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
-            custom_tools = load_custom_tools()
+            custom_tools = await load_custom_tools()
             all_tools, _, _, _ = await aggregate_all_tools(
                 server_module.agent_sessions, active_agent, custom_tools
             )
@@ -981,7 +981,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         ]
 
     elif tool_name == "list_orchestrations":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         return [
             {
                 "id": o.get("id"),
@@ -993,14 +993,14 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         ]
 
     elif tool_name == "get_orchestration":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch = next((o for o in orchs if o["id"] == args["orch_id"]), None)
         if not orch:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
         return orch
 
     elif tool_name == "create_orchestration":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch_id = _random_id("orch_")
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -1027,11 +1027,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             "updated_at": now,
         }
         orchs.append(orch)
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "created", "orchestration": orch}
 
     elif tool_name == "update_orchestration":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
@@ -1053,11 +1053,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         fields.pop("orch_id", None)
         orchs[idx].update(fields)
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "updated", "orchestration": orchs[idx]}
 
     elif tool_name == "create_orchestration_skeleton":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch_id = _random_id("orch_")
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _normalize_state_schema_arg(args)
@@ -1077,11 +1077,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             "updated_at": now,
         }
         orchs.append(orch)
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "created", "orchestration": orch}
 
     elif tool_name == "add_steps":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
@@ -1111,7 +1111,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             s["position_y"] = _zigzag_y(offset + i)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {
             "status": "appended",
             "added_step_ids": [s["id"] for s in filled],
@@ -1121,7 +1121,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
     elif tool_name == "add_single_step":
         # Flat-parameter tool: assemble a step dict from individual args,
         # then reuse the same pipeline as add_steps.
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch_id = args.get("orch_id")
         idx = next((i for i, o in enumerate(orchs) if o["id"] == orch_id), None)
         if idx is None:
@@ -1158,7 +1158,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         filled[0]["position_y"] = _zigzag_y(offset)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {
             "status": "step_added",
             "step_id": filled[0]["id"],
@@ -1167,7 +1167,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
 
     elif tool_name == "add_multiple_steps":
         # Batch version of add_single_step — takes a native array of step objects.
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch_id = args.get("orch_id")
         idx = next((i for i, o in enumerate(orchs) if o["id"] == orch_id), None)
         if idx is None:
@@ -1203,7 +1203,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             s["position_y"] = _zigzag_y(offset + i)
         orchs[idx]["steps"] = existing + filled
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {
             "status": "steps_added",
             "added_step_ids": [s["id"] for s in filled],
@@ -1211,7 +1211,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         }
 
     elif tool_name == "set_orchestration_meta":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
@@ -1229,11 +1229,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             return {"error": f"No allowed meta fields to set. Allowed: {sorted(allowed)}"}
         orchs[idx].update(fields)
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "meta_updated", "fields": list(fields.keys())}
 
     elif tool_name == "update_step":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
@@ -1250,11 +1250,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
         steps[sidx] = _fill_step_defaults([merged])[0]
         orchs[idx]["steps"] = steps
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "step_updated", "step": steps[sidx]}
 
     elif tool_name == "remove_step":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         idx = next((i for i, o in enumerate(orchs) if o["id"] == args["orch_id"]), None)
         if idx is None:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}
@@ -1266,11 +1266,11 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             return {"error": f"Step '{step_id}' not found in orchestration '{args['orch_id']}'"}
         orchs[idx]["steps"] = steps
         orchs[idx]["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        save_orchestrations(orchs)
+        await save_orchestrations(orchs)
         return {"status": "step_removed", "step_id": step_id, "remaining_steps": len(steps)}
 
     elif tool_name == "validate_orchestration":
-        orchs = load_orchestrations()
+        orchs = await load_orchestrations()
         orch = next((o for o in orchs if o["id"] == args["orch_id"]), None)
         if not orch:
             return {"error": f"Orchestration '{args['orch_id']}' not found"}

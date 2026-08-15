@@ -22,9 +22,6 @@ from core.session import (
 )
 from core.llm_providers import generate_response as llm_generate_response
 from core.tools import aggregate_all_tools, build_system_prompt, DEFAULT_TOOLS_BY_TYPE
-from core.routes.agents import load_user_agents, get_active_agent_data
-from core.routes.tools import load_custom_tools
-
 import anyio as _anyio
 import re as _re
 from datetime import timedelta
@@ -292,14 +289,23 @@ def parse_tool_call(llm_output: str) -> tuple[dict | None, str | None]:
 
 
 
-def _resolve_agent_by_id(agent_id):
-    """Load an agent dict by ID, falling back to the active agent."""
+async def _resolve_agent_by_id(agent_id):
+    """Load an agent dict by ID, falling back to the active agent.
+
+    Goes through the resource provider, which is the tenant-scoped path. There
+    is deliberately no second lookup when the provider returns nothing: a
+    fallback is how an authorization failure turns into another tenant's agent.
+    """
+    from core.scale.context import resolve_agent
+
     if agent_id:
-        agents = load_user_agents()
-        agent = next((a for a in agents if a["id"] == agent_id), None)
+        agent = await resolve_agent(agent_id)
         if agent:
             return agent
-    return get_active_agent_data()  # raises RuntimeError if no agents configured
+
+    from core.routes.agents import get_active_agent_data
+
+    return await get_active_agent_data()  # raises RuntimeError if none configured
 
 
 def _inject_db_context(agent_data, system_template):
@@ -395,7 +401,7 @@ def _inject_repo_context(agent_data, system_template):
         return system_template
 
 
-def _build_delegate_context(
+async def _build_delegate_context(
     active_agent: dict,
     all_tools: list,
     tool_schema_map: dict,
@@ -406,9 +412,10 @@ def _build_delegate_context(
 
     Returns a dict of agent_id -> agent_data for all eligible sub-agents.
     """
+    from core.routes.agents import load_user_agents
     from core.tools import VirtualTool
 
-    agents = load_user_agents()
+    agents = await load_user_agents()
     own_id = active_agent.get("id", "")
     delegate_agent_ids = active_agent.get("delegate_agent_ids") or []
 
@@ -649,7 +656,7 @@ async def run_agent_step(
     else:
         from core.scale.context import resolve_agent as _ctx_resolve_agent
         resolved = await _ctx_resolve_agent(agent_id) if agent_id else None
-        active_agent = resolved if resolved is not None else _resolve_agent_by_id(agent_id)
+        active_agent = resolved if resolved is not None else await _resolve_agent_by_id(agent_id)
     agent_id_for_session = active_agent.get("id", agent_id or "unknown")
 
     # Build system prompt with repo and DB context injection
@@ -696,7 +703,7 @@ async def run_agent_step(
     # ── DELEGATE AGENT: inject synthetic delegate_to_agent tool + agent context ──
     _delegate_agents_map: dict = {}  # agent_id -> agent dict (populated only for delegates)
     if agent_type == "delegate" and tools_override is None:
-        _delegate_agents_map = _build_delegate_context(
+        _delegate_agents_map = await _build_delegate_context(
             active_agent, all_tools, tool_schema_map, ollama_tools
         )
         # Rebuild tools_json after injection so system prompt includes the new tool
@@ -1461,7 +1468,7 @@ async def run_agent_step(
                         current_context_text += f"\nSystem: Error — {_ping_msg}\n"
                         try:
                             _mcp_srv_name = agent_name.removeprefix("ext_mcp_")
-                            server_module.mcp_manager._set_status(_mcp_srv_name, "disconnected")
+                            await server_module.mcp_manager._set_status(_mcp_srv_name, "disconnected")
                         except Exception:
                             pass
                         yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Error: session unresponsive"}
@@ -1490,7 +1497,7 @@ async def run_agent_step(
                         if "error" in parsed and parsed["error"] == "auth_required":
                             try:
                                 _mcp_srv_name = agent_name.removeprefix("ext_mcp_")
-                                server_module.mcp_manager._set_status(_mcp_srv_name, "reauth_needed")
+                                await server_module.mcp_manager._set_status(_mcp_srv_name, "reauth_needed")
                             except Exception:
                                 pass
                             yield {"type": "final", "response": "Authentication required.", "intent": "request_auth", "data": parsed, "tool_name": tool_name}
@@ -1576,7 +1583,7 @@ async def run_agent_step(
                     try:
                         if agent_name and agent_name.startswith("ext_mcp_"):
                             _mcp_srv_name = agent_name.removeprefix("ext_mcp_")
-                            server_module.mcp_manager._set_status(_mcp_srv_name, "disconnected")
+                            await server_module.mcp_manager._set_status(_mcp_srv_name, "disconnected")
                     except Exception:
                         pass
                     yield {"type": "tool_result", "tool_name": tool_name, "preview": f"Error: {error_msg}"}
@@ -1647,20 +1654,19 @@ async def run_react_loop(request, server_module):
     # Resolve active agent — Postgres first (worker mode), JSON fallback
     from core.scale.context import resolve_agent as _ctx_resolve_agent
     _resolved = await _ctx_resolve_agent(request.agent_id) if request.agent_id else None
-    active_agent = _resolved if _resolved is not None else _resolve_agent_by_id(request.agent_id)
+    active_agent = _resolved if _resolved is not None else await _resolve_agent_by_id(request.agent_id)
 
     # --- Orchestrator delegation ---
     if active_agent.get("type") == "orchestrator":
         orch_id = active_agent.get("orchestration_id")
         if orch_id:
             try:
-                from core.routes.orchestrations import load_orchestrations
                 from core.models_orchestration import Orchestration
                 from core.orchestration.engine import OrchestrationEngine
                 from core.orchestration.runner import stream_engine_events
+                from core.scale.context import resolve_orchestration
 
-                orchs = load_orchestrations()
-                orch_data = next((o for o in orchs if o["id"] == orch_id), None)
+                orch_data = await resolve_orchestration(orch_id)
                 if orch_data:
                     orch = Orchestration.model_validate(orch_data)
                     engine = OrchestrationEngine(orch, server_module)

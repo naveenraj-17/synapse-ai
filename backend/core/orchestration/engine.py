@@ -37,14 +37,19 @@ class OrchestrationEngine:
         self.cancel_hook = cancel_hook
         self.step_map: dict[str, StepConfig] = {s.id: s for s in orchestration.steps}
         self.executors = STEP_EXECUTORS
-        self.agent_names: dict[str, str] = self._load_agent_names()
+        # Populated by the run/resume entry points, not here: __init__ cannot
+        # await, and reading the store from a constructor would make every
+        # construction site — including thirteen in tests — need a live store
+        # just to build an engine. It is display attribution only, so an empty
+        # mapping until the run starts costs nothing.
+        self.agent_names: dict[str, str] = {}
         self.current_transition = None  # set by _execute_loop before each step
 
-    def _load_agent_names(self) -> dict[str, str]:
+    async def _load_agent_names(self) -> dict[str, str]:
         """Load agent_id -> name mapping for context attribution."""
         try:
             from core.routes.agents import load_user_agents
-            agents = load_user_agents()
+            agents = await load_user_agents()
             return {a["id"]: a["name"] for a in agents}
         except Exception:
             return {}
@@ -63,6 +68,10 @@ class OrchestrationEngine:
         context (e.g. current_orchestration_id, selected_agent_ids).
         """
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        # Agent display names, for step attribution in the event stream. Read
+        # here rather than in __init__, which cannot await.
+        self.agent_names = await self._load_agent_names()
 
         shared_state = self._init_state(initial_input)
         if initial_state:
@@ -381,15 +390,15 @@ class OrchestrationEngine:
             yield {"type": "orchestration_error", "error": f"Run is not recoverable (status={run.status})"}
             return
 
-        from core.routes.orchestrations import load_orchestrations
-        orchestrations = load_orchestrations()
-        orch_data = next((o for o in orchestrations if o["id"] == run.orchestration_id), None)
+        from core.scale.context import resolve_orchestration
+        orch_data = await resolve_orchestration(run.orchestration_id)
         if not orch_data:
             yield {"type": "orchestration_error", "error": f"Orchestration '{run.orchestration_id}' not found"}
             return
 
         orch = Orchestration.model_validate(orch_data)
         engine = cls(orch, server_module)
+        engine.agent_names = await engine._load_agent_names()
 
         engine.logger = OrchestrationLogger(
             run_id=run_id,
@@ -431,12 +440,10 @@ class OrchestrationEngine:
         print(f"[engine.resume] 📋 restored run: orch_id={run.orchestration_id} status={run.status} current_step_id={run.current_step_id} waiting_for_human={run.waiting_for_human} step_history_len={len(run.step_history)}", flush=True)
 
         # Load the orchestration definition
-        from core.routes.orchestrations import load_orchestrations
-        orchestrations = load_orchestrations()
-        print(f"[engine.resume] 📦 loaded {len(orchestrations)} orchestrations from disk, looking for id={run.orchestration_id}", flush=True)
-        orch_data = next((o for o in orchestrations if o["id"] == run.orchestration_id), None)
+        from core.scale.context import resolve_orchestration
+        orch_data = await resolve_orchestration(run.orchestration_id)
         if not orch_data:
-            print(f"[engine.resume] ❌ orchestration '{run.orchestration_id}' NOT FOUND on disk — available ids: {[o.get('id') for o in orchestrations]}", flush=True)
+            print(f"[engine.resume] ❌ orchestration '{run.orchestration_id}' NOT FOUND in the store", flush=True)
             yield {"type": "orchestration_error", "error": f"Orchestration '{run.orchestration_id}' not found"}
             return
 
@@ -485,6 +492,7 @@ class OrchestrationEngine:
             print(f"[engine.resume] ⚠️  current_step not found in step_map — current_step_id stays as {run.current_step_id!r}, loop will likely fail immediately", flush=True)
 
         print(f"[engine.resume] 🚀 entering _execute_loop with current_step_id={run.current_step_id!r} status={run.status}", flush=True)
+        engine.agent_names = await engine._load_agent_names()
         state = SharedState(run)
         # Persist "running" + the cleared human flag before the first step, so
         # the run stops showing as "needs input" the moment it resumes.
@@ -552,10 +560,9 @@ class OrchestrationEngine:
 
         # Fallback: extract result from orchestration_complete if no "final" event was emitted
         if final_response is None:
-            from core.routes.orchestrations import load_orchestrations
             from core.models_orchestration import Orchestration
-            orchs = load_orchestrations()
-            sub_orch_data = next((o for o in orchs if o["id"] == nested_orch_id), None)
+            from core.scale.context import resolve_orchestration
+            sub_orch_data = await resolve_orchestration(nested_orch_id)
             if sub_orch_data:
                 sub_orch = Orchestration.model_validate(sub_orch_data)
                 for ev in reversed(sub_events):

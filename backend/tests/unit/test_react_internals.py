@@ -53,7 +53,7 @@ class TestToolCacheHit:
 
 class TestOrchestrationContextChain:
     async def test_agent_step_reads_prior_output(self, fake_llm, seed_agent):
-        agent = seed_agent(id="chain_agent", tools=[], skip_default_tools=True)
+        agent = await seed_agent(id="chain_agent", tools=[], skip_default_tools=True)
         fake_llm.set_default("used the context")
         orch = S.make_orchestration(
             entry_step_id="p1",

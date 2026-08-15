@@ -86,8 +86,8 @@ class TestToolsDeep:
 
 class TestImportExportDeep:
     async def test_export_with_orchestration_and_import(self, client, seed_agent, seed_orchestration):
-        a = seed_agent(id="ie_agent")
-        o = seed_orchestration(id="ie_orch")
+        a = await seed_agent(id="ie_agent")
+        o = await seed_orchestration(id="ie_orch")
         exported = await client.post("/api/export",
                                      json={"agent_ids": [a["id"]], "orchestration_ids": [o["id"]]})
         assert exported.status_code == 200

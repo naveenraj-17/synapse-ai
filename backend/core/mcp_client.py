@@ -213,31 +213,33 @@ class MCPClientManager:
     def __init__(self, exit_stack: AsyncExitStack):
         self.exit_stack = exit_stack
         self.sessions: Dict[str, ClientSession] = {}
-        self.servers_config: List[Dict[str, Any]] = self._load_servers()
+        # Populated by `load()`, not here: __init__ cannot await, and the
+        # registrations live in the store now. The one construction site awaits
+        # connect_all() on the next line, which loads first.
+        self.servers_config: List[Dict[str, Any]] = []
 
     # ── Persistence ────────────────────────────────────────────────────────────
 
-    def _load_servers(self) -> List[Dict[str, Any]]:
-        if not os.path.exists(MCP_SERVERS_FILE):
-            return []
+    async def load(self) -> List[Dict[str, Any]]:
+        """Read this tenant's MCP server registrations into memory."""
+        from core.store.resources import load_mcp_servers
         try:
-            with open(MCP_SERVERS_FILE, encoding="utf-8") as f:
-                return json.load(f)
+            self.servers_config = await load_mcp_servers()
         except Exception as e:
             print(f"Error loading MCP servers config: {e}")
-            return []
+            self.servers_config = []
+        return self.servers_config
 
-    def save_servers(self):
-        os.makedirs(os.path.dirname(MCP_SERVERS_FILE), exist_ok=True)
-        with open(MCP_SERVERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.servers_config, f, indent=4)
+    async def save_servers(self):
+        from core.store.resources import replace_mcp_servers
+        await replace_mcp_servers(self.servers_config)
 
-    def _set_status(self, name: str, status: str):
+    async def _set_status(self, name: str, status: str):
         for s in self.servers_config:
             if s["name"] == name:
                 s["status"] = status
                 break
-        self.save_servers()
+        await self.save_servers()
 
     async def _auto_register(self, name: str):
         """Register a newly connected session into the global agent_sessions and tool_router.
@@ -280,13 +282,13 @@ class MCPClientManager:
         if not stdio_mcp_allowed():
             print(f"[MCP] Refusing to spawn stdio server '{name}': "
                   f"stdio MCP servers are disabled on this deployment.")
-            self._set_status(name, "disconnected")
+            await self._set_status(name, "disconnected")
             return None
         try:
             check_stdio_command_allowed(command)
         except ValueError as e:
             print(f"[MCP] Refusing to spawn stdio server '{name}': {e}")
-            self._set_status(name, "disconnected")
+            await self._set_status(name, "disconnected")
             return None
 
         env = os.environ.copy()
@@ -394,12 +396,12 @@ class MCPClientManager:
             )
             await session.initialize()
             self.sessions[name] = session
-            self._set_status(name, "connected")
+            await self._set_status(name, "connected")
             await self._auto_register(name)    # ← register tools into agent_sessions
             print(f"OAuth complete — connected to '{name}'.")
         except Exception as e:
             print(f"OAuth connection failed for '{name}': {e}")
-            self._set_status(name, "disconnected")
+            await self._set_status(name, "disconnected")
             if not auth_url_future.done():
                 auth_url_future.set_exception(e)
 
@@ -483,6 +485,8 @@ class MCPClientManager:
     # ── connect_all (startup) ──────────────────────────────────────────────────
 
     async def connect_all(self):
+        await self.load()
+
         for config in self.servers_config:
             name = config.get("name")
             if not name or name in self.sessions:
@@ -495,7 +499,7 @@ class MCPClientManager:
                 # execute on every boot. See GHSA-3j67-x3j8-r32x.
                 if not stdio_mcp_allowed():
                     print(f"[MCP] Skipping stdio server '{name}': stdio MCP disabled on this deployment.")
-                    self._set_status(name, "disabled")
+                    await self._set_status(name, "disabled")
                     continue
                 session = await self.connect_stdio_server(config)
             elif config.get("token"):
@@ -504,15 +508,15 @@ class MCPClientManager:
                 session = await self._connect_remote_cached(config)
 
             if session:
-                self._set_status(name, "connected")
+                await self._set_status(name, "connected")
                 await self._auto_register(name)   # ← register on startup
             else:
                 # Remote servers without a bearer token use OAuth — failure likely means re-auth needed.
                 # Stdio and bearer-token servers just go disconnected.
                 if server_type == "remote" and not config.get("token"):
-                    self._set_status(name, "reauth_needed")
+                    await self._set_status(name, "reauth_needed")
                 else:
-                    self._set_status(name, "disconnected")
+                    await self._set_status(name, "disconnected")
         return self.sessions
 
     # ── add_server ─────────────────────────────────────────────────────────────
@@ -554,12 +558,12 @@ class MCPClientManager:
 
         # Always save first
         self.servers_config.append(new_config)
-        self.save_servers()
+        await self.save_servers()
 
         if server_type == "stdio":
             session = await self.connect_stdio_server(new_config)
             if session:
-                self._set_status(name, "connected")
+                await self._set_status(name, "connected")
                 new_config["status"] = "connected"
                 await self._auto_register(name)
             return {"config": new_config, "connected": bool(session), "status": new_config["status"]}
@@ -568,7 +572,7 @@ class MCPClientManager:
         if token:
             session = await self.connect_remote_server(new_config)
             if session:
-                self._set_status(name, "connected")
+                await self._set_status(name, "connected")
                 new_config["status"] = "connected"
                 await self._auto_register(name)
             return {"config": new_config, "connected": bool(session), "status": new_config["status"]}
@@ -604,7 +608,7 @@ class MCPClientManager:
             session = await self._connect_remote_cached(config)
 
         if session:
-            self._set_status(name, "connected")
+            await self._set_status(name, "connected")
             await self._auto_register(name)   # ← register on manual retry
             return True
         return False
@@ -613,7 +617,7 @@ class MCPClientManager:
 
     async def remove_server(self, name: str) -> bool:
         self.servers_config = [s for s in self.servers_config if s["name"] != name]
-        self.save_servers()
+        await self.save_servers()
         self.sessions.pop(name, None)
         FileTokenStorage(name).delete_all()
         return True

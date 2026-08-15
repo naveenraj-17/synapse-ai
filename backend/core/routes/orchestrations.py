@@ -10,8 +10,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from core.models_orchestration import Orchestration
-from core.config import DATA_DIR
-from core.json_store import JsonStore
 from core.react_engine import drain_queue_with_heartbeat
 # Registry of active run tasks (for mid-step cancellation), owned by the runner
 # so non-route callers can register runs too.
@@ -19,22 +17,27 @@ from core.orchestration.runner import SENTINEL, _active_tasks, spawn_engine_run
 
 router = APIRouter()
 
-_orch_store = JsonStore(os.path.join(DATA_DIR, "orchestrations.json"), cache_ttl=2.0)
+async def load_orchestrations() -> list[dict]:
+    from core.store.resources import load_orchestrations as _load
+    return await _load()
 
 
-def load_orchestrations() -> list[dict]:
-    return _orch_store.load()
+async def save_orchestrations(data: list[dict]):
+    """Replace this tenant's orchestrations with `data`.
 
-
-def save_orchestrations(data: list[dict]):
-    _orch_store.save(data)
+    Bulk replace, for import and seeding. CRUD routes use save_orchestration /
+    delete_orchestration instead: read-list, mutate, write-list loses a
+    concurrent edit, and passing an empty list here deletes everything.
+    """
+    from core.store.resources import replace_orchestrations
+    await replace_orchestrations(data)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────
 
 @router.get("/api/orchestrations")
 async def list_orchestrations():
-    return load_orchestrations()
+    return await load_orchestrations()
 
 
 @router.get("/api/orchestrations/runs")
@@ -46,7 +49,7 @@ async def list_runs(limit: int = 20):
     would only produce rows that do nothing when clicked.
     """
     from core.orchestration.state import SharedState
-    known_ids = {o["id"] for o in load_orchestrations() if o.get("id")}
+    known_ids = {o["id"] for o in await load_orchestrations() if o.get("id")}
     return await SharedState.list_runs(limit=max(1, min(limit, 200)), orchestration_ids=known_ids)
 
 
@@ -223,8 +226,8 @@ async def stream_run_events_sse(run_id: str, request: Request, after: int = 0):
 
 @router.get("/api/orchestrations/{orch_id}")
 async def get_orchestration(orch_id: str):
-    orchs = load_orchestrations()
-    orch = next((o for o in orchs if o["id"] == orch_id), None)
+    from core.store.resources import get_orchestration as _get
+    orch = await _get(orch_id)
     if not orch:
         raise HTTPException(status_code=404, detail="Orchestration not found")
     return orch
@@ -278,31 +281,25 @@ async def estimate_orchestration_cost(orch_id: str, sample_size: int = 5):
 
 @router.post("/api/orchestrations")
 async def create_or_update_orchestration(orch: Orchestration):
-    orchs = load_orchestrations()
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # A single upsert rather than read-list / mutate / write-list, which loses
+    # whichever of two concurrent edits finishes first.
+    from core.store.resources import get_orchestration as _get
+    from core.store.resources import save_orchestration
 
-    for i, o in enumerate(orchs):
-        if o["id"] == orch.id:
-            data = orch.model_dump()
-            data["updated_at"] = now
-            data["created_at"] = o.get("created_at", now)
-            orchs[i] = data
-            save_orchestrations(orchs)
-            return data
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    existing = await _get(orch.id)
 
     data = orch.model_dump()
-    data["created_at"] = now
     data["updated_at"] = now
-    orchs.append(data)
-    save_orchestrations(orchs)
+    data["created_at"] = (existing or {}).get("created_at", now)
+    await save_orchestration(data)
     return data
 
 
 @router.delete("/api/orchestrations/{orch_id}")
 async def delete_orchestration(orch_id: str):
-    orchs = load_orchestrations()
-    orchs = [o for o in orchs if o["id"] != orch_id]
-    save_orchestrations(orchs)
+    from core.store.resources import delete_orchestration as _delete
+    await _delete(orch_id)
     return {"status": "success"}
 
 
@@ -315,8 +312,8 @@ async def run_orchestration(orch_id: str, request: Request):
     The engine runs in a background task so that it continues executing
     (and logging) even if the SSE client disconnects or is slow to read.
     """
-    orchs = load_orchestrations()
-    orch_data = next((o for o in orchs if o["id"] == orch_id), None)
+    from core.scale.context import resolve_orchestration
+    orch_data = await resolve_orchestration(orch_id)
     if not orch_data:
         raise HTTPException(status_code=404, detail="Orchestration not found")
 
@@ -578,14 +575,14 @@ async def delete_orchestration_log(run_id: str):
 @router.post("/api/orchestrations/{orch_id}/deploy")
 async def deploy_as_agent(orch_id: str):
     """Create an orchestrator-type agent from this orchestration."""
-    orchs = load_orchestrations()
-    orch_data = next((o for o in orchs if o["id"] == orch_id), None)
+    from core.store.resources import get_orchestration as _get
+    orch_data = await _get(orch_id)
     if not orch_data:
         raise HTTPException(status_code=404, detail="Orchestration not found")
 
-    from core.routes.agents import load_user_agents, save_user_agents
+    from core.routes.agents import load_user_agents
 
-    agents = load_user_agents()
+    agents = await load_user_agents()
 
     # Check if already deployed
     existing = next((a for a in agents if a.get("orchestration_id") == orch_id), None)
@@ -605,7 +602,7 @@ async def deploy_as_agent(orch_id: str):
         "orchestration_id": orch_id,
     }
 
-    agents.append(agent)
-    save_user_agents(agents)
+    from core.store.resources import save_agent
+    await save_agent(agent)
 
     return {"status": "deployed", "agent_id": agent_id, "agent": agent}

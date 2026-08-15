@@ -109,7 +109,7 @@ class TestReconstruction:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        orch = seed_orchestration(name="Paused Orch")
+        orch = await seed_orchestration(name="Paused Orch")
         run = OrchestrationRun(run_id="run_p", orchestration_id=orch["id"], status="paused",
                               waiting_for_human=True, human_prompt="Pick one")
         await state_mod.SharedState(run).checkpoint()
@@ -145,7 +145,7 @@ class TestReconstruction:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        orch = seed_orchestration(name="Twice Paused")
+        orch = await seed_orchestration(name="Twice Paused")
         first = hub.publish("human_input", "first ask", run_id="run_2p")
         hub._resolve_human_input("run_2p")
         run = OrchestrationRun(run_id="run_2p", orchestration_id=orch["id"], status="paused",

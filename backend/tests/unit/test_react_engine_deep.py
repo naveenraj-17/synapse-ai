@@ -171,10 +171,10 @@ class TestToolLoopVariants:
 
 class TestDelegateContext:
     async def test_delegate_agent_builds_roster(self, fake_llm, seed_agent):
-        target = seed_agent(id="worker", name="Worker", description="does work")
+        target = await seed_agent(id="worker", name="Worker", description="does work")
         delegate = S.make_agent(id="lead", name="Lead", type="delegate",
                                  delegate_agent_ids=[target["id"]], tools=["all"])
-        S.seed_agents([target, delegate])
+        await S.seed_agents([target, delegate])
         # No tools_override -> the real delegate-context injection path runs.
         from core.react_engine import run_agent_step
         fake_llm.script(["All delegated, done."])

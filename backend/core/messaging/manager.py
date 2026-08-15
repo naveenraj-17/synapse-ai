@@ -159,7 +159,7 @@ class MessagingManager:
         """Return all configured agents from the agent store."""
         try:
             from core.routes.agents import load_user_agents
-            return load_user_agents()
+            return await load_user_agents()
         except Exception:
             return []
 

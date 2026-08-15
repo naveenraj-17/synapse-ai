@@ -50,21 +50,17 @@ from _fakes import fake_redis_stream as _frs  # noqa: E402
 # ── per-test data isolation (autouse) ────────────────────────────────────────
 @pytest.fixture(autouse=True)
 def _isolate_data():
-    """Reset the file-backed stores before each test.
+    """Reset what is still file-backed, and the process-global active agent.
 
-    All tests share a single sandbox DATA_DIR, so seeded agents / orchestrations
-    / API keys would otherwise leak across tests. Clearing them (and their
-    JsonStore caches, which ``save`` updates in place) gives each test a blank
-    slate while keeping the fast single-process setup.
+    The four resource collections no longer need clearing: they live in the
+    store, and `_isolate_store` below gives every test a fresh empty database.
+    What is left here is the file-backed remainder, plus `active_agent_id`,
+    which is a module global rather than stored state.
     """
     import core.routes.agents as agents_mod
-    import core.routes.orchestrations as orch_mod
-    agents_mod.save_user_agents([])
     agents_mod.active_agent_id = None
-    orch_mod.save_orchestrations([])
     for reset in (
         lambda: __import__("core.api_keys", fromlist=["_save_keys"])._save_keys([]),
-        lambda: __import__("core.routes.tools", fromlist=["save_custom_tools"]).save_custom_tools([]),
         lambda: __import__("core.routes.repos", fromlist=["save_repos"]).save_repos([]),
         lambda: __import__("core.routes.db_configs", fromlist=["save_db_configs"]).save_db_configs([]),
     ):
@@ -196,19 +192,23 @@ async def client(test_app):
 # ── seed fixtures ────────────────────────────────────────────────────────────
 @pytest.fixture
 def seed_agent():
-    """Seed one agent (default) or accept overrides via the returned factory."""
-    def _make(**overrides):
+    """Seed one agent (default) or accept overrides via the returned factory.
+
+    The factory is async because the store is: `agent = await seed_agent(...)`.
+    Every test taking this fixture is already an `async def`.
+    """
+    async def _make(**overrides):
         agent = _seed.make_agent(**overrides)
-        _seed.seed_agents([agent])
+        await _seed.seed_agents([agent])
         return agent
     return _make
 
 
 @pytest.fixture
 def seed_orchestration():
-    def _make(**overrides):
+    async def _make(**overrides):
         orch = _seed.make_orchestration(**overrides)
-        _seed.seed_orchestrations([orch])
+        await _seed.seed_orchestrations([orch])
         return orch
     return _make
 

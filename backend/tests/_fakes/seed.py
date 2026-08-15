@@ -73,15 +73,15 @@ def make_orchestration(**overrides: Any) -> dict:
 
 
 # ── persistence ──────────────────────────────────────────────────────────────
-def seed_agents(agents: list[dict]) -> list[dict]:
+async def seed_agents(agents: list[dict]) -> list[dict]:
     from core.routes.agents import save_user_agents
-    save_user_agents(agents)
+    await save_user_agents(agents)
     return agents
 
 
-def seed_orchestrations(orchs: list[dict]) -> list[dict]:
+async def seed_orchestrations(orchs: list[dict]) -> list[dict]:
     from core.routes.orchestrations import save_orchestrations
-    save_orchestrations(orchs)
+    await save_orchestrations(orchs)
     return orchs
 
 
