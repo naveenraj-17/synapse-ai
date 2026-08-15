@@ -15,6 +15,7 @@ before it reaches the SSE queue. A journal/broker/observer failure must never
 kill a run -- all three are best-effort.
 """
 import asyncio
+import inspect
 from typing import AsyncGenerator
 
 from core.orchestration.journal import broker, close_journal, get_journal
@@ -33,8 +34,14 @@ SENTINEL = object()
 event_observers: list = []
 
 
-def _observe(run_id: str, event: dict):
-    """Journal + broadcast + notify for one event. Never raises."""
+async def _observe(run_id: str, event: dict):
+    """Journal + broadcast + notify for one event. Never raises.
+
+    Async because an observer may need to read run state, which now lives in
+    the store rather than on local disk. Observers are awaited in turn rather
+    than gathered: they are cheap, and ordering keeps a notification's cause
+    ahead of its resolution.
+    """
     entry_id = 0
     try:
         entry_id = get_journal(run_id).append(event)
@@ -46,7 +53,9 @@ def _observe(run_id: str, event: dict):
         pass
     for observer in event_observers:
         try:
-            observer(run_id, event)
+            result = observer(run_id, event)
+            if inspect.isawaitable(result):
+                await result
         except Exception:
             pass
 
@@ -64,7 +73,7 @@ def spawn_engine_run(agen, run_id: str) -> tuple[asyncio.Task, asyncio.Queue]:
         last_type = None
         try:
             async for event in agen:
-                _observe(run_id, event)
+                await _observe(run_id, event)
                 last_type = event.get("type")
                 await queue.put(event)
                 # Yield so the SSE consumer can dequeue and flush this event
@@ -72,24 +81,24 @@ def spawn_engine_run(agen, run_id: str) -> tuple[asyncio.Task, asyncio.Queue]:
                 await asyncio.sleep(0)
         except asyncio.CancelledError:
             event = {"type": "orchestration_error", "error": "Cancelled"}
-            _observe(run_id, event)
+            await _observe(run_id, event)
             last_type = event["type"]
             await queue.put(event)
         except FileNotFoundError:
             event = {"type": "orchestration_error", "error": "Run not found"}
-            _observe(run_id, event)
+            await _observe(run_id, event)
             last_type = event["type"]
             await queue.put(event)
         except Exception as e:
             event = {"type": "orchestration_error", "error": str(e)}
-            _observe(run_id, event)
+            await _observe(run_id, event)
             last_type = event["type"]
             await queue.put(event)
         finally:
             # Journal/broker-only terminator (never sent on the POST SSE):
             # tells tailing GET clients whether to stay open for a resume pump
             # (paused on human input) or close (terminal).
-            _observe(run_id, {
+            await _observe(run_id, {
                 "type": "run_stream_end",
                 "paused": last_type == "human_input_required",
             })

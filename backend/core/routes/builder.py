@@ -319,7 +319,7 @@ async def run_builder_resume_stream(
 
     async def _event_source():
         yield {"type": "thinking", "message": "Resuming..."}
-        restored = SS.restore(run_id)
+        restored = await SS.restore(run_id)
         run = restored.run
 
         orchestrations = load_orchestrations()

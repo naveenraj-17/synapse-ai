@@ -2,7 +2,6 @@
 WorkerEngineAdapter — wraps OrchestrationEngine.run() for use inside an ARQ job.
 
 Differences from the in-process (V1) execution path:
-  - Uses SharedStatePG (Postgres) instead of SharedState (JSON files)
   - Publishes every SSE event to a Redis Stream via RunEventPublisher
   - Polls Redis for distributed cancellation signal at each step boundary
   - Handles HUMAN step pause/resume via Redis keys + ARQ re-enqueue
@@ -12,7 +11,6 @@ from typing import AsyncGenerator
 from core.models_orchestration import Orchestration, OrchestrationRun
 from core.orchestration.engine import OrchestrationEngine
 from core.scale.pubsub import RunEventPublisher, is_cancelled, clear_cancellation
-from core.scale.state_pg import SharedStatePG
 
 
 class WorkerEngineAdapter:
@@ -82,16 +80,19 @@ class WorkerEngineAdapter:
     ) -> str:
         """Resume a paused run after human input.
 
-        Uses self._orch (loaded from Postgres by the worker) instead of the
-        OrchestrationEngine.resume() classmethod, which loads from local disk
-        files that don't exist in distributed worker deployments.
+        Uses self._orch (loaded from the store by the worker) instead of the
+        OrchestrationEngine.resume() classmethod, which also reloads the
+        orchestration definition and would go looking for one this process may
+        not have.
         """
         from core.orchestration.state import SharedState
         from core.orchestration.logger import OrchestrationLogger
 
-        # Restore in-progress run state from the JSON checkpoint written during the initial run.
+        # Restore in-progress run state. This reads the store, so the process
+        # resuming need not be the one that paused — which is what lets a
+        # single shared fleet drain one queue.
         print(f"[adapter.resume] ▶ restoring JSON checkpoint run_id={self._run_id}", flush=True)
-        restored = SharedState.restore(self._run_id)
+        restored = await SharedState.restore(self._run_id)
         run = restored.run
         print(f"[adapter.resume] 📋 restored: status={run.status} current_step_id={run.current_step_id!r} waiting_for_human={run.waiting_for_human} step_history_len={len(run.step_history)}", flush=True)
 

@@ -100,7 +100,7 @@ class NotificationHub:
         self._server_module = server_module
 
     # ── engine event observer (runner pump) ──────────────────────────────
-    def observe_run_event(self, run_id: str, event: dict):
+    async def observe_run_event(self, run_id: str, event: dict):
         etype = event.get("type", "")
         if etype == "orchestration_start":
             self._orch_names[run_id] = (
@@ -114,7 +114,7 @@ class NotificationHub:
             self._terminal_notified.discard(run_id)
             self._resolve_human_input(run_id)
         elif etype == "human_input_required":
-            name = self._orch_name(run_id)
+            name = await self._orch_name(run_id)
             self.publish(
                 "human_input", f"{name} needs your input",
                 body=str(event.get("prompt") or ""),
@@ -126,7 +126,7 @@ class NotificationHub:
             if run_id in self._terminal_notified:
                 return
             self._terminal_notified.add(run_id)
-            name = self._orch_name(run_id)
+            name = await self._orch_name(run_id)
             status = event.get("status", "completed")
             if status == "completed":
                 self.publish("run_completed", f"{name} completed", run_id=run_id)
@@ -137,7 +137,7 @@ class NotificationHub:
             if run_id in self._terminal_notified:
                 return
             self._terminal_notified.add(run_id)
-            name = self._orch_name(run_id)
+            name = await self._orch_name(run_id)
             self.publish("run_failed", f"{name} failed",
                          body=str(event.get("error") or ""), run_id=run_id)
         elif etype == "run_stream_end" and not event.get("paused"):
@@ -161,7 +161,7 @@ class NotificationHub:
             for item in updated:
                 queue.put_nowait(item)
 
-    def _orch_name(self, run_id: str) -> str:
+    async def _orch_name(self, run_id: str) -> str:
         """Cached name, with a checkpoint fallback for resumed runs (which
         emit no orchestration_start)."""
         name = self._orch_names.get(run_id)
@@ -170,7 +170,7 @@ class NotificationHub:
         try:
             from core.orchestration.state import SharedState
             from core.routes.orchestrations import load_orchestrations
-            orch_id = SharedState.restore(run_id).run.orchestration_id
+            orch_id = (await SharedState.restore(run_id)).run.orchestration_id
             orch = next((o for o in load_orchestrations() if o["id"] == orch_id), None)
             name = (orch or {}).get("name") or orch_id
         except Exception:
@@ -179,7 +179,7 @@ class NotificationHub:
         return name
 
     # ── startup: reconstruct missed human-input notifications ────────────
-    def reconstruct_missed(self, limit: int = 100):
+    async def reconstruct_missed(self, limit: int = 100):
         """Re-publish 'needs your input' for runs still paused on a human step
         (the server may have restarted since the pause fired)."""
         try:
@@ -191,12 +191,12 @@ class NotificationHub:
                 if i["kind"] == "human_input" and not i.get("resolved")
             }
             paused_waiting: set[str] = set()
-            for summary in SharedState.list_runs(limit=limit):
+            for summary in await SharedState.list_runs(limit=limit):
                 if summary.get("status") != "paused":
                     continue
                 run_id = summary.get("run_id") or ""
                 try:
-                    run = SharedState.restore(run_id).run
+                    run = (await SharedState.restore(run_id)).run
                 except Exception:
                     continue
                 if not run.waiting_for_human:
@@ -205,7 +205,7 @@ class NotificationHub:
                 if run_id not in notified_runs:
                     self.publish(
                         "human_input",
-                        f"{self._orch_name(run_id)} needs your input",
+                        f"{await self._orch_name(run_id)} needs your input",
                         body=str(run.human_prompt or ""),
                         run_id=run_id,
                     )

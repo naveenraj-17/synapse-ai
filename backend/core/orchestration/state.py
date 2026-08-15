@@ -1,30 +1,82 @@
 """
-Shared state management and JSON checkpointing for orchestration runs.
+Shared state and checkpointing for orchestration runs.
+
+A run's `shared_state` and `step_history` *are* the run: resuming a paused one
+means reading them back. Where they live therefore decides which process can
+resume a run.
+
+They used to live in `backend/logs/orchestration_runs/{run_id}.json`, on the
+local disk of whichever process happened to be executing. That made every run
+node-local:
+
+  * a resume job dispatched by ARQ to a different worker than the one that
+    paused hit FileNotFoundError, because the queue has no affinity;
+  * `list_runs()` globbed a directory, so in a shared process every tenant saw
+    every other tenant's runs;
+  * `SharedStatePG` existed to fix this, was imported by
+    `worker_engine_adapter.py`, and was never once instantiated — its module
+    docstring claimed to be a drop-in replacement for a class the engine had no
+    way to inject.
+
+Now `SharedState` delegates to a `StateBackend`. The default keeps run state in
+the store alongside everything else, so any worker can resume any run. An
+embedder can supply its own.
+
+Checkpointing is async because it is I/O on the event loop of a process running
+other tenants' jobs; the old blocking `open()`/`write()` stalled all of them.
 """
-# Annotations are evaluated lazily: SharedState defines a `set` method, which
-# would otherwise shadow the builtin in annotations like `set[str]`.
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-from pathlib import Path
+from typing import Protocol
 
 from core.models_orchestration import OrchestrationRun
+from core.tenancy import get_tenant
 
-RUNS_DIR = Path(__file__).parent.parent.parent / "logs" / "orchestration_runs"
-
-# In-memory signal: run IDs that have been cancelled by the cancel endpoint.
-# The engine checks this at the start of each step and exits cleanly.
+# In-memory signal: run IDs cancelled by the cancel endpoint. The engine checks
+# this at the start of each step and exits cleanly.
+#
+# Deliberately still process-local: it is a fast path for the single-process
+# case. Distributed cancellation goes through Redis — see core/scale/pubsub.py
+# `publish_cancellation` and the engine's `cancel_hook` — because a cancel
+# arriving at one API server must reach a run executing on a different worker.
 _cancelled_run_ids: set[str] = set()
 
 
-def _ensure_runs_dir():
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+class StateBackend(Protocol):
+    """Where run state is durably kept."""
+
+    async def save(self, run: OrchestrationRun) -> None: ...
+
+    async def load(self, run_id: str) -> OrchestrationRun | None: ...
+
+    async def list_runs(
+        self, limit: int = 20, orchestration_ids: set[str] | None = None
+    ) -> list[dict]: ...
+
+
+_backend: StateBackend | None = None
+
+
+def set_state_backend(backend: StateBackend | None) -> None:
+    """Install a state backend. None restores the store-backed default."""
+    global _backend
+    _backend = backend
+
+
+def get_state_backend() -> StateBackend:
+    global _backend
+    if _backend is None:
+        from core.orchestration.state_store import StoreStateBackend
+        _backend = StoreStateBackend()
+    return _backend
 
 
 class SharedState:
-    """Thread-safe shared state for an orchestration run with JSON checkpointing."""
+    """A run's mutable state, with durable checkpoints.
+
+    `get`/`set`/`update` are in-memory and synchronous — they are called from
+    tight loops in the step executors. `checkpoint()` is the durable write.
+    """
 
     def __init__(self, run: OrchestrationRun):
         self.run = run
@@ -38,78 +90,45 @@ class SharedState:
     def update(self, data: dict):
         self.run.shared_state.update(data)
 
-    def checkpoint(self):
-        """Persist full run state to disk atomically."""
-        _ensure_runs_dir()
-        target = RUNS_DIR / f"{self.run.run_id}.json"
-        # Atomic write: write to temp, then rename
-        fd, tmp_path = tempfile.mkstemp(dir=RUNS_DIR, suffix=".tmp")
-        try:
-            # encoding="utf-8" is required: model_dump_json emits raw non-ASCII
-            # characters, and without an explicit encoding os.fdopen uses the
-            # platform default (cp1252 on Windows), which raises
-            # UnicodeEncodeError when a run's state contains non-ASCII text.
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(self.run.model_dump_json(indent=2))
-            os.replace(tmp_path, target)
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            raise
+    async def checkpoint(self) -> None:
+        """Persist the full run state.
+
+        Async because this runs on an event loop shared with other tenants'
+        jobs. The previous synchronous write blocked every one of them for the
+        duration of a `json.dumps` plus a disk write, on every step boundary.
+        """
+        await get_state_backend().save(self.run)
 
     @classmethod
-    def restore(cls, run_id: str) -> "SharedState":
-        """Restore run state from a checkpoint file."""
-        path = RUNS_DIR / f"{run_id}.json"
-        if not path.exists():
+    async def restore(cls, run_id: str) -> "SharedState":
+        """Load a checkpointed run.
+
+        Raises FileNotFoundError when the run is unknown — kept as the
+        exception type because callers already handle it, and because the
+        meaning ("no checkpoint for this run") did not change when the storage
+        did.
+        """
+        run = await get_state_backend().load(run_id)
+        if run is None:
             raise FileNotFoundError(f"No checkpoint found for run {run_id}")
-        data = json.loads(path.read_text(encoding="utf-8"))
-        run = OrchestrationRun.model_validate(data)
         return cls(run)
 
     @classmethod
-    def list_runs(cls, limit: int = 20, orchestration_ids: set[str] | None = None) -> list[dict]:
-        """List recent run checkpoints, newest first.
-
-        Skips runs that can never be opened in the UI: builder sessions
-        (``builder_*``) and nested sub-orchestration runs (``{parent}__{step}_dN``),
-        which are implementation details of a parent run.
+    async def list_runs(
+        cls, limit: int = 20, orchestration_ids: set[str] | None = None
+    ) -> list[dict]:
+        """Recent runs for the current tenant, newest first.
 
         `orchestration_ids`, when given, restricts results to runs whose
-        orchestration still exists. The limit is applied *after* filtering — a
+        orchestration still exists. The limit applies *after* filtering — a
         backlog of runs from deleted orchestrations must not crowd live runs
         out of the window.
         """
-        _ensure_runs_dir()
-        runs = []
-        for f in sorted(RUNS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-            if len(runs) >= limit:
-                break
-            # The filename is "{run_id}.json", so structural runs are skipped
-            # without opening the file.
-            if f.stem.startswith("builder_") or "__" in f.stem:
-                continue
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                if orchestration_ids is not None and data.get("orchestration_id") not in orchestration_ids:
-                    continue
-                history = data.get("step_history") or []
-                runs.append({
-                    "run_id": data.get("run_id"),
-                    "orchestration_id": data.get("orchestration_id"),
-                    "status": data.get("status"),
-                    "started_at": data.get("started_at"),
-                    "ended_at": data.get("ended_at"),
-                    # Trigger source: "schedule_<id>" (scheduler), a chat
-                    # session id (orchestrator agent), or None (manual/API).
-                    "session_id": data.get("session_id"),
-                    # Live-progress fields for the runs table
-                    "current_step_id": data.get("current_step_id"),
-                    "steps_completed": len(history),
-                    "last_step_name": (history[-1].get("step_name") if history else None),
-                    "waiting_for_human": bool(data.get("waiting_for_human")),
-                    "total_cost_usd": data.get("total_cost_usd"),
-                })
-            except Exception:
-                continue
-        return runs
+        return await get_state_backend().list_runs(
+            limit=limit, orchestration_ids=orchestration_ids
+        )
+
+
+def current_tenant() -> str:
+    """Re-exported so state backends need not import core.tenancy directly."""
+    return get_tenant()

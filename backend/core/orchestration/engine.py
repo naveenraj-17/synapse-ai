@@ -84,7 +84,7 @@ class OrchestrationEngine:
         # step is invisible to the active-runs UI (and a crash there leaves
         # no file to resume from). The startup zombie sweep handles these
         # like any other interrupted "running" checkpoint.
-        state.checkpoint()
+        await state.checkpoint()
 
         self.logger = OrchestrationLogger(
             run_id=run_id,
@@ -226,7 +226,7 @@ class OrchestrationEngine:
                                 else:
                                     run.nested_run_id = None
                                     run.nested_orch_id = None
-                                state.checkpoint()
+                                await state.checkpoint()
                                 if logger:
                                     logger.step_end(step.id, "paused")
                                     logger.run_end("paused")
@@ -304,7 +304,7 @@ class OrchestrationEngine:
                     yield extra_event
                 run.current_step_id = next_step_id
                 print(f"DEBUG ENGINE: 💾 checkpointed → next='{run.current_step_id}'", flush=True)
-                state.checkpoint()
+                await state.checkpoint()
 
             except Exception as e:
                 import traceback; print(f"DEBUG ENGINE: ❌ EXCEPTION in step '{step.id}': {e}\n{traceback.format_exc()}", flush=True)
@@ -327,7 +327,7 @@ class OrchestrationEngine:
             run.status = "completed"
 
         run.ended_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        state.checkpoint()
+        await state.checkpoint()
 
         if logger:
             logger.run_end(run.status)
@@ -374,7 +374,7 @@ class OrchestrationEngine:
         """
         from .state import SharedState as SS, _cancelled_run_ids
 
-        restored = SS.restore(run_id)
+        restored = await SS.restore(run_id)
         run = restored.run
 
         if run.status not in ("failed", "cancelled"):
@@ -414,7 +414,7 @@ class OrchestrationEngine:
         # active-runs listing immediately. Without this the checkpoint still
         # reads failed/cancelled until the first step boundary, and a resumed
         # run looks dead for as long as its first step takes.
-        state.checkpoint()
+        await state.checkpoint()
         async for event in engine._execute_loop(run, state):
             yield event
 
@@ -426,7 +426,7 @@ class OrchestrationEngine:
         from .state import SharedState as SS
 
         print(f"[engine.resume] ▶ restoring state from JSON checkpoint for run_id={run_id}", flush=True)
-        restored = SS.restore(run_id)
+        restored = await SS.restore(run_id)
         run = restored.run
         print(f"[engine.resume] 📋 restored run: orch_id={run.orchestration_id} status={run.status} current_step_id={run.current_step_id} waiting_for_human={run.waiting_for_human} step_history_len={len(run.step_history)}", flush=True)
 
@@ -488,7 +488,7 @@ class OrchestrationEngine:
         state = SharedState(run)
         # Persist "running" + the cleared human flag before the first step, so
         # the run stops showing as "needs input" the moment it resumes.
-        state.checkpoint()
+        await state.checkpoint()
         async for event in engine._execute_loop(run, state):
             yield event
         print(f"[engine.resume] 🏁 _execute_loop finished, run.status={run.status} run.current_step_id={run.current_step_id!r}", flush=True)
@@ -523,7 +523,7 @@ class OrchestrationEngine:
                 run.nested_run_id = sub_event.get("nested_run_id") or nested_run_id
                 run.nested_orch_id = sub_event.get("nested_orch_id") or nested_orch_id
                 state = SharedState(run)
-                state.checkpoint()
+                await state.checkpoint()
                 yield {
                     **sub_event,
                     "run_id": run.run_id,
@@ -570,7 +570,7 @@ class OrchestrationEngine:
         if final_response is None:
             run.status = "failed"
             state = SharedState(run)
-            state.checkpoint()
+            await state.checkpoint()
             yield {
                 "type": "orchestration_error",
                 "error": "Nested orchestration failed to produce a result after human input",
@@ -605,7 +605,7 @@ class OrchestrationEngine:
 
         state = SharedState(run)
         # Same as resume(): make the un-paused state visible before step one.
-        state.checkpoint()
+        await state.checkpoint()
         async for event in engine._execute_loop(run, state):
             yield event
 

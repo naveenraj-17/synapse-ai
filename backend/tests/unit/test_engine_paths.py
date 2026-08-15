@@ -117,7 +117,6 @@ class TestInitialCheckpoint:
         from core.models_orchestration import Orchestration
         from core.orchestration.engine import OrchestrationEngine
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         orch = S.make_orchestration(
             id="orch_initial_ckpt",
             entry_step_id="p",
@@ -130,16 +129,16 @@ class TestInitialCheckpoint:
         # Consume ONLY orchestration_start — no step has run yet.
         first = await agen.__anext__()
         assert first["type"] == "orchestration_start"
-        ckpt = _json.loads((tmp_path / "runs" / "run_early.json").read_text(encoding="utf-8"))
-        assert ckpt["status"] == "running"
-        assert ckpt["current_step_id"] == "p"
-        assert ckpt["step_history"] == []
+        ckpt = (await state_mod.SharedState.restore("run_early")).run
+        assert ckpt.status == "running"
+        assert ckpt.current_step_id == "p"
+        assert ckpt.step_history == []
 
-        # Finish the run — the same file transitions to completed.
+        # Finish the run — the same row transitions to completed.
         async for _ in agen:
             pass
-        ckpt = _json.loads((tmp_path / "runs" / "run_early.json").read_text(encoding="utf-8"))
-        assert ckpt["status"] == "completed"
+        ckpt = (await state_mod.SharedState.restore("run_early")).run
+        assert ckpt.status == "completed"
 
 
 class TestRunSummaryFields:
@@ -149,15 +148,14 @@ class TestRunSummaryFields:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         run = OrchestrationRun(
             run_id="run_sum", orchestration_id="o1", status="paused",
             current_step_id="s2", waiting_for_human=True, total_cost_usd=0.0125,
             step_history=[{"step_id": "s1", "step_name": "Fetch", "status": "completed"}],
         )
-        state_mod.SharedState(run).checkpoint()
+        await state_mod.SharedState(run).checkpoint()
 
-        [summary] = state_mod.SharedState.list_runs()
+        [summary] = await state_mod.SharedState.list_runs()
         assert summary["current_step_id"] == "s2"
         assert summary["steps_completed"] == 1
         assert summary["last_step_name"] == "Fetch"
@@ -169,10 +167,9 @@ class TestRunSummaryFields:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         orch = seed_orchestration()  # endpoint lists only runs of live orchestrations
         for n in range(3):
-            state_mod.SharedState(
+            await state_mod.SharedState(
                 OrchestrationRun(run_id=f"run_{n}", orchestration_id=orch["id"], status="completed")
             ).checkpoint()
 
@@ -187,24 +184,23 @@ class TestRunSummaryFields:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         for run_id, orch_id in [
             ("run_real_1", "o_live"),
             ("builder_abc123", "o_live"),          # builder session
             ("run_real_1__step2_d1", "o_live"),    # nested sub-run
             ("run_orphan", "o_deleted"),           # orchestration since deleted
         ]:
-            state_mod.SharedState(
+            await state_mod.SharedState(
                 OrchestrationRun(run_id=run_id, orchestration_id=orch_id,
                                  status="completed", session_id="schedule_sched_9")
             ).checkpoint()
 
-        listed = state_mod.SharedState.list_runs(orchestration_ids={"o_live"})
+        listed = await state_mod.SharedState.list_runs(orchestration_ids={"o_live"})
         assert [r["run_id"] for r in listed] == ["run_real_1"]
         assert listed[0]["session_id"] == "schedule_sched_9"  # trigger source
 
         # Without the id filter, only the structural runs are dropped.
-        ids = {r["run_id"] for r in state_mod.SharedState.list_runs()}
+        ids = {r["run_id"] for r in await state_mod.SharedState.list_runs()}
         assert ids == {"run_real_1", "run_orphan"}
 
     async def test_limit_applies_after_filtering(self, tmp_path, monkeypatch):
@@ -213,19 +209,18 @@ class TestRunSummaryFields:
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
-        state_mod.SharedState(
+        await state_mod.SharedState(
             OrchestrationRun(run_id="run_keep", orchestration_id="o_live", status="completed")
         ).checkpoint()
-        for n in range(5):  # written after → newer mtime
-            state_mod.SharedState(
+        for n in range(5):  # written after → newer
+            await state_mod.SharedState(
                 OrchestrationRun(run_id=f"run_dead_{n}", orchestration_id="o_gone", status="failed")
             ).checkpoint()
 
-        listed = state_mod.SharedState.list_runs(limit=3, orchestration_ids={"o_live"})
+        listed = await state_mod.SharedState.list_runs(limit=3, orchestration_ids={"o_live"})
         assert [r["run_id"] for r in listed] == ["run_keep"]
 class TestResumeVisibility:
-    """A resumed run must read as 'running' on disk immediately, not only
+    """A resumed run must read as 'running' in the store immediately, not only
     after its first step boundary — otherwise the active-runs list keeps
     showing it as failed/cancelled/needs-input while it is actually working."""
 
@@ -245,18 +240,17 @@ class TestResumeVisibility:
         from core.models_orchestration import OrchestrationRun
         from core.orchestration.engine import OrchestrationEngine
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         orch = self._orch()
         seed_orchestration(**orch)
-        state_mod.SharedState(OrchestrationRun(
+        await state_mod.SharedState(OrchestrationRun(
             run_id="run_res", orchestration_id=orch["id"], status="cancelled",
             current_step_id="p",
         )).checkpoint()
 
         agen = OrchestrationEngine.resume_failed("run_res", _server())
         await agen.__anext__()  # first event — no step has finished yet
-        ckpt = _json.loads((tmp_path / "runs" / "run_res.json").read_text(encoding="utf-8"))
-        assert ckpt["status"] == "running"
+        ckpt = (await state_mod.SharedState.restore("run_res")).run
+        assert ckpt.status == "running"
         async for _ in agen:
             pass
 
@@ -268,7 +262,6 @@ class TestResumeVisibility:
         from core.models_orchestration import OrchestrationRun
         from core.orchestration.engine import OrchestrationEngine
 
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         orch = S.make_orchestration(
             id="orch_resume_human",
             entry_step_id="h",
@@ -280,15 +273,15 @@ class TestResumeVisibility:
             ],
         )
         seed_orchestration(**orch)
-        state_mod.SharedState(OrchestrationRun(
+        await state_mod.SharedState(OrchestrationRun(
             run_id="run_hum", orchestration_id=orch["id"], status="paused",
             current_step_id="h", waiting_for_human=True, human_prompt="?",
         )).checkpoint()
 
         agen = OrchestrationEngine.resume("run_hum", {"answer": "yes"}, _server())
         await agen.__anext__()
-        ckpt = _json.loads((tmp_path / "runs" / "run_hum.json").read_text(encoding="utf-8"))
-        assert ckpt["status"] == "running"
-        assert ckpt["waiting_for_human"] is False
+        ckpt = (await state_mod.SharedState.restore("run_hum")).run
+        assert ckpt.status == "running"
+        assert ckpt.waiting_for_human is False
         async for _ in agen:
             pass

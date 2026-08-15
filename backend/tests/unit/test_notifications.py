@@ -43,10 +43,10 @@ class TestRing:
 
 
 class TestObserver:
-    def test_human_input_uses_cached_orch_name(self, hub):
-        hub.observe_run_event("r1", {"type": "orchestration_start",
+    async def test_human_input_uses_cached_orch_name(self, hub):
+        await hub.observe_run_event("r1", {"type": "orchestration_start",
                                      "orchestration_name": "Market Watch"})
-        hub.observe_run_event("r1", {"type": "human_input_required",
+        await hub.observe_run_event("r1", {"type": "human_input_required",
                                      "prompt": "Approve the trade?", "orch_step_id": "s3"})
         [item] = hub.list()
         assert item["kind"] == "human_input"
@@ -55,120 +55,116 @@ class TestObserver:
         assert item["run_id"] == "r1"
         assert item["data"]["step_id"] == "s3"
 
-    def test_terminal_dedupe_error_then_complete(self, hub):
-        hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
-        hub.observe_run_event("r1", {"type": "orchestration_error", "error": "step blew up"})
-        hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "failed"})
+    async def test_terminal_dedupe_error_then_complete(self, hub):
+        await hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
+        await hub.observe_run_event("r1", {"type": "orchestration_error", "error": "step blew up"})
+        await hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "failed"})
         items = hub.list()
         assert len(items) == 1
         assert items[0]["kind"] == "run_failed"
         assert "step blew up" in items[0]["body"]
 
-    def test_step_start_rearms_terminal_notification(self, hub):
+    async def test_step_start_rearms_terminal_notification(self, hub):
         """A resumed run (no orchestration_start) must still notify on its
         second completion."""
-        hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
-        hub.observe_run_event("r1", {"type": "orchestration_error", "error": "boom"})
-        hub.observe_run_event("r1", {"type": "step_start", "orch_step_id": "s1"})  # resume pump
-        hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
+        await hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
+        await hub.observe_run_event("r1", {"type": "orchestration_error", "error": "boom"})
+        await hub.observe_run_event("r1", {"type": "step_start", "orch_step_id": "s1"})  # resume pump
+        await hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
         assert [i["kind"] for i in hub.list()] == ["run_failed", "run_completed"]
 
-    def test_step_start_resolves_pending_human_input(self, hub):
+    async def test_step_start_resolves_pending_human_input(self, hub):
         """Answering the input (run resumes → step_start) marks the
         notification resolved and pushes the update to live subscribers."""
-        hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
-        hub.observe_run_event("r1", {"type": "human_input_required", "prompt": "Approve?"})
+        await hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
+        await hub.observe_run_event("r1", {"type": "human_input_required", "prompt": "Approve?"})
         queue = hub.subscribe()
-        hub.observe_run_event("r1", {"type": "step_start", "orch_step_id": "s2"})
+        await hub.observe_run_event("r1", {"type": "step_start", "orch_step_id": "s2"})
         [item] = hub.list()
         assert item["kind"] == "human_input"
         assert item["resolved"] is True
         update = queue.get_nowait()  # same id, re-pushed as an update
         assert update["id"] == item["id"] and update["resolved"] is True
 
-    def test_completion_resolves_pending_human_input(self, hub):
-        hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
-        hub.observe_run_event("r1", {"type": "human_input_required", "prompt": "Approve?"})
-        hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
+    async def test_completion_resolves_pending_human_input(self, hub):
+        await hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
+        await hub.observe_run_event("r1", {"type": "human_input_required", "prompt": "Approve?"})
+        await hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
         by_kind = {i["kind"]: i for i in hub.list()}
         assert by_kind["human_input"]["resolved"] is True
         assert "resolved" not in by_kind["run_completed"]
 
-    def test_completed_and_ignored_events(self, hub):
-        hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
-        hub.observe_run_event("r1", {"type": "tool_execution", "tool_name": "t"})
-        hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
-        hub.observe_run_event("r1", {"type": "run_stream_end", "paused": False})
+    async def test_completed_and_ignored_events(self, hub):
+        await hub.observe_run_event("r1", {"type": "orchestration_start", "orchestration_name": "X"})
+        await hub.observe_run_event("r1", {"type": "tool_execution", "tool_name": "t"})
+        await hub.observe_run_event("r1", {"type": "orchestration_complete", "status": "completed"})
+        await hub.observe_run_event("r1", {"type": "run_stream_end", "paused": False})
         items = hub.list()
         assert [i["kind"] for i in items] == ["run_completed"]
         assert items[0]["title"] == "X completed"
 
 
 class TestReconstruction:
-    def test_missed_pause_is_republished_once(self, hub, tmp_path, monkeypatch, seed_orchestration):
+    async def test_missed_pause_is_republished_once(self, hub, tmp_path, monkeypatch, seed_orchestration):
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
 
         orch = seed_orchestration(name="Paused Orch")
         run = OrchestrationRun(run_id="run_p", orchestration_id=orch["id"], status="paused",
                               waiting_for_human=True, human_prompt="Pick one")
-        state_mod.SharedState(run).checkpoint()
+        await state_mod.SharedState(run).checkpoint()
 
-        hub.reconstruct_missed()
+        await hub.reconstruct_missed()
         [item] = hub.list()
         assert item["kind"] == "human_input"
         assert item["title"] == "Paused Orch needs your input"
         assert item["body"] == "Pick one"
 
-        hub.reconstruct_missed()  # idempotent
+        await hub.reconstruct_missed()  # idempotent
         assert len(hub.list()) == 1
 
-    def test_startup_resolves_stale_unresolved_items(self, hub, tmp_path, monkeypatch):
+    async def test_startup_resolves_stale_unresolved_items(self, hub, tmp_path, monkeypatch):
         """An unresolved 'needs your input' whose run is no longer waiting
         (answered/completed while the server was down) is resolved at startup."""
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
 
         hub.publish("human_input", "Old needs your input", run_id="run_done")
         run = OrchestrationRun(run_id="run_done", orchestration_id="o1",
                               status="completed", waiting_for_human=False)
-        state_mod.SharedState(run).checkpoint()
+        await state_mod.SharedState(run).checkpoint()
 
-        hub.reconstruct_missed()
+        await hub.reconstruct_missed()
         [item] = [i for i in hub.list() if i["kind"] == "human_input"]
         assert item["resolved"] is True
 
-    def test_repaused_run_with_resolved_item_notifies_again(self, hub, tmp_path,
+    async def test_repaused_run_with_resolved_item_notifies_again(self, hub, tmp_path,
                                                             monkeypatch, seed_orchestration):
         """A run that paused again at a later step gets a fresh notification
         even though an older resolved one exists."""
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
 
         orch = seed_orchestration(name="Twice Paused")
         first = hub.publish("human_input", "first ask", run_id="run_2p")
         hub._resolve_human_input("run_2p")
         run = OrchestrationRun(run_id="run_2p", orchestration_id=orch["id"], status="paused",
                               waiting_for_human=True, human_prompt="second ask")
-        state_mod.SharedState(run).checkpoint()
+        await state_mod.SharedState(run).checkpoint()
 
-        hub.reconstruct_missed()
+        await hub.reconstruct_missed()
         items = [i for i in hub.list() if i["kind"] == "human_input"]
         assert len(items) == 2
         assert items[0]["id"] == first["id"] and items[0]["resolved"] is True
         assert items[1]["body"] == "second ask" and not items[1].get("resolved")
 
-    def test_non_waiting_paused_runs_ignored(self, hub, tmp_path, monkeypatch):
+    async def test_non_waiting_paused_runs_ignored(self, hub, tmp_path, monkeypatch):
         import core.orchestration.state as state_mod
         from core.models_orchestration import OrchestrationRun
-        monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "runs")
         run = OrchestrationRun(run_id="run_q", orchestration_id="o1", status="paused",
                               waiting_for_human=False)
-        state_mod.SharedState(run).checkpoint()
-        hub.reconstruct_missed()
+        await state_mod.SharedState(run).checkpoint()
+        await hub.reconstruct_missed()
         assert hub.list() == []
 
 

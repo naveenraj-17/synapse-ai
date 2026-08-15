@@ -96,18 +96,29 @@ def _isolate_run_journals(tmp_path, monkeypatch):
 # ── run checkpoint isolation (autouse) ───────────────────────────────────────
 @pytest.fixture(autouse=True)
 def _isolate_run_checkpoints(tmp_path, monkeypatch):
-    """Point run checkpoints at a per-test temp dir.
+    """Give every test its own empty store for run state.
 
-    RUNS_DIR is derived from ``__file__`` (backend/logs/orchestration_runs), not
-    from DATA_DIR, so SYNAPSE_DATA_DIR does not relocate it. Without this, every
-    test that runs the engine writes a checkpoint into the user's real run
-    history — which then shows up in the runs UI as an unopenable row.
+    Run checkpoints used to be JSON files under backend/logs/orchestration_runs
+    and were isolated by pointing RUNS_DIR at a tmp_path. They are rows in the
+    store now, so isolation means a fresh database per test — otherwise the
+    first test to run the engine leaves rows that the next test's
+    ``list_runs()`` picks up.
 
-    Tests that patch RUNS_DIR themselves still work: their patch is applied
-    after this one and both unwind at teardown.
+    A file in tmp_path rather than ``:memory:``, deliberately. An in-memory
+    database has to be held open by a single pooled connection for its whole
+    life, and aiosqlite services that connection from a worker thread bound to
+    the test's event loop. Once the loop closes the thread dies raising
+    "Event loop is closed" — reported by pytest against whichever *later*
+    test happened to be running. With a file, each session opens and closes its
+    own connection, so no thread outlives the test that created it.
     """
     import core.orchestration.state as state_mod
-    monkeypatch.setattr(state_mod, "RUNS_DIR", tmp_path / "orchestration_runs")
+    import core.store.engine as store_mod
+
+    monkeypatch.setenv("SYNAPSE_DB_URL", f"sqlite+aiosqlite:///{tmp_path / 'store.db'}")
+    monkeypatch.setattr(store_mod, "_engine", None)
+    monkeypatch.setattr(store_mod, "_session_factory", None)
+    monkeypatch.setattr(state_mod, "_backend", None)
 
 
 # ── notification store isolation (autouse) ───────────────────────────────────

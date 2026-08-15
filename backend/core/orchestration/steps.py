@@ -142,7 +142,7 @@ class AgentStepExecutor:
                         "attempt": resume_attempt,
                     }
                     try:
-                        SharedState(run).checkpoint()
+                        await SharedState(run).checkpoint()
                     except Exception as ckpt_err:
                         print(f"WARNING: step-progress checkpoint failed: {ckpt_err}", flush=True)
                     continue
@@ -865,13 +865,13 @@ class ParallelStepExecutor:
             print(f"DEBUG PARALLEL: ⏯ resuming — branches done={sorted(completed_branches)} "
                   f"sub-steps done={sorted(completed_steps)}", flush=True)
 
-        def _checkpoint_progress():
+        async def _checkpoint_progress():
             run.shared_state[progress_key] = {
                 "completed_branches": sorted(completed_branches),
                 "completed_steps": sorted(completed_steps),
             }
             try:
-                SharedState(run).checkpoint()
+                await SharedState(run).checkpoint()
             except Exception as ckpt_err:
                 print(f"WARNING: parallel-progress checkpoint failed: {ckpt_err}", flush=True)
 
@@ -953,10 +953,10 @@ class ParallelStepExecutor:
                 # Sub-step done (its output is in shared_state) — checkpoint so
                 # a crash resumes at the next sub-step, not the whole branch.
                 completed_steps.add(sid)
-                _checkpoint_progress()
+                await _checkpoint_progress()
 
             completed_branches.add(branch_index)
-            _checkpoint_progress()
+            await _checkpoint_progress()
 
         run.shared_state.pop(progress_key, None)
         print(f"DEBUG PARALLEL: ✅ all {len(resolved_branches)} branches complete", flush=True)
@@ -1124,7 +1124,7 @@ class LoopStepExecutor:
             # Iteration finished — checkpoint so a crash resumes at the next one.
             run.shared_state[progress_key] = {"completed_iterations": iteration}
             try:
-                SharedState(run).checkpoint()
+                await SharedState(run).checkpoint()
             except Exception as ckpt_err:
                 print(f"WARNING: loop-progress checkpoint failed: {ckpt_err}", flush=True)
 

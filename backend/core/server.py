@@ -559,16 +559,16 @@ async def lifespan(app: FastAPI):
         # --- Sweep zombie orchestration runs (stale "running" from prior server crash) ---
         try:
             from core.orchestration.state import SharedState
-            zombie_runs = [r for r in SharedState.list_runs(limit=200) if r.get("status") == "running"]
+            zombie_runs = [r for r in await SharedState.list_runs(limit=200) if r.get("status") == "running"]
             if zombie_runs:
                 now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 from core.orchestration.journal import FileRunJournal
                 for zr in zombie_runs:
                     try:
-                        restored = SharedState.restore(zr["run_id"])
+                        restored = await SharedState.restore(zr["run_id"])
                         restored.run.status = "failed"
                         restored.run.ended_at = now_str
-                        restored.checkpoint()
+                        await restored.checkpoint()
                         # Explain the stop to journal replays (reattach UI).
                         if FileRunJournal.exists(zr["run_id"]):
                             journal = FileRunJournal(zr["run_id"])
@@ -589,7 +589,7 @@ async def lifespan(app: FastAPI):
             _notification_hub.configure(_server_mod)
             if _notification_hub.observe_run_event not in _event_observers:
                 _event_observers.append(_notification_hub.observe_run_event)
-            _notification_hub.reconstruct_missed()
+            await _notification_hub.reconstruct_missed()
         except Exception as e:
             print(f"Warning: Notification hub setup failed: {e}")
 

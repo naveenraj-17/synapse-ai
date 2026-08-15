@@ -47,14 +47,14 @@ async def list_runs(limit: int = 20):
     """
     from core.orchestration.state import SharedState
     known_ids = {o["id"] for o in load_orchestrations() if o.get("id")}
-    return SharedState.list_runs(limit=max(1, min(limit, 200)), orchestration_ids=known_ids)
+    return await SharedState.list_runs(limit=max(1, min(limit, 200)), orchestration_ids=known_ids)
 
 
-def _run_summary(run_id: str) -> dict | None:
+async def _run_summary(run_id: str) -> dict | None:
     """Small status snapshot from the checkpoint (None if no checkpoint yet)."""
     from core.orchestration.state import SharedState
     try:
-        run = SharedState.restore(run_id).run
+        run = (await SharedState.restore(run_id)).run
         return {
             "run_id": run.run_id,
             "orchestration_id": run.orchestration_id,
@@ -68,8 +68,8 @@ def _run_summary(run_id: str) -> dict | None:
         return None
 
 
-def _run_is_terminal(run_id: str) -> bool:
-    summary = _run_summary(run_id)
+async def _run_is_terminal(run_id: str) -> bool:
+    summary = await _run_summary(run_id)
     return summary is not None and summary["status"] in ("completed", "failed", "cancelled")
 
 
@@ -93,7 +93,7 @@ async def get_run_events(run_id: str, request: Request, after: int = 0, limit: i
         return {
             "events": events,
             "last_id": events[-1]["id"] if events else after,
-            "run": _run_summary(run_id),
+            "run": await _run_summary(run_id),
         }
 
     redis = getattr(request.app.state, "redis", None)
@@ -104,12 +104,12 @@ async def get_run_events(run_id: str, request: Request, after: int = 0, limit: i
             return {
                 "events": events,
                 "last_id": events[-1]["id"],
-                "run": _run_summary(run_id),
+                "run": await _run_summary(run_id),
             }
 
-    if _run_summary(run_id) is not None:
+    if await _run_summary(run_id) is not None:
         # Pre-journal run: checkpoint exists but no events were recorded.
-        return {"events": [], "last_id": after, "run": _run_summary(run_id)}
+        return {"events": [], "last_id": after, "run": await _run_summary(run_id)}
     raise HTTPException(status_code=404, detail="Run not found")
 
 
@@ -143,7 +143,7 @@ async def _stream_journal_sse(run_id: str, after_id: int):
 
         # Replay finished. If nothing is running and the run ended (journal
         # terminator or terminal checkpoint), there is nothing to tail.
-        if run_id not in _active_tasks and (saw_terminal_end or _run_is_terminal(run_id)):
+        if run_id not in _active_tasks and (saw_terminal_end or await _run_is_terminal(run_id)):
             yield f"data: {json.dumps({'type': 'stream_complete'})}\n\n"
             return
 
@@ -153,7 +153,7 @@ async def _stream_journal_sse(run_id: str, after_id: int):
             except asyncio.TimeoutError:
                 # Pump died without a run_stream_end (crash) — close once the
                 # checkpoint says the run is over instead of idling forever.
-                if run_id not in _active_tasks and _run_is_terminal(run_id):
+                if run_id not in _active_tasks and await _run_is_terminal(run_id):
                     yield f"data: {json.dumps({'type': 'stream_complete'})}\n\n"
                     return
                 yield ": keepalive\n\n"
@@ -207,7 +207,7 @@ async def stream_run_events_sse(run_id: str, request: Request, after: int = 0):
                     "Connection": "keep-alive",
                 },
             )
-        if _run_summary(run_id) is None:
+        if await _run_summary(run_id) is None:
             raise HTTPException(status_code=404, detail="Run not found")
 
     return StreamingResponse(
@@ -357,7 +357,7 @@ async def get_run_status(run_id: str):
     """Get the current state of a run from its checkpoint."""
     from core.orchestration.state import SharedState
     try:
-        restored = SharedState.restore(run_id)
+        restored = await SharedState.restore(run_id)
         return restored.run.model_dump()
     except FileNotFoundError:
         # Checkpoints are only written at step boundaries, so a run still inside
@@ -532,10 +532,10 @@ async def cancel_run(run_id: str, request: Request):
 
     # Persist cancelled status to disk (V1 checkpoint)
     try:
-        restored = SharedState.restore(run_id)
+        restored = await SharedState.restore(run_id)
         restored.run.status = "cancelled"
         restored.run.ended_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        restored.checkpoint()
+        await restored.checkpoint()
     except FileNotFoundError:
         pass  # Run may not have checkpointed yet; that's fine
 
