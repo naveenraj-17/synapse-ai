@@ -113,12 +113,20 @@ def _isolate_run_checkpoints(tmp_path, monkeypatch):
     own connection, so no thread outlives the test that created it.
     """
     import core.orchestration.state as state_mod
+    import core.storage.base as blob_mod
     import core.store.engine as store_mod
 
     monkeypatch.setenv("SYNAPSE_DB_URL", f"sqlite+aiosqlite:///{tmp_path / 'store.db'}")
     monkeypatch.setattr(store_mod, "_engine", None)
     monkeypatch.setattr(store_mod, "_session_factory", None)
     monkeypatch.setattr(state_mod, "_backend", None)
+
+    # Blobs — the vault and the response/tool caches — need the same treatment.
+    # Without it a cached answer written by one test is a *hit* in the next,
+    # and worse, the default blob directory is inside the repo, so the suite
+    # would slowly fill a developer's working tree with cached LLM responses.
+    monkeypatch.setenv("SYNAPSE_BLOB_DIR", str(tmp_path / "blobs"))
+    monkeypatch.setattr(blob_mod, "_store", None)
 
 
 # ── notification store isolation (autouse) ───────────────────────────────────

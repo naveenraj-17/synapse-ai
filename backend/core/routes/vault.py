@@ -22,7 +22,10 @@ from core.config import DATA_DIR
 router = APIRouter()
 
 # Root directory exposed to the frontend (local fallback)
-VAULT_USER_DIR = Path(DATA_DIR) / "vault"
+def VAULT_USER_DIR() -> Path:
+    """The current tenant's vault root, from the blob store."""
+    from core.vault import _vault_root
+    return _vault_root()
 _EXCLUDED = set()
 _ALLOWED_EXTENSIONS = {".json", ".md", ".txt"}
 
@@ -132,8 +135,9 @@ def _s3_build_tree(keys: list[str]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _vault_root() -> Path:
-    VAULT_USER_DIR.mkdir(parents=True, exist_ok=True)
-    return VAULT_USER_DIR
+    root = VAULT_USER_DIR()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def _resolve(rel: str) -> Path:

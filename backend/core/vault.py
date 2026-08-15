@@ -3,26 +3,55 @@ Vault: Automatically saves large tool outputs to files and provides tools to que
 Also resolves @[path] vault file mentions in user messages before they reach the LLM.
 
 When any tool returns more than VAULT_THRESHOLD characters, the output is saved to
-backend/data/vault/ and the LLM receives only the file path + metadata. The LLM can
-then use the Filesystem MCP tools (read_file, search_files) to access parts of the
-file without flooding its context window.
+the vault and the LLM receives only the file path + metadata. The LLM can then use
+the Filesystem MCP tools (read_file, search_files) to access parts of the file
+without flooding its context window.
+
+The vault root comes from the blob store, which scopes it to the current tenant —
+so two tenants running in one process cannot read each other's tool output, and
+there is no DATA_DIR involved.
+
+NOTE for object-store backends: the vault hands *filesystem paths* to the LLM and
+to the Filesystem MCP server, so it needs `BlobStore.path_for()` to return a real
+path. `S3BlobStore` returns None, and the vault falls back to a local root in that
+case. Making the vault work directly against an object store means changing the
+contract with the Filesystem MCP server (or materialising a per-run scratch
+directory), which is a deliberate design decision and not made here.
 """
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
-from core.config import DATA_DIR
-VAULT_DIR = Path(DATA_DIR) / "vault" / "tool_outputs"
+from core.storage import LocalBlobStore, get_blob_store
+
 VAULT_THRESHOLD = 100000  # characters (fallback default)
+
+
+def _vault_root() -> Path:
+    """The current tenant's vault directory.
+
+    Comes from the blob store so it carries the tenant prefix. A store with no
+    filesystem (S3) has no path to give, so a local one is used instead — see
+    the module docstring.
+    """
+    path = get_blob_store().path_for("vault")
+    if path is None:
+        path = LocalBlobStore().path_for("vault")
+    return Path(path)
+
+
+def _vault_outputs_dir() -> Path:
+    return _vault_root() / "tool_outputs"
 
 
 def _make_vault_path(tool_name: str, ext: str) -> Path:
     """Generate a unique, safe vault file path."""
-    VAULT_DIR.mkdir(parents=True, exist_ok=True)
+    vault_dir = _vault_outputs_dir()
+    vault_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]
     safe_name = re.sub(r"[^\w]", "_", tool_name)[:40]
-    return VAULT_DIR / f"{safe_name}_{timestamp}.{ext}"
+    return vault_dir / f"{safe_name}_{timestamp}.{ext}"
 
 
 def maybe_vault(tool_name: str, raw_output: str) -> str:
@@ -87,7 +116,7 @@ def maybe_vault(tool_name: str, raw_output: str) -> str:
 # Vault tool implementations — called directly by react_engine.py
 # ---------------------------------------------------------------------------
 
-_VAULT_USER_DIR = Path(DATA_DIR) / "vault"
+
 
 
 def expand_vault_mentions(message: str) -> str:
@@ -105,8 +134,8 @@ def expand_vault_mentions(message: str) -> str:
 
         # Prevent path traversal
         try:
-            resolved = (_VAULT_USER_DIR / rel).resolve()
-            if not str(resolved).startswith(str(_VAULT_USER_DIR.resolve())):
+            resolved = (_vault_root() / rel).resolve()
+            if not str(resolved).startswith(str(_vault_root().resolve())):
                 return match.group(0)
         except Exception:
             return match.group(0)
@@ -152,7 +181,7 @@ def _ensure_local_path(path: str) -> str:
     if p.exists():
         return path
 
-    vault_root = _VAULT_USER_DIR.resolve()
+    vault_root = _vault_root().resolve()
     try:
         resolved = p.resolve()
         if not str(resolved).startswith(str(vault_root)):

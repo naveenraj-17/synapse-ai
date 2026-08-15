@@ -32,16 +32,20 @@ def test_store_ttl_expiry():
     store.set("ttl_ns", key, "fresh", ttl_seconds=1)
     assert store.get("ttl_ns", key)["value"] == "fresh"
 
-    # Force expiry by manipulating created_at instead of sleeping
-    path = store._path_for("ttl_ns", store._hash_key(key) if len(key) != 64 else key)
+    # Force expiry by manipulating created_at instead of sleeping. Entries are
+    # blobs now, so this reaches through the blob store rather than the
+    # filesystem — which is also what keeps the entry tenant-scoped.
     import json
-    raw = json.loads(path.read_text())
+
+    from core.storage import get_blob_store
+    blob = store._blob_key("ttl_ns", store._hash_key(key) if len(key) != 64 else key)
+    raw = json.loads(get_blob_store().get(blob))
     raw["created_at"] = time.time() - 3600
-    path.write_text(json.dumps(raw))
+    get_blob_store().put(blob, json.dumps(raw))
 
     assert store.get("ttl_ns", key) is None
     # Expired entries are reaped on get()
-    assert not path.exists()
+    assert not get_blob_store().exists(blob)
 
 
 def test_store_make_key_stable_for_dict_order():

@@ -209,7 +209,15 @@ SANDBOX_PACKAGES = [
 DOCKER_IMAGE = "sandbox-python:latest"
 MEMORY_LIMIT = "512m"
 CPU_LIMIT = "1.0"
-VAULT_ROOT = os.path.join(DATA_DIR, "vault")
+def _vault_root() -> str:
+    """The current tenant's vault root.
+
+    Used as a Docker bind mount below. Previously this was DATA_DIR/vault —
+    i.e. *every* tenant's vaulted tool output, mounted read-only into every
+    tenant's sandbox. Scoping it to the caller is the fix D12 describes.
+    """
+    from core.vault import _vault_root as _root
+    return str(_root())
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -320,8 +328,9 @@ async def test_python_tool(req: PythonTestRequest):
             "--tmpfs", "/root:rw,size=256m",
             "-v", f"{script_path}:/sandbox/script.py:ro",
         ]
-        if os.path.isdir(VAULT_ROOT):
-            cmd += ["-v", f"{VAULT_ROOT}:/data:ro"]
+        vault_root = _vault_root()
+        if os.path.isdir(vault_root):
+            cmd += ["-v", f"{vault_root}:/data:ro"]
         cmd += [DOCKER_IMAGE, "python", "/sandbox/script.py"]
 
         proc = await asyncio.create_subprocess_exec(
