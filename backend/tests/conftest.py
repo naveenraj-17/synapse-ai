@@ -74,15 +74,14 @@ def _isolate_data():
 # ── run-event journal isolation (autouse) ────────────────────────────────────
 @pytest.fixture(autouse=True)
 def _isolate_run_journals(tmp_path, monkeypatch):
-    """Point the run-event journal at a per-test temp dir.
+    """Clear the shared journal registry between tests.
 
-    EVENTS_DIR lives under backend/logs (not DATA_DIR), so without this every
-    test that pumps engine events would append .jsonl files into the repo.
-    The registry is cleared so shared journal instances (with their cached
-    paths/handles) never leak across tests.
+    The journal's directory is scratch, which `_isolate_store` already points
+    at tmp_path — so what is left to isolate is the registry itself: shared
+    instances cache an open file handle and a sequence number, and neither may
+    survive into the next test.
     """
     import core.orchestration.journal as journal_mod
-    monkeypatch.setattr(journal_mod, "EVENTS_DIR", tmp_path / "orchestration_events")
     journal_mod._journals.clear()
     yield
     for run_id in list(journal_mod._journals):
@@ -124,19 +123,25 @@ def _isolate_run_checkpoints(tmp_path, monkeypatch):
     monkeypatch.setenv("SYNAPSE_BLOB_DIR", str(tmp_path / "blobs"))
     monkeypatch.setattr(blob_mod, "_store", None)
 
+    # Scratch too — logs and run-event journals are appended there before being
+    # published, and the default sits inside the repo.
+    monkeypatch.setenv("SYNAPSE_SCRATCH_DIR", str(tmp_path / "scratch"))
+
 
 # ── notification store isolation (autouse) ───────────────────────────────────
 @pytest.fixture(autouse=True)
 def _isolate_notifications(tmp_path, monkeypatch):
-    """Keep the module-level notification hub off the real store.
+    """Reset the module-level notification hub's in-memory ring.
 
-    Same reason as RUNS_DIR: NOTIFICATIONS_FILE lives under backend/logs, so a
-    test that publishes through the singleton would append to the user's real
-    notification list.
+    Notifications are a blob now, and `_isolate_store` gives each test its own
+    blob directory — but the hub is a module singleton constructed at import,
+    so its in-memory items outlive that.
     """
     import core.notifications as notif_mod
-    monkeypatch.setattr(notif_mod, "NOTIFICATIONS_FILE", tmp_path / "notifications.json")
-    monkeypatch.setattr(notif_mod.hub, "_path", tmp_path / "notifications.json")
+    notif_mod.hub._items = []
+    notif_mod.hub._next_id = 1
+    notif_mod.hub._orch_names.clear()
+    notif_mod.hub._terminal_notified.clear()
 
 
 # ── fake LLM (autouse) ───────────────────────────────────────────────────────

@@ -6,11 +6,47 @@ import json
 import time
 from pathlib import Path
 
-LOGS_DIR = Path(__file__).parent.parent.parent / "logs" / "orchestration_logs"
+#: Blob key prefix for finished logs. Tenant-scoped by the blob store itself —
+#: this used to be a flat `logs/orchestration/` prefix on a shared bucket, so
+#: two tenants with the same run_id overwrote each other and list_logs()
+#: returned everyone's runs, user_input included.
+_BLOB_PREFIX = "logs/orchestration"
 
 
-def _ensure_logs_dir():
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+def _logs_dir() -> Path:
+    """Where a run's log is appended while it is still running."""
+    from core.storage.scratch import scratch_dir
+    return scratch_dir("orchestration_logs")
+
+
+def _blob_key(run_id: str) -> str:
+    return f"{_BLOB_PREFIX}/{run_id}.log"
+
+
+def _meta_key(run_id: str) -> str:
+    """Sidecar for the fields list_logs() shows without reading whole logs.
+
+    S3 object metadata did this before; BlobStore has no metadata API, and a
+    sidecar blob behaves identically on both backends and comes back in the
+    same list() call.
+    """
+    return f"{_BLOB_PREFIX}/{run_id}.meta.json"
+
+
+def _parse_head(head: str) -> dict:
+    def _extract(label: str) -> str:
+        for line in head.split("\n"):
+            if label in line:
+                return line.split(":", 1)[1].strip()
+        return ""
+
+    return {
+        "orchestration_name": _extract("Orchestration   :"),
+        "orchestration_id": _extract("Orchestration ID:"),
+        "session_id": _extract("Session ID      :"),
+        "started_at": _extract("Started at      :"),
+        "user_input": _extract("User Input      :")[:200],
+    }
 
 
 def _ts() -> str:
@@ -29,10 +65,9 @@ class OrchestrationLogger:
     """Appends debug lines to  data/orchestration_logs/<run_id>.log"""
 
     def __init__(self, run_id: str, orchestration_id: str, orchestration_name: str, user_input: str, session_id: str | None = None):
-        _ensure_logs_dir()
         self.run_id = run_id
         self.session_id = session_id
-        self.path = LOGS_DIR / f"{run_id}.log"
+        self.path = _logs_dir() / f"{run_id}.log"
         self._start_time = time.time()
 
         self._write(f"""
@@ -68,30 +103,21 @@ class OrchestrationLogger:
 """)
 
     def close(self) -> None:
-        """Upload the completed log to S3 (scale mode). No-op in standalone mode."""
+        """Publish the finished log to the blob store.
+
+        One put() at the end rather than a write per line: put() replaces the
+        whole object, so appending through it would be quadratic — and on S3,
+        quadratic over the network.
+        """
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3 and self.path.exists():
-                head = self.path.read_text(encoding="utf-8", errors="replace")[:1000]
+            if not self.path.exists():
+                return
+            from core.storage import get_blob_store
 
-                def _extract(label: str) -> str:
-                    for line in head.split("\n"):
-                        if label in line:
-                            return line.split(":", 1)[1].strip()
-                    return ""
-
-                s3.upload_text(
-                    f"logs/orchestration/{self.path.name}",
-                    self.path.read_text(encoding="utf-8"),
-                    metadata={
-                        "orchestration_name": _extract("Orchestration   :"),
-                        "orchestration_id": _extract("Orchestration ID:"),
-                        "session_id": _extract("Session ID      :"),
-                        "started_at": _extract("Started at      :"),
-                        "user_input": _extract("User Input      :")[:200],
-                    },
-                )
+            text = self.path.read_text(encoding="utf-8")
+            store = get_blob_store()
+            store.put(_blob_key(self.run_id), text)
+            store.put(_meta_key(self.run_id), json.dumps(_parse_head(text[:1000])))
         except Exception:
             pass
 
@@ -322,76 +348,56 @@ class OrchestrationLogger:
 
     @staticmethod
     def get_log(run_id: str) -> str | None:
-        path = LOGS_DIR / f"{run_id}.log"
+        path = _logs_dir() / f"{run_id}.log"
         if path.exists():
             return path.read_text(encoding="utf-8")
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                return s3.download_text(f"logs/orchestration/{run_id}.log")
+            from core.storage import get_blob_store
+            return get_blob_store().get(_blob_key(run_id))
         except Exception:
             pass
         return None
 
     @staticmethod
     def list_logs(limit: int = 100, offset: int = 0) -> list[dict]:
-        _ensure_logs_dir()
+        """Runs still in flight (scratch) plus finished ones (blobs).
 
-        def _parse_head(head: str, run_id: str, size_kb: float) -> dict:
-            def _extract(label: str) -> str:
-                for line in head.split("\n"):
-                    if label in line:
-                        return line.split(":", 1)[1].strip()
-                return ""
-            return {
-                "run_id": run_id,
-                "orchestration_name": _extract("Orchestration   :"),
-                "orchestration_id": _extract("Orchestration ID:"),
-                "session_id": _extract("Session ID      :"),
-                "started_at": _extract("Started at      :"),
-                "user_input": _extract("User Input      :")[:200],
-                "file_size_kb": size_kb,
-            }
-
-        local_ids: set[str] = set()
+        Everything here is scoped to the current tenant: the scratch directory
+        carries the tenant in its path and the blob store applies the prefix
+        inside list(). Neither used to be true.
+        """
         logs: list[dict] = []
-        files = sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for f in files:
-            run_id = f.stem
-            local_ids.add(run_id)
+        seen: set[str] = set()
+
+        logs_dir = _logs_dir()
+        for f in sorted(logs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True):
+            seen.add(f.stem)
             try:
-                head = f.read_text(encoding="utf-8", errors="replace")[:1000]
-                logs.append(_parse_head(head, run_id, round(f.stat().st_size / 1024, 1)))
-            except Exception:
-                logs.append({"run_id": run_id, "file_size_kb": 0})
+                entry = _parse_head(f.read_text(encoding="utf-8", errors="replace")[:1000])
+                entry["file_size_kb"] = round(f.stat().st_size / 1024, 1)
+            except OSError:
+                entry = {"file_size_kb": 0}
+            logs.append({"run_id": f.stem, **entry})
 
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                from concurrent.futures import ThreadPoolExecutor
-                s3_keys = s3.list_keys("logs/orchestration/")
-                missing_keys = [k for k in s3_keys if k.endswith(".log") and Path(k).stem not in local_ids]
-
-                def _fetch_meta(rel_key: str) -> dict:
-                    run_id = Path(rel_key).stem
-                    try:
-                        meta = s3.get_metadata(rel_key) or {}
-                        return {
-                            "run_id": run_id,
-                            "orchestration_name": meta.get("orchestration_name", ""),
-                            "orchestration_id": meta.get("orchestration_id", ""),
-                            "session_id": meta.get("session_id", ""),
-                            "started_at": meta.get("started_at", ""),
-                            "user_input": meta.get("user_input", "")[:200],
-                            "file_size_kb": 0,
-                        }
-                    except Exception:
-                        return {"run_id": run_id}
-
-                with ThreadPoolExecutor(max_workers=10) as pool:
-                    logs.extend(pool.map(_fetch_meta, missing_keys))
+            from core.storage import get_blob_store
+            store = get_blob_store()
+            for key in store.list(f"{_BLOB_PREFIX}/"):
+                if not key.endswith(".log"):
+                    continue
+                run_id = Path(key).stem
+                if run_id in seen:
+                    continue
+                seen.add(run_id)
+                # The sidecar, so listing does not download every log body.
+                entry = {}
+                try:
+                    raw = store.get(_meta_key(run_id))
+                    if raw:
+                        entry = json.loads(raw)
+                except (ValueError, OSError):
+                    pass
+                logs.append({"run_id": run_id, "file_size_kb": 0, **entry})
         except Exception:
             pass
 
@@ -400,16 +406,17 @@ class OrchestrationLogger:
 
     @staticmethod
     def delete_log(run_id: str) -> bool:
-        path = LOGS_DIR / f"{run_id}.log"
+        path = _logs_dir() / f"{run_id}.log"
         deleted = False
         if path.exists():
             path.unlink()
             deleted = True
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                s3.delete(f"logs/orchestration/{run_id}.log")
+            from core.storage import get_blob_store
+            store = get_blob_store()
+            if store.exists(_blob_key(run_id)):
+                store.delete(_blob_key(run_id))
+                store.delete(_meta_key(run_id))
                 deleted = True
         except Exception:
             pass

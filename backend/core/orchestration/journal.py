@@ -31,7 +31,16 @@ from pathlib import Path
 
 import asyncio
 
-EVENTS_DIR = Path(__file__).parent.parent.parent / "logs" / "orchestration_events"
+def _events_dir() -> Path:
+    """Where a run's event journal is appended.
+
+    Scratch, and deliberately not published to the blob store on close: the
+    journal is read by the live-tail endpoint while a run is in flight, and in
+    scale mode the Redis stream is already the cross-process answer. Publishing
+    it afterwards would be write amplification for data nothing reads.
+    """
+    from core.storage.scratch import scratch_dir
+    return scratch_dir("run_events")
 
 # A single serialized event line larger than this gets its heavy fields
 # truncated (the UI fetches full run state from the checkpoint endpoint).
@@ -55,10 +64,6 @@ STRUCTURAL_EVENT_TYPES = frozenset({
     "human_input_required", "orchestration_complete", "orchestration_error",
     "orchestration_end", "final", "run_stream_end", "journal_truncated",
 })
-
-
-def _ensure_events_dir():
-    EVENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _truncate_strings(value, limit: int):
@@ -102,7 +107,7 @@ class FileRunJournal:
 
     def __init__(self, run_id: str):
         self.run_id = run_id
-        self._path = EVENTS_DIR / f"{run_id}.jsonl"
+        self._path = _events_dir() / f"{run_id}.jsonl"
         self._fh = None
         self._seq = self._recover_seq()
         self._capped = self._seq >= MAX_EVENTS_PER_RUN
@@ -137,7 +142,6 @@ class FileRunJournal:
         etype = event.get("type", "")
         if self._capped and etype not in STRUCTURAL_EVENT_TYPES:
             return 0
-        _ensure_events_dir()
         if self._fh is None:
             self._fh = open(self._path, "a", encoding="utf-8")
         if not self._capped and self._seq >= MAX_EVENTS_PER_RUN:
@@ -197,12 +201,12 @@ class FileRunJournal:
 
     @classmethod
     def exists(cls, run_id: str) -> bool:
-        return (EVENTS_DIR / f"{run_id}.jsonl").exists()
+        return (_events_dir() / f"{run_id}.jsonl").exists()
 
     @classmethod
     def delete(cls, run_id: str) -> bool:
         close_journal(run_id)
-        path = EVENTS_DIR / f"{run_id}.jsonl"
+        path = _events_dir() / f"{run_id}.jsonl"
         try:
             path.unlink()
             return True

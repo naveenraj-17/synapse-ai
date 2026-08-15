@@ -9,11 +9,47 @@ import threading
 import time
 from pathlib import Path
 
-LOGS_DIR = Path(__file__).parent.parent / "logs" / "agent_logs"
+#: Blob key prefix for finished logs. The blob store applies the tenant
+#: prefix itself; this used to be a flat prefix on a shared bucket.
+_BLOB_PREFIX = "logs/agent"
 
 
-def _ensure_logs_dir():
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+def _logs_dir() -> Path:
+    """Where a log is appended while its run is still going."""
+    from core.storage.scratch import scratch_dir
+    return scratch_dir("agent_logs")
+
+
+def _blob_key(run_id: str) -> str:
+    return f"{_BLOB_PREFIX}/{run_id}.log"
+
+
+def _meta_key(run_id: str) -> str:
+    """Sidecar holding what list_logs() shows, so listing reads no log bodies."""
+    return f"{_BLOB_PREFIX}/{run_id}.meta.json"
+
+def _head_fields(head: str) -> dict:
+    """The summary fields list_logs() shows, parsed from a log's banner.
+
+    S3 object metadata carried these before. BlobStore has no metadata API, so
+    they go in a sidecar blob — same behaviour on every backend, and it comes
+    back in the same list() call as the log itself.
+    """
+    def _extract(label: str) -> str:
+        for line in head.split("\n"):
+            if label in line:
+                return line.split(":", 1)[1].strip()
+        return ""
+
+    return {
+        "agent_name": _extract("Agent Name      :"),
+        "agent_id": _extract("Agent ID        :"),
+        "source": _extract("Source          :"),
+        "session_id": _extract("Session ID      :"),
+        "started_at": _extract("Started at      :"),
+        "user_input": _extract("User Input      :")[:200],
+    }
+
 
 
 def _ts() -> str:
@@ -38,11 +74,10 @@ class AgentLogger:
         source: str,
         user_message: str,
     ):
-        _ensure_logs_dir()
         # run_id encodes the agent and timestamp for easy identification
         short_id = agent_id.replace("agent_", "") if agent_id.startswith("agent_") else agent_id
         self.run_id = f"agentrun_{short_id}_{int(time.time() * 1000)}"
-        self.path = LOGS_DIR / f"{self.run_id}.log"
+        self.path = _logs_dir() / f"{self.run_id}.log"
         self._start_time = time.time()
         self._q: queue.SimpleQueue = queue.SimpleQueue()
         self._thread = threading.Thread(target=self._drain, daemon=True, name=f"agent-log-{self.run_id}")
@@ -101,29 +136,16 @@ class AgentLogger:
         self._q.put(None)  # poison pill — stops the drain thread
         self._thread.join(timeout=10)
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3 and self.path.exists():
-                head = self.path.read_text(encoding="utf-8", errors="replace")[:1000]
+            if not self.path.exists():
+                return
+            from core.storage import get_blob_store
 
-                def _extract(label: str) -> str:
-                    for line in head.split("\n"):
-                        if label in line:
-                            return line.split(":", 1)[1].strip()
-                    return ""
-
-                s3.upload_text(
-                    f"logs/agent/{self.path.name}",
-                    self.path.read_text(encoding="utf-8"),
-                    metadata={
-                        "agent_name": _extract("Agent Name      :"),
-                        "agent_id": _extract("Agent ID        :"),
-                        "source": _extract("Source          :"),
-                        "session_id": _extract("Session ID      :"),
-                        "started_at": _extract("Started at      :"),
-                        "user_input": _extract("User Input      :")[:200],
-                    },
-                )
+            text = self.path.read_text(encoding="utf-8")
+            store = get_blob_store()
+            # One put() at the end, not a write per line: put() replaces the
+            # whole object, so appending through it would be quadratic.
+            store.put(_blob_key(self.run_id), text)
+            store.put(_meta_key(self.run_id), json.dumps(_head_fields(text[:1000])))
         except Exception:
             pass  # S3 upload failure must never surface to callers
 
@@ -242,22 +264,19 @@ class AgentLogger:
 
     @staticmethod
     def get_log(run_id: str) -> str | None:
-        path = LOGS_DIR / f"{run_id}.log"
+        path = _logs_dir() / f"{run_id}.log"
         if path.exists():
             return path.read_text(encoding="utf-8")
-        # Fall back to S3 for logs written by other workers
+        # Finished logs live in the blob store — any worker can serve them.
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                return s3.download_text(f"logs/agent/{run_id}.log")
+            from core.storage import get_blob_store
+            return get_blob_store().get(_blob_key(run_id))
         except Exception:
             pass
         return None
 
     @staticmethod
     def list_logs(limit: int = 100, offset: int = 0) -> list[dict]:
-        _ensure_logs_dir()
 
         def _parse_head(head: str, run_id: str, size_kb: float) -> dict:
             def _extract(label: str) -> str:
@@ -279,7 +298,7 @@ class AgentLogger:
         # Collect local entries
         local_ids: set[str] = set()
         logs: list[dict] = []
-        files = sorted(LOGS_DIR.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        files = sorted(_logs_dir().glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
         for f in files:
             run_id = f.stem
             local_ids.add(run_id)
@@ -291,33 +310,23 @@ class AgentLogger:
 
         # Merge S3 entries that aren't already local
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                from concurrent.futures import ThreadPoolExecutor
-                s3_keys = s3.list_keys("logs/agent/")
-                missing_keys = [k for k in s3_keys if k.endswith(".log") and Path(k).stem not in local_ids]
-
-                def _fetch_meta(rel_key: str) -> dict:
-                    run_id = Path(rel_key).stem
-                    try:
-                        meta = s3.get_metadata(rel_key) or {}
-                        return {
-                            "run_id": run_id,
-                            "agent_name": meta.get("agent_name", ""),
-                            "agent_id": meta.get("agent_id", ""),
-                            "source": meta.get("source", ""),
-                            "session_id": meta.get("session_id", ""),
-                            "started_at": meta.get("started_at", ""),
-                            "user_input": meta.get("user_input", "")[:200],
-                            "file_size_kb": 0,
-                        }
-                    except Exception:
-                        return {"run_id": run_id}
-
-                with ThreadPoolExecutor(max_workers=10) as pool:
-                    s3_entries = list(pool.map(_fetch_meta, missing_keys))
-                logs.extend(s3_entries)
+            from core.storage import get_blob_store
+            store = get_blob_store()
+            for key in store.list(f"{_BLOB_PREFIX}/"):
+                if not key.endswith(".log"):
+                    continue
+                run_id = Path(key).stem
+                if run_id in local_ids:
+                    continue
+                local_ids.add(run_id)
+                entry = {}
+                try:
+                    raw = store.get(_meta_key(run_id))
+                    if raw:
+                        entry = json.loads(raw)
+                except (ValueError, OSError):
+                    pass
+                logs.append({"run_id": run_id, "file_size_kb": 0, **entry})
         except Exception:
             pass
 
@@ -327,16 +336,17 @@ class AgentLogger:
 
     @staticmethod
     def delete_log(run_id: str) -> bool:
-        path = LOGS_DIR / f"{run_id}.log"
+        path = _logs_dir() / f"{run_id}.log"
         deleted = False
         if path.exists():
             path.unlink()
             deleted = True
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                s3.delete(f"logs/agent/{run_id}.log")
+            from core.storage import get_blob_store
+            store = get_blob_store()
+            if store.exists(_blob_key(run_id)):
+                store.delete(_blob_key(run_id))
+                store.delete(_meta_key(run_id))
                 deleted = True
         except Exception:
             pass

@@ -26,7 +26,9 @@ class TestRing:
         assert hub.last_id() == 7
 
     def test_persistence_round_trip(self, tmp_path):
-        path = tmp_path / "n.json"
+        # A blob key now, not a filesystem path — the tenant prefix and the
+        # directory are the blob store's business, not the hub's.
+        path = "test_notifications.json"
         first = NotificationHub(capacity=10, persist_path=path)
         first.publish("human_input", "needs input", body="Approve?")
         second = NotificationHub(capacity=10, persist_path=path)

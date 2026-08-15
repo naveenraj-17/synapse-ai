@@ -26,12 +26,14 @@ import json
 import time
 from pathlib import Path
 
-NOTIFICATIONS_FILE = Path(__file__).parent.parent / "logs" / "notifications.json"
+#: Blob key. A 200-item ring already rewritten whole on every publish, so it
+#: maps onto put() directly — there is nothing append-shaped about it.
+NOTIFICATIONS_KEY = "notifications.json"
 CAPACITY = 200
 
 
 class NotificationHub:
-    def __init__(self, capacity: int = CAPACITY, persist_path: Path = NOTIFICATIONS_FILE):
+    def __init__(self, capacity: int = CAPACITY, persist_path: str = NOTIFICATIONS_KEY):
         self._capacity = capacity
         self._path = persist_path
         self._items: list[dict] = self._load()
@@ -47,15 +49,19 @@ class NotificationHub:
     # ── persistence ──────────────────────────────────────────────────────
     def _load(self) -> list[dict]:
         try:
-            data = json.loads(self._path.read_text(encoding="utf-8"))
+            from core.storage import get_blob_store
+            raw = get_blob_store().get(self._path)
+            if not raw:
+                return []
+            data = json.loads(raw)
             return data if isinstance(data, list) else []
         except Exception:
             return []
 
     def _persist(self):
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._items), encoding="utf-8")
+            from core.storage import get_blob_store
+            get_blob_store().put(self._path, json.dumps(self._items))
         except Exception:
             pass  # best-effort — the ring keeps working in memory
 

@@ -35,7 +35,7 @@ class _FakeEngine:
 
 def _one_journaled_run_id():
     import core.orchestration.journal as journal_mod
-    files = list(journal_mod.EVENTS_DIR.glob("*.jsonl"))
+    files = list(journal_mod._events_dir().glob("*.jsonl"))
     assert len(files) == 1
     return files[0].stem
 
