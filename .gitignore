@@ -50,3 +50,10 @@ node_modules/
 
 # Security — token files
 backend/data/token.json
+# The engine's store. backend/var/ is a running install's database, in the same
+# category as backend/data/ was: live user data, never committed. SYNAPSE_DB_URL
+# relocates it, but the default lands here.
+backend/var/
+*.db
+*.db-wal
+*.db-shm

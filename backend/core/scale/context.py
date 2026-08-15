@@ -1,20 +1,66 @@
 """
-Global worker context — set once in worker_main.py at process startup.
+Resolving an execution's agents, custom tools and MCP servers.
 
-When IS_SCALE_WORKER is True, all resolver functions go to Postgres first
-and fall back to local JSON only if nothing is found. Non-worker processes
-(the main API server) leave IS_SCALE_WORKER=False, so all JSON paths are
-used as before — no behaviour change for V1 mode.
+These three lookups are the engine's per-run resource resolution. They used to
+be "Postgres first, local JSON if that returns nothing", gated on a
+process-global ``IS_SCALE_WORKER`` flag — and the Postgres half carried **no
+tenant predicate at all**: ``select(ToolDB)`` returned every tenant's custom
+tools, on every worker, for every run.
+
+Now there is one path. The store is the source of truth, scoped to
+``core.tenancy.get_tenant()``. An embedder that needs to resolve resources some
+other way — from its own schema, with its own row-level security, decrypting
+credentials on the way — registers a provider and answers all three itself.
+
+Fail closed
+-----------
+When a provider is registered it is the *only* source. There is deliberately no
+fallback to the local store if the provider returns nothing: a fallback is how
+an authorization failure turns into another tenant's data. An empty answer is
+an answer.
 """
 from __future__ import annotations
 
-IS_SCALE_WORKER: bool = False
-_session_factory = None
+from typing import Protocol
+
+from sqlalchemy import select
+
+from core.tenancy import disable_multi_tenancy, enable_multi_tenancy, get_tenant
 
 
-def set_session_factory(sf) -> None:
-    global _session_factory
-    _session_factory = sf
+class ResourceProvider(Protocol):
+    """How an embedder answers the engine's three resource lookups.
+
+    Every method is called with the tenant already established in the context;
+    implementations read ``core.tenancy.get_tenant()``.
+    """
+
+    async def resolve_agent(self, agent_id: str) -> dict | None: ...
+    async def resolve_custom_tools(self) -> list[dict]: ...
+    async def resolve_mcp_servers(self) -> list[dict]: ...
+
+
+_provider: ResourceProvider | None = None
+
+
+def set_resource_provider(provider: ResourceProvider | None) -> None:
+    """Install a resource provider, and with it, multi-tenancy.
+
+    Registering a provider is what unlocks ``core.tenancy.tenant_scope()``.
+    The two are deliberately coupled: switching tenants without a tenant-aware
+    way to resolve resources would hand every tenant the same agents and tools,
+    which is worse than refusing to switch at all.
+    """
+    global _provider
+    _provider = provider
+    if provider is None:
+        disable_multi_tenancy()
+    else:
+        enable_multi_tenancy()
+
+
+def get_resource_provider() -> ResourceProvider | None:
+    return _provider
 
 
 # ---------------------------------------------------------------------------
@@ -22,71 +68,54 @@ def set_session_factory(sf) -> None:
 # ---------------------------------------------------------------------------
 
 async def resolve_agent(agent_id: str) -> dict | None:
-    """Return agent dict — Postgres first (worker), JSON fallback."""
-    if IS_SCALE_WORKER and _session_factory and agent_id:
-        try:
-            from sqlalchemy import select
-            from core.scale.models_db import AgentDB
-            async with _session_factory() as session:
-                result = await session.execute(
-                    select(AgentDB).where(AgentDB.id == agent_id)
-                )
-                row = result.scalar_one_or_none()
-            if row is not None:
-                return row.definition
-        except Exception as e:
-            print(f"[scale.context] resolve_agent PG error: {e}", flush=True)
-
-    # JSON fallback
-    try:
-        from core.routes.agents import load_user_agents
-        agents = load_user_agents()
-        return next((a for a in agents if a.get("id") == agent_id), None)
-    except Exception:
+    """The agent definition for `agent_id`, within the current tenant."""
+    if not agent_id:
         return None
+    if _provider is not None:
+        return await _provider.resolve_agent(agent_id)
+
+    from core.store import session
+    from core.store.models import AgentDB
+
+    async with session() as s:
+        row = (
+            await s.execute(
+                select(AgentDB).where(
+                    AgentDB.id == agent_id,
+                    AgentDB.tenant_id == get_tenant(),
+                )
+            )
+        ).scalar_one_or_none()
+    return row.definition if row is not None else None
 
 
 async def resolve_custom_tools() -> list[dict]:
-    """Return all custom tools — Postgres first (worker), JSON fallback."""
-    if IS_SCALE_WORKER and _session_factory:
-        try:
-            from sqlalchemy import select
-            from core.scale.models_db import ToolDB
-            async with _session_factory() as session:
-                result = await session.execute(select(ToolDB))
-                rows = result.scalars().all()
-            if rows:
-                return [r.definition for r in rows]
-        except Exception as e:
-            print(f"[scale.context] resolve_custom_tools PG error: {e}", flush=True)
+    """Every custom tool belonging to the current tenant."""
+    if _provider is not None:
+        return await _provider.resolve_custom_tools()
 
-    # JSON fallback
-    try:
-        from core.routes.tools import load_custom_tools
-        return load_custom_tools()
-    except Exception:
-        return []
+    from core.store import session
+    from core.store.models import ToolDB
+
+    async with session() as s:
+        rows = (
+            await s.execute(select(ToolDB).where(ToolDB.tenant_id == get_tenant()))
+        ).scalars().all()
+    return [r.definition for r in rows]
 
 
 async def resolve_mcp_servers() -> list[dict]:
-    """Return MCP server configs — Postgres first (worker), JSON fallback."""
-    if IS_SCALE_WORKER and _session_factory:
-        try:
-            from sqlalchemy import select
-            from core.scale.models_db import MCPServerDB
-            async with _session_factory() as session:
-                result = await session.execute(select(MCPServerDB))
-                rows = result.scalars().all()
-            if rows:
-                return [r.definition for r in rows]
-        except Exception as e:
-            print(f"[scale.context] resolve_mcp_servers PG error: {e}", flush=True)
+    """Every MCP server registered by the current tenant."""
+    if _provider is not None:
+        return await _provider.resolve_mcp_servers()
 
-    # JSON fallback
-    try:
-        from core.mcp_client import MCP_SERVERS_FILE
-        import json
-        with open(MCP_SERVERS_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    from core.store import session
+    from core.store.models import MCPServerDB
+
+    async with session() as s:
+        rows = (
+            await s.execute(
+                select(MCPServerDB).where(MCPServerDB.tenant_id == get_tenant())
+            )
+        ).scalars().all()
+    return [r.definition for r in rows]

@@ -5,6 +5,16 @@ Returns ScaleConfig(scale_mode=False) when Redis URL is not set (standalone mode
 from dataclasses import dataclass, field
 import os
 
+#: The one queue. Every producer enqueues here and every worker drains here.
+#:
+#: This used to be `synapse:orchestrations:{WORKER_QUEUE_SHARD}`, which made a
+#: shared fleet impossible: binding a queue to a tenant means one worker pool
+#: per tenant, so signing up a customer provisions infrastructure and 1,000
+#: mostly-idle tenants cost 1,000 idle pools. Any worker can now run any
+#: tenant's job, concurrently, because the job carries its tenant rather than
+#: the queue implying it.
+QUEUE_NAME = "synapse:orchestrations"
+
 
 @dataclass
 class ScaleConfig:
@@ -20,8 +30,6 @@ class ScaleConfig:
     # Queue settings
     worker_concurrency: int = 10
     num_queue_shards: int = 1        # Number of ARQ queue shards for Redis Cluster
-    default_tenant_id: str = "default"
-    enable_tenant_isolation: bool = False
 
     # Retention
     runs_retention_days: int = 90
@@ -86,8 +94,6 @@ def get_scale_config() -> ScaleConfig:
         redis_cluster_mode=redis_cluster_mode,
         worker_concurrency=int(os.getenv("WORKER_CONCURRENCY", str(settings.get("worker_concurrency", 10)))),
         num_queue_shards=int(os.getenv("NUM_QUEUE_SHARDS", "1")),
-        default_tenant_id=os.getenv("DEFAULT_TENANT_ID", "default"),
-        enable_tenant_isolation=bool(int(os.getenv("ENABLE_TENANT_ISOLATION", "0"))),
         runs_retention_days=int(os.getenv("RUNS_RETENTION_DAYS", "90")),
         pubsub_event_ttl=int(os.getenv("PUBSUB_EVENT_TTL", "3600")),
         max_global_queue_depth=int(os.getenv("MAX_GLOBAL_QUEUE_DEPTH", "1000000")),

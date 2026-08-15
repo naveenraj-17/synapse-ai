@@ -438,26 +438,21 @@ async def submit_human_input(run_id: str, request: Request):
         # Check if this is a V2 run (has worker_id set in Postgres)
         try:
             from sqlalchemy import select
-            from core.scale.models_db import OrchestrationRunDB
+            from core.store.models import OrchestrationRunDB
             async with pg_session_factory() as session:
                 result = await session.execute(
-                    select(OrchestrationRunDB.worker_id, OrchestrationRunDB.tenant_id).where(
+                    select(OrchestrationRunDB.worker_id).where(
                         OrchestrationRunDB.run_id == run_id
                     )
                 )
                 row = result.one_or_none()
 
             if row and row.worker_id:
-                # V2 run: publish to Redis and enqueue resume job to the correct shard queue
+                # V2 run: publish to Redis and enqueue the resume job. One
+                # queue — the run's state is in the store, so any worker can
+                # resume it, not only the one that paused it.
                 from core.scale.pubsub import publish_human_input
-                from core.scale.config import get_scale_config as _get_scale_cfg
-                import os as _os
-                _scale_cfg = _get_scale_cfg()
-                _queue_name = (
-                    f"synapse:orchestrations:{row.tenant_id or _scale_cfg.default_tenant_id}"
-                    if _scale_cfg.enable_tenant_isolation
-                    else f"synapse:orchestrations:{_os.getenv('WORKER_QUEUE_SHARD', 'default')}"
-                )
+                from core.scale.config import QUEUE_NAME as _queue_name
                 resp = human_response if isinstance(human_response, dict) else {"response": human_response}
                 await publish_human_input(redis, run_id, resp)
 

@@ -48,8 +48,53 @@ ORCH_GLOBAL_TIMEOUT_MIN  = _env_int("SYNAPSE_ORCH_GLOBAL_TIMEOUT_MINUTES", 30)
 ORCH_HUMAN_TIMEOUT       = _env_float("SYNAPSE_ORCH_HUMAN_TIMEOUT", 3600.0)
 
 
+# ── Settings provider ────────────────────────────────────────────────────────
+# `load_settings()` is called from ~16 places on the orchestration execution
+# path, in modules that have no business knowing where settings come from. A
+# provider hook lets an embedder answer all of them at once — per tenant, from
+# a database, decrypting secrets on the way — without any of those call sites
+# changing.
+#
+# Process-global by design. The *tenant* varies per execution and is read from
+# a ContextVar (see core/tenancy.py); the *source* does not vary at all.
+
+_settings_provider = None
+
+
+def set_settings_provider(fn) -> None:
+    """Install a callable returning the settings dict for the current tenant.
+
+    `fn` takes no arguments and reads `core.tenancy.get_tenant()` if it needs
+    to know whose settings to return. Passing None restores the built-in
+    behaviour.
+    """
+    global _settings_provider
+    _settings_provider = fn
+
+
+def get_settings_provider():
+    return _settings_provider
+
+
+def default_settings() -> dict:
+    """The shipped defaults, before any file, environment or provider overlay.
+
+    Exposed so a provider can overlay a tenant's stored values onto the same
+    baseline the engine expects, rather than reconstructing ~85 keys and
+    silently omitting whichever ones it forgot.
+    """
+    return dict(_DEFAULTS)
+
+
 def load_settings():
-    default_settings = {
+    if _settings_provider is not None:
+        return _settings_provider()
+    return _load_settings_from_disk()
+
+
+#: Shipped defaults. Module-level so a settings provider can overlay a tenant's
+#: stored values onto the same baseline rather than reconstructing every key.
+_DEFAULTS = {
         "agent_name": "Synapse",
         "model": "ollama.mistral",
         "mode": "local",
@@ -133,8 +178,10 @@ def load_settings():
         "rate_limit_per_tenant_rps": 1000,
         "pgbouncer_mode": False,
         "num_queue_shards": 1,
-    }
-    
+}
+
+
+def _load_settings_from_disk():
     if not os.path.exists(SETTINGS_FILE):
         file_settings = {}
     else:
@@ -145,7 +192,7 @@ def load_settings():
             print(f"DEBUG: Error loading settings: {e}")
             file_settings = {}
 
-    settings = {**default_settings, **file_settings}
+    settings = {**_DEFAULTS, **file_settings}
 
     # In scale worker mode, inject_llm_env() populates SYNAPSE_SETTING_* env vars
     # from Postgres. Overlay them here so all callers of load_settings() see the

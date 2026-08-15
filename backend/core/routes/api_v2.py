@@ -22,6 +22,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.api_key_middleware import require_api_key
+from core.scale.config import QUEUE_NAME
+from core.tenancy import get_tenant
 
 router = APIRouter()
 
@@ -36,7 +38,10 @@ class V2OrchestrationRunRequest(BaseModel):
     priority: int = 0
     webhook_url: str | None = None
     webhook_secret: str | None = None
-    tenant_id: str | None = None
+    # No `tenant_id`. It was accepted from the request body and written onto
+    # the run row, so any caller who could reach this endpoint could label its
+    # run with any tenant. The tenant comes from the execution context now —
+    # see core/tenancy.py.
 
 
 class V2ResumeRequest(BaseModel):
@@ -53,7 +58,6 @@ class V2ChatRequest(BaseModel):
     priority: int = 0
     webhook_url: str | None = None
     webhook_secret: str | None = None
-    tenant_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -172,11 +176,10 @@ async def _check_rate_limit(redis, tenant_id: str, max_rps: int) -> None:
 
 async def _create_run_row(session_factory, run_id: str, orch_id: str, tenant_id: str) -> None:
     """Pre-create the orchestration_runs row so status polling works immediately."""
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    from core.scale.models_db import OrchestrationRunDB
+    from core.store.models import OrchestrationRunDB
 
     async with session_factory() as session:
-        stmt = pg_insert(OrchestrationRunDB).values(
+        session.add(OrchestrationRunDB(
             run_id=run_id,
             orchestration_id=orch_id,
             tenant_id=tenant_id,
@@ -184,8 +187,7 @@ async def _create_run_row(session_factory, run_id: str, orch_id: str, tenant_id:
             shared_state={},
             step_history=[],
             started_at=datetime.now(timezone.utc),
-        ).on_conflict_do_nothing()
-        await session.execute(stmt)
+        ))
         await session.commit()
 
 
@@ -264,13 +266,12 @@ async def v2_run_orchestration(
     from core.scale.config import get_scale_config
     cfg = get_scale_config()
 
-    tenant_id = body.tenant_id or cfg.default_tenant_id
-    queue_name = f"synapse:orchestrations:{tenant_id}" if cfg.enable_tenant_isolation else f"synapse:orchestrations:{os.getenv('WORKER_QUEUE_SHARD', 'default')}"
+    tenant_id = get_tenant()
+    queue_name = QUEUE_NAME
 
     # Rate limit + quota + backpressure checks
     await _check_rate_limit(redis, tenant_id, cfg.rate_limit_per_tenant_rps)
-    if cfg.enable_tenant_isolation:
-        await _check_tenant_quota(sf, tenant_id, redis)
+    await _check_tenant_quota(sf, tenant_id, redis)
     await _check_global_queue_depth(redis, queue_name, cfg.max_global_queue_depth)
 
     run_id = _new_run_id()
@@ -287,7 +288,6 @@ async def v2_run_orchestration(
         session_id=body.session_id,
         webhook_url=body.webhook_url,
         webhook_secret=body.webhook_secret,
-        tenant_id=tenant_id,
         _queue_name=queue_name,
         _job_id=run_id,
     )
@@ -416,30 +416,23 @@ async def v2_resume_run(
 
     # Resolve the shard queue this run was originally enqueued to so the
     # resume job lands on the same worker that checkpointed the paused state.
-    import os
     from sqlalchemy import select
-    from core.scale.models_db import OrchestrationRunDB
-    from core.scale.config import get_scale_config
+    from core.store.models import OrchestrationRunDB
 
-    cfg = get_scale_config()
     async with sf() as session:
         result = await session.execute(
-            select(OrchestrationRunDB.tenant_id, OrchestrationRunDB.status).where(OrchestrationRunDB.run_id == run_id)
+            select(OrchestrationRunDB.status).where(OrchestrationRunDB.run_id == run_id)
         )
         run_row = result.first()
     if not run_row:
         raise HTTPException(404, detail=f"Run '{run_id}' not found.")
     if run_row.status in ("completed", "failed", "cancelled"):
         raise HTTPException(409, detail=f"Run '{run_id}' is already {run_row.status} and cannot be resumed.")
-    run_tenant_id = (run_row.tenant_id or cfg.default_tenant_id)
-    print("Resuming run", run_id, "for tenant", run_tenant_id)
-    queue_name = (
-        f"synapse:orchestrations:{run_tenant_id}"
-        if cfg.enable_tenant_isolation
-        else f"synapse:orchestrations:{os.getenv('WORKER_QUEUE_SHARD', 'default')}"
-    )
 
-    print("Queue name for resume:", queue_name)
+    # The run's tenant no longer selects a queue: any worker can resume any
+    # run, because the run's state is in the store rather than on the disk of
+    # whichever process happened to start it.
+    queue_name = QUEUE_NAME
     # Publish human input to Redis so workers polling for it can pick it up
     from core.scale.pubsub import publish_human_input
     resp = body.response
@@ -527,12 +520,7 @@ async def v2_chat(
     redis = _require_scale_mode(request)
     arq_redis = _get_arq_redis(request)
 
-    from core.scale.config import get_scale_config
-    cfg = get_scale_config()
-
     session_id = body.session_id or _new_session_id()
-    tenant_id = body.tenant_id or cfg.default_tenant_id
-    queue_name = f"synapse:orchestrations:{os.getenv('WORKER_QUEUE_SHARD', 'default')}"
 
     await arq_redis.enqueue_job(
         "run_agent_chat_job",
@@ -542,8 +530,7 @@ async def v2_chat(
         images=body.images,
         webhook_url=body.webhook_url,
         webhook_secret=body.webhook_secret,
-        tenant_id=tenant_id,
-        _queue_name=queue_name,
+        _queue_name=QUEUE_NAME,
         _job_id=f"chat_{session_id}_{int(time.time())}",
     )
 
@@ -686,12 +673,8 @@ async def v2_queue_stats(
     """Return ARQ queue depth and active job counts from Redis."""
     redis = _require_scale_mode(request)
 
-    from core.scale.config import get_scale_config
-    cfg = get_scale_config()
-    queue_name = f"synapse:orchestrations:{os.getenv('WORKER_QUEUE_SHARD', 'default')}"
-
     try:
-        queued = await redis.zcard(queue_name) or 0
+        queued = await redis.zcard(QUEUE_NAME) or 0
     except Exception:
         queued = 0
 
@@ -711,7 +694,7 @@ async def v2_queue_stats(
         active = 0
 
     return {
-        "queue_name": queue_name,
+        "queue_name": QUEUE_NAME,
         "queued": queued,
         "active": active,
     }

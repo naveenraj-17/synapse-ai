@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
     Loader2, CheckCircle2, XCircle, RefreshCw, Trash2, Plus, AlertTriangle,
-    Activity, Server, Database, Zap, Users, Eye, Cloud,
+    Activity, Server, Database, Zap, Eye, Cloud,
     ChevronDown, ChevronRight, Search, Copy, BarChart3, BookOpen, X,
 } from 'lucide-react';
 
@@ -63,14 +63,6 @@ interface DLQEntry {
     error_message: string;
     attempt_count: number;
     last_failed_at: string;
-}
-
-interface Tenant {
-    tenant_id: string;
-    name: string;
-    max_concurrent_runs: number;
-    max_queued_runs: number;
-    priority: number;
 }
 
 interface AnalyticsData {
@@ -539,10 +531,6 @@ export function ScaleTab() {
     const [retryingDlq, setRetryingDlq] = useState<string | null>(null);
     const [expandedDlq, setExpandedDlq] = useState<string | null>(null);
 
-    // Tenants
-    const [tenants, setTenants] = useState<Tenant[]>([]);
-    const [newTenant, setNewTenant] = useState({ tenant_id: '', name: '', max_concurrent_runs: 100, max_queued_runs: 1000 });
-    const [addingTenant, setAddingTenant] = useState(false);
 
     // Analytics & monitoring (new)
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -555,7 +543,7 @@ export function ScaleTab() {
 
     // Collapsible config sections (all collapsed by default)
     const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({
-        redis: false, postgres: false, s3: false, workers: false, tenants: false, observability: false,
+        redis: false, postgres: false, s3: false, workers: false, observability: false,
     });
 
     const toggleSection = (key: string) =>
@@ -576,7 +564,6 @@ export function ScaleTab() {
         loadWorkers();
         loadQueueStats();
         loadDlq();
-        loadTenants();
         loadAnalytics();
         loadRecentRuns();
     }, []);
@@ -613,13 +600,6 @@ export function ScaleTab() {
             .then(data => setDlqEntries(Array.isArray(data) ? data : []))
             .catch(() => setDlqEntries([]))
             .finally(() => setDlqLoading(false));
-    }, []);
-
-    const loadTenants = useCallback(() => {
-        fetch('/api/scale/tenants')
-            .then(r => r.json())
-            .then(data => setTenants(Array.isArray(data) ? data : []))
-            .catch(() => setTenants([]));
     }, []);
 
     const loadAnalytics = useCallback(() => {
@@ -779,27 +759,6 @@ export function ScaleTab() {
         } finally {
             setRetryingDlq(null);
         }
-    };
-
-    const addTenant = async () => {
-        if (!newTenant.tenant_id) return;
-        setAddingTenant(true);
-        try {
-            await fetch('/api/scale/tenants', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newTenant),
-            });
-            setNewTenant({ tenant_id: '', name: '', max_concurrent_runs: 100, max_queued_runs: 1000 });
-            loadTenants();
-        } finally {
-            setAddingTenant(false);
-        }
-    };
-
-    const deleteTenant = async (tenantId: string) => {
-        await fetch(`/api/scale/tenants/${tenantId}`, { method: 'DELETE' });
-        loadTenants();
     };
 
     const field = (key: keyof ScaleConfig) => ({
@@ -1462,44 +1421,6 @@ export function ScaleTab() {
                         </button>
                         <button onClick={loadWorkers} className="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
                             <RefreshCw className="h-4 w-4" />
-                        </button>
-                    </div>
-                </div>
-            </CollapsibleSection>
-
-            <CollapsibleSection sectionKey="tenants" title="Tenants" icon={Users}
-                subtitle="Per-tenant queue limits. Tenants exceeding max_queued_runs receive 429 responses."
-                expanded={expandedConfigs.tenants} onToggle={() => toggleSection('tenants')}
-            >
-                <div className="mt-4">
-                    <div className="space-y-2 mb-4">
-                        {tenants.map(t => (
-                            <div key={t.tenant_id} className="flex items-center justify-between border border-zinc-800 p-3">
-                                <div>
-                                    <span className="text-sm text-zinc-300 font-mono">{t.tenant_id}</span>
-                                    {t.name && <span className="text-xs text-zinc-500 ml-2">{t.name}</span>}
-                                </div>
-                                <div className="flex items-center gap-4 text-xs text-zinc-500">
-                                    <span>Max queued: <span className="text-zinc-300">{t.max_queued_runs}</span></span>
-                                    <span>Max concurrent: <span className="text-zinc-300">{t.max_concurrent_runs}</span></span>
-                                    <button onClick={() => deleteTenant(t.tenant_id)} className="text-zinc-600 hover:text-red-400 transition-colors">
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-4 border-t border-zinc-800">
-                        <input type="text" placeholder="tenant_id" className="bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500"
-                            value={newTenant.tenant_id} onChange={e => setNewTenant(p => ({ ...p, tenant_id: e.target.value }))} />
-                        <input type="text" placeholder="Name (optional)" className="bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500"
-                            value={newTenant.name} onChange={e => setNewTenant(p => ({ ...p, name: e.target.value }))} />
-                        <input type="number" placeholder="Max queued" className="bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500"
-                            value={newTenant.max_queued_runs} onChange={e => setNewTenant(p => ({ ...p, max_queued_runs: Number(e.target.value) }))} />
-                        <button onClick={addTenant} disabled={addingTenant || !newTenant.tenant_id}
-                            className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-700 text-zinc-300 hover:text-zinc-100 disabled:opacity-40 transition-colors">
-                            {addingTenant ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Add
                         </button>
                     </div>
                 </div>

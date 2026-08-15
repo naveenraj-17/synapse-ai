@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from core.scale.config import QUEUE_NAME
+from core.tenancy import get_tenant
+
 router = APIRouter()
 
 
@@ -179,7 +182,7 @@ async def trigger_sync(request: Request):
     cfg = get_scale_config()
 
     async with session_factory() as session:
-        result = await full_sync(session, tenant_id=cfg.default_tenant_id)
+        result = await full_sync(session, tenant_id=get_tenant())
 
     return result
 
@@ -296,14 +299,7 @@ async def queue_stats(request: Request):
     # Sum across all shards when num_queue_shards > 1.
     queued = 0
     try:
-        if cfg.num_queue_shards > 1:
-            import asyncio
-            shard_names = [f"synapse:orchestrations:{i}" for i in range(cfg.num_queue_shards)]
-            counts = await asyncio.gather(*[redis.zcard(q) for q in shard_names], return_exceptions=True)
-            queued = sum(c for c in counts if isinstance(c, int))
-        else:
-            queue_name = f"synapse:orchestrations:{cfg.default_tenant_id if cfg.enable_tenant_isolation else 'default'}"
-            queued = await redis.zcard(queue_name) or 0
+        queued = await redis.zcard(QUEUE_NAME) or 0
     except Exception:
         queued = 0
 
@@ -412,11 +408,9 @@ async def retry_dlq_job(dlq_id: str, request: Request):
     if not row:
         raise HTTPException(404, detail="DLQ entry not found")
 
-    # Re-enqueue the original job to the correct worker queue
-    import os as _os
-    queue_name = f"synapse:orchestrations:{_os.getenv('WORKER_QUEUE_SHARD', 'default')}"
+    # Re-enqueue the original job. One queue: any worker can take it.
     payload = row.job_payload or {}
-    await arq_redis.enqueue_job(row.job_function, **payload, _queue_name=queue_name)
+    await arq_redis.enqueue_job(row.job_function, **payload, _queue_name=QUEUE_NAME)
 
     # Mark as resolved
     async with session_factory() as session:
@@ -433,85 +427,16 @@ async def retry_dlq_job(dlq_id: str, request: Request):
 # ---------------------------------------------------------------------------
 # Tenants
 # ---------------------------------------------------------------------------
+#
+# There is no tenant CRUD here any more. `GET`/`POST`/`DELETE /scale/tenants`
+# let an operator create tenants from the settings UI, which made tenancy a
+# feature of the shipped product rather than a capability of the engine.
+#
+# This build is single-tenant and offers no way to become otherwise. The engine
+# resolves everything through `core.tenancy.get_tenant()`, and `tenant_scope()`
+# refuses to open unless an embedder has registered a resource provider. See
+# core/tenancy.py for why that boundary sits where it does.
 
-class TenantCreate(BaseModel):
-    tenant_id: str
-    name: str = ""
-    max_concurrent_runs: int = 100
-    max_queued_runs: int = 1000
-    priority: int = 0
-
-
-@router.get("/scale/tenants")
-async def list_tenants(request: Request):
-    session_factory = getattr(request.app.state, "pg_session_factory", None)
-    if not session_factory:
-        return []
-
-    from sqlalchemy import select
-    from core.scale.models_db import TenantDB
-
-    async with session_factory() as session:
-        result = await session.execute(select(TenantDB))
-        rows = result.scalars().all()
-
-    return [
-        {
-            "tenant_id": r.tenant_id,
-            "name": r.name,
-            "max_concurrent_runs": r.max_concurrent_runs,
-            "max_queued_runs": r.max_queued_runs,
-            "priority": r.priority,
-        }
-        for r in rows
-    ]
-
-
-@router.post("/scale/tenants", status_code=201)
-async def create_tenant(body: TenantCreate, request: Request):
-    session_factory = getattr(request.app.state, "pg_session_factory", None)
-    if not session_factory:
-        raise HTTPException(503, detail="Postgres not configured")
-
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    from core.scale.models_db import TenantDB
-
-    async with session_factory() as session:
-        stmt = pg_insert(TenantDB).values(
-            tenant_id=body.tenant_id,
-            name=body.name,
-            max_concurrent_runs=body.max_concurrent_runs,
-            max_queued_runs=body.max_queued_runs,
-            priority=body.priority,
-        ).on_conflict_do_update(
-            index_elements=["tenant_id"],
-            set_={
-                "name": body.name,
-                "max_concurrent_runs": body.max_concurrent_runs,
-                "max_queued_runs": body.max_queued_runs,
-                "priority": body.priority,
-            },
-        )
-        await session.execute(stmt)
-        await session.commit()
-
-    return {"status": "created", "tenant_id": body.tenant_id}
-
-
-@router.delete("/scale/tenants/{tenant_id}")
-async def delete_tenant(tenant_id: str, request: Request):
-    session_factory = getattr(request.app.state, "pg_session_factory", None)
-    if not session_factory:
-        raise HTTPException(503, detail="Postgres not configured")
-
-    from sqlalchemy import delete
-    from core.scale.models_db import TenantDB
-
-    async with session_factory() as session:
-        await session.execute(delete(TenantDB).where(TenantDB.tenant_id == tenant_id))
-        await session.commit()
-
-    return {"status": "deleted", "tenant_id": tenant_id}
 
 
 # ---------------------------------------------------------------------------

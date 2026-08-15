@@ -16,7 +16,8 @@ from typing import Any
 from arq import ArqRedis
 from arq.connections import RedisSettings
 
-from core.scale.config import get_scale_config
+from core.scale.config import QUEUE_NAME, get_scale_config
+from core.tenancy import get_tenant
 
 
 # ---------------------------------------------------------------------------
@@ -45,10 +46,17 @@ async def run_orchestration_job(
     initial_state: dict | None = None,
     webhook_url: str | None = None,
     webhook_secret: str | None = None,
-    tenant_id: str | None = None,
     api_key_id: str | None = None,
 ) -> dict:
-    """Pull an orchestration definition from Postgres, run it, publish events."""
+    """Pull an orchestration definition from the store, run it, publish events.
+
+    There is deliberately no `tenant_id` parameter. It used to be taken from
+    the job payload and written straight onto the run row, which meant any
+    caller that could enqueue a job could label its run with any tenant it
+    liked. The tenant now comes from the execution context — see
+    core/tenancy.py — which an embedder establishes around the call and which
+    nothing in the shipped single-tenant product can change.
+    """
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
@@ -61,26 +69,25 @@ async def run_orchestration_job(
         # Mark run as picked up in Postgres (UPSERT so DLQ retries work even
         # without a pre-existing row created by the V2 API enqueue path).
         async with session_factory() as session:
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-            from core.scale.models_db import OrchestrationRunDB
+            from core.store import upsert
+            from core.store.models import OrchestrationRunDB
             now = datetime.now(timezone.utc)
-            stmt = pg_insert(OrchestrationRunDB).values(
-                run_id=run_id,
-                orchestration_id=orch_id,
-                status="running",
-                worker_id=_worker_id,
-                job_id=ctx.get("job_id", ""),
-                tenant_id=tenant_id or cfg.default_tenant_id,
-                started_at=now,
-            ).on_conflict_do_update(
-                index_elements=["run_id"],
-                set_={
+            await upsert(
+                session,
+                OrchestrationRunDB,
+                values={
+                    "run_id": run_id,
+                    "orchestration_id": orch_id,
+                    "status": "running",
                     "worker_id": _worker_id,
                     "job_id": ctx.get("job_id", ""),
-                    "status": "running",
+                    "tenant_id": get_tenant(),
+                    "started_at": now,
                 },
+                index_elements=["run_id"],
+                # A retry must not rewrite the tenant or the start time.
+                update=["worker_id", "job_id", "status"],
             )
-            await session.execute(stmt)
             await session.commit()
 
         # Load orchestration definition from Postgres
@@ -363,9 +370,11 @@ async def run_agent_chat_job(
     images: list | None = None,
     webhook_url: str | None = None,
     webhook_secret: str | None = None,
-    tenant_id: str | None = None,
 ) -> dict:
-    """Run a single agent chat turn, publish events, persist session."""
+    """Run a single agent chat turn, publish events, persist session.
+
+    No `tenant_id` parameter — see `run_orchestration_job`.
+    """
     global _active_jobs
     _active_jobs += 1
     cfg = get_scale_config()
@@ -490,18 +499,18 @@ async def worker_startup(ctx: dict) -> None:
 
     print(f"[worker] starting up as {_worker_id} @ {_worker_address}", flush=True)
 
-    # Build Postgres engine and session factory
-    from core.scale.db import build_engine, build_session_factory, init_db
+    # Build the store's engine and session factory
+    from core.store import build_engine, build_session_factory, init_db, set_store
     pg_engine = build_engine(cfg.postgres_url, pgbouncer_mode=cfg.pgbouncer_mode)
     await init_db(pg_engine)
     session_factory = build_session_factory(pg_engine)
     ctx["session_factory"] = session_factory
     ctx["pg_engine"] = pg_engine
 
-    # Wire session factory into the global worker context so all resolvers
-    # (agents, tools, MCP servers) can reach Postgres without explicit passing
-    from core.scale.context import set_session_factory
-    set_session_factory(session_factory)
+    # Point the store at this engine, so the resolvers (agents, tools, MCP
+    # servers) and the state backend reach the same Postgres the worker uses
+    # rather than opening a second, SQLite one.
+    set_store(session_factory)
 
     # Redis client (already provided by ARQ as ctx["redis"])
     redis = ctx["redis"]
@@ -596,8 +605,6 @@ async def worker_shutdown(ctx: dict) -> None:
 
 _cfg = get_scale_config()
 
-QUEUE_NAME = f"synapse:orchestrations:{os.getenv('WORKER_QUEUE_SHARD', 'default')}"
-
 
 def _build_redis_settings() -> RedisSettings:
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -686,30 +693,28 @@ async def _upsert_chat_session(
     status: str,
     messages: list,
 ) -> None:
-    """Create or update a chat session row in Postgres."""
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    from core.scale.models_db import ChatSessionDB
+    """Create or update a chat session row."""
+    from core.store import upsert
+    from core.store.models import ChatSessionDB
 
     now = datetime.now(timezone.utc)
     async with session_factory() as session:
-        stmt = pg_insert(ChatSessionDB).values(
-            session_id=session_id,
-            agent_id=agent_id,
-            status=status,
-            messages=messages,
-            last_message_at=now,
-            worker_id=_worker_id,
-        ).on_conflict_do_update(
-            index_elements=["session_id"],
-            set_={
+        await upsert(
+            session,
+            ChatSessionDB,
+            values={
+                "session_id": session_id,
                 "agent_id": agent_id,
+                "tenant_id": get_tenant(),
                 "status": status,
                 "messages": messages,
                 "last_message_at": now,
                 "worker_id": _worker_id,
             },
+            index_elements=["session_id"],
+            # The tenant is set when the session is created and never moves.
+            update=["agent_id", "status", "messages", "last_message_at", "worker_id"],
         )
-        await session.execute(stmt)
         await session.commit()
 
 
