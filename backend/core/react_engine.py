@@ -798,7 +798,7 @@ async def run_agent_step(
     elif is_orchestrator:
         recent_history_messages = []
     else:
-        recent_history_messages = get_recent_history_messages(session_id, agent_id=agent_id_for_session)
+        recent_history_messages = await get_recent_history_messages(session_id, agent_id=agent_id_for_session)
     current_context_text = f"User Request: {user_message}\n"
     final_response = ""
     last_intent = "chat"
@@ -1607,7 +1607,7 @@ async def run_agent_step(
     # Persist conversation turn to JSON session file (skip for orchestrator agents)
     if not is_orchestrator:
         try:
-            _save_conversation_turn(
+            await _save_conversation_turn(
                 session_id=session_id,
                 agent_id=agent_id_for_session,
                 user=user_message,

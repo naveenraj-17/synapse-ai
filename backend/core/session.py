@@ -1,10 +1,27 @@
 """
 Session and conversation state management.
-Uses JSON file-backed storage for persistence across server restarts.
+
+Backed by the `chat_sessions` table, which the standalone server and the scale
+worker now share. They used to disagree: the worker held the canonical history
+in Postgres and then *wrote a session file onto its own local disk* so that
+`run_react_loop` could find it here — which meant, in a shared fleet, that a
+conversation's history materialised on whichever worker happened to win the
+job. That shim is gone; both paths read and write the same rows.
+
+A conversation is keyed by `(session_id, agent_id)`, not by `session_id` alone.
+The UI keeps one session id per browser and switches agents underneath it, so
+the same id genuinely names several conversations — see `ChatSessionDB`.
+
+Two shapes, one column
+----------------------
+`messages` is stored as `[{role, content}]`, which is what the worker writes
+and what `GET /v2/chat/{id}/status` returns. The per-turn extras this module
+has always kept — the tools used, the timestamp — ride along as additional keys
+on the assistant entry, so a reader that only knows about role and content is
+unaffected. `turns` is the paired view of the same list, rebuilt on read.
 """
 import json
-import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from core.models import ChatRequest
@@ -14,50 +31,36 @@ from core.models import ChatRequest
 # ---------------------------------------------------------------------------
 session_state: dict[str, dict[str, Any]] = {}
 
-# Directory where per-session JSON files are stored
-_CHAT_SESSIONS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "chat_sessions"
-)
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
 
-def _ensure_sessions_dir():
-    os.makedirs(_CHAT_SESSIONS_DIR, exist_ok=True)
+def _agent(agent_id: str | None) -> str:
+    return agent_id or "default"
 
 
-def _session_file_path(session_id: str, agent_id: str | None) -> str:
-    _ensure_sessions_dir()
-    safe_agent = (agent_id or "default").replace("/", "_").replace("\\", "_")
-    safe_session = session_id.replace("/", "_").replace("\\", "_")
-    return os.path.join(_CHAT_SESSIONS_DIR, f"{safe_agent}_{safe_session}.json")
+def _turns(messages: list[dict]) -> list[dict]:
+    """The message list as user/assistant turns.
 
-
-def _load_session_file(session_id: str, agent_id: str | None) -> dict:
-    """Load a session JSON file. Returns empty skeleton if not found."""
-    path = _session_file_path(session_id, agent_id)
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"DEBUG: Could not load session file {path}: {e}")
-    return {
-        "session_id": session_id,
-        "agent_id": agent_id or "default",
-        "turns": [],
-        "last_response": None,
-        "last_updated": None,
-        "cli_session_ids": {},
-    }
-
-
-def _write_session_file(data: dict, session_id: str, agent_id: str | None):
-    """Persist a session dict to disk."""
-    path = _session_file_path(session_id, agent_id)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"DEBUG: Could not write session file {path}: {e}")
+    Every writer appends the two together, so the pairing is exact. A message
+    that does not pair — a tool or system entry written by something else —
+    ends the reconstruction rather than being silently folded into a turn.
+    """
+    turns = []
+    i = 0
+    while i + 1 < len(messages):
+        user, assistant = messages[i], messages[i + 1]
+        if user.get("role") != "user" or assistant.get("role") != "assistant":
+            break
+        turns.append({
+            "user": user.get("content", ""),
+            "assistant": assistant.get("content", ""),
+            "tools": assistant.get("tools", []),
+            "timestamp": assistant.get("timestamp"),
+        })
+        i += 2
+    return turns
 
 
 # ---------------------------------------------------------------------------
@@ -68,62 +71,70 @@ def _get_session_id(request: ChatRequest) -> str:
     return request.session_id or "default"
 
 
-def _get_conversation_history(session_id: str, agent_id: str | None = None) -> list[dict]:
-    """Return the list of conversation turns for this session (from disk)."""
-    data = _load_session_file(session_id, agent_id)
-    return data.get("turns", [])
+async def _get_conversation_history(session_id: str, agent_id: str | None = None) -> list[dict]:
+    """Return the list of conversation turns for this session."""
+    from core.store import sessions as store
+
+    row = await store.get(session_id, _agent(agent_id))
+    return _turns(row["messages"]) if row else []
 
 
-def _save_conversation_turn(
+async def _save_conversation_turn(
     session_id: str,
     agent_id: str | None,
     user: str,
     assistant: str,
     tools: list[str] | None = None,
 ):
-    """Append a turn to the session JSON file and update last_response."""
-    data = _load_session_file(session_id, agent_id)
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
-    turn = {
-        "user": user,
-        "assistant": assistant,
-        "tools": tools or [],
-        "timestamp": now,
-    }
-    data.setdefault("turns", []).append(turn)
-    data["last_response"] = assistant
-    data["last_updated"] = now
-    data["session_id"] = session_id
-    data["agent_id"] = agent_id or "default"
-    _write_session_file(data, session_id, agent_id)
+    """Append a turn to the session and update last_message_at."""
+    from core.store import sessions as store
+
+    now = _now()
+    await store.append_turn(
+        session_id,
+        _agent(agent_id),
+        [
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": assistant,
+             "tools": tools or [], "timestamp": now},
+        ],
+    )
 
 
-def get_cli_session_id(session_id: str, agent_id: str | None, provider_key: str) -> str | None:
+async def get_cli_session_id(session_id: str, agent_id: str | None, provider_key: str) -> str | None:
     """Return the stored CLI session ID for the given provider, or None."""
-    data = _load_session_file(session_id, agent_id)
-    return data.get("cli_session_ids", {}).get(provider_key)
+    from core.store import sessions as store
+
+    row = await store.get(session_id, _agent(agent_id))
+    return (row or {}).get("cli_session_ids", {}).get(provider_key)
 
 
-def save_cli_session_id(session_id: str, agent_id: str | None, provider_key: str, cli_id: str):
+async def save_cli_session_id(session_id: str, agent_id: str | None, provider_key: str, cli_id: str):
     """Persist a CLI session ID for this agent+session combination and provider."""
-    data = _load_session_file(session_id, agent_id)
-    data.setdefault("cli_session_ids", {})[provider_key] = cli_id
-    _write_session_file(data, session_id, agent_id)
+    from core.store import sessions as store
+
+    await store.set_cli_session_id(session_id, _agent(agent_id), provider_key, cli_id)
 
 
-def get_last_response_snapshot(session_id: str, agent_id: str | None = None) -> dict:
+async def get_last_response_snapshot(session_id: str, agent_id: str | None = None) -> dict:
     """Return {last_response, last_updated} for a session."""
-    data = _load_session_file(session_id, agent_id)
+    from core.store import sessions as store
+
+    row = await store.get(session_id, _agent(agent_id))
+    if not row:
+        return {"last_response": None, "last_updated": None}
+
+    turns = _turns(row["messages"])
     return {
-        "last_response": data.get("last_response"),
-        "last_updated": data.get("last_updated"),
+        "last_response": turns[-1]["assistant"] if turns else None,
+        "last_updated": row["last_updated"],
     }
 
 
-def get_recent_history_messages(session_id: str, agent_id: str | None = None) -> list[dict]:
+async def get_recent_history_messages(session_id: str, agent_id: str | None = None) -> list[dict]:
     """Return last N turns as [role/content] message dicts for the LLM API."""
     RECENT_TURNS = 10
-    turns = _get_conversation_history(session_id, agent_id)
+    turns = await _get_conversation_history(session_id, agent_id)
     recent = turns[-RECENT_TURNS:] if len(turns) > RECENT_TURNS else turns
     messages = []
     for turn in recent:
@@ -132,53 +143,39 @@ def get_recent_history_messages(session_id: str, agent_id: str | None = None) ->
     return messages
 
 
-def list_chat_sessions(agent_id: str | None = None) -> list[dict]:
+async def list_chat_sessions(agent_id: str | None = None) -> list[dict]:
     """
     List all persisted chat sessions, sorted by last_updated descending.
     Optionally filter by agent_id.
     """
-    _ensure_sessions_dir()
-    sessions = []
-    try:
-        for fname in os.listdir(_CHAT_SESSIONS_DIR):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(_CHAT_SESSIONS_DIR, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if agent_id and data.get("agent_id") != agent_id:
-                    continue
-                # Build a lightweight summary
-                turns = data.get("turns", [])
-                sessions.append({
-                    "session_id": data.get("session_id"),
-                    "agent_id": data.get("agent_id"),
-                    "last_response": data.get("last_response"),
-                    "last_updated": data.get("last_updated"),
-                    "turn_count": len(turns),
-                    "first_user_message": turns[0]["user"] if turns else None,
-                })
-            except Exception:
-                continue
-    except Exception as e:
-        print(f"DEBUG: Error listing sessions: {e}")
+    from core.store import sessions as store
 
-    # Sort most recent first
-    sessions.sort(key=lambda s: s.get("last_updated") or "", reverse=True)
+    sessions = []
+    for row in await store.load(agent_id=agent_id):
+        turns = _turns(row["messages"])
+        sessions.append({
+            "session_id": row["session_id"],
+            "agent_id": row["agent_id"],
+            "last_response": turns[-1]["assistant"] if turns else None,
+            "last_updated": row["last_updated"],
+            "turn_count": len(turns),
+            "first_user_message": turns[0]["user"] if turns else None,
+        })
     return sessions
 
 
-def delete_chat_session(session_id: str, agent_id: str | None = None) -> bool:
-    """Delete a session file. Returns True if deleted."""
-    path = _session_file_path(session_id, agent_id)
-    if os.path.exists(path):
-        try:
-            os.remove(path)
-            return True
-        except Exception as e:
-            print(f"DEBUG: Could not delete session file {path}: {e}")
-    return False
+async def delete_chat_session(session_id: str, agent_id: str | None = None) -> bool:
+    """Delete a session. Returns True if deleted."""
+    from core.store import sessions as store
+
+    return await store.delete_one(session_id, _agent(agent_id))
+
+
+async def clear_all_chat_sessions() -> int:
+    """Delete every session for this tenant. Returns the number removed."""
+    from core.store import sessions as store
+
+    return await store.clear()
 
 
 # ---------------------------------------------------------------------------

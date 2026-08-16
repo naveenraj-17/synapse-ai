@@ -2174,7 +2174,7 @@ async def generate_response(
             # Load the existing CLI session ID for this agent+session (if any)
             from core.session import get_cli_session_id, save_cli_session_id
             _provider_key = detect_provider_from_model(current_model)
-            _existing_cli_sid = get_cli_session_id(
+            _existing_cli_sid = await get_cli_session_id(
                 session_id or "default", agent_id, _provider_key
             ) if session_id else None
 
@@ -2188,7 +2188,7 @@ async def generate_response(
 
             # Persist the CLI session ID so the next turn resumes the same session
             if new_cli_sid and session_id:
-                save_cli_session_id(session_id, agent_id, _provider_key, new_cli_sid)
+                await save_cli_session_id(session_id, agent_id, _provider_key, new_cli_sid)
 
         except LLMError:
             raise

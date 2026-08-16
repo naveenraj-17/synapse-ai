@@ -410,7 +410,7 @@ async def run_agent_chat_job(
         # Load agent definition from Postgres
         agent_data = await _load_agent(session_factory, agent_id) if agent_id else None
         # Load prior message history from Postgres chat_sessions
-        history = await _load_chat_history(session_factory, session_id)
+        history = await _load_chat_history(session_factory, session_id, agent_id)
 
         # Mark session as running
         await _upsert_chat_session(session_factory, session_id, agent_id, "running", history)
@@ -418,28 +418,11 @@ async def run_agent_chat_job(
         from core.scale.pubsub import ChatEventPublisher
         publisher = ChatEventPublisher(redis, session_id, ttl=cfg.pubsub_event_ttl)
 
-        # Pre-populate local session file from Postgres history so run_react_loop
-        # finds it via get_recent_history_messages(session_id, agent_id).
-        # history is [{role, content}]; session file uses [{user, assistant}] turns.
-        if history:
-            from core.session import _write_session_file
-            turns = []
-            msgs = list(history)
-            while len(msgs) >= 2 and msgs[0].get("role") == "user" and msgs[1].get("role") == "assistant":
-                turns.append({
-                    "user": msgs.pop(0).get("content", ""),
-                    "assistant": msgs.pop(0).get("content", ""),
-                    "tools": [],
-                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
-                })
-            _write_session_file({
-                "session_id": session_id,
-                "agent_id": agent_id or "default",
-                "turns": turns,
-                "last_response": turns[-1]["assistant"] if turns else None,
-                "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
-                "cli_session_ids": {},
-            }, session_id, agent_id)
+        # No local materialisation: core/session.py reads the same rows this
+        # job just loaded. The shim that used to live here wrote a session file
+        # onto this worker's own disk, so a conversation's history followed
+        # whichever worker won the job — and it wrote an empty cli_session_ids,
+        # discarding any CLI session this worker was resuming.
 
         # Run the ReAct loop for this chat turn
         response_text = ""
@@ -692,14 +675,23 @@ async def _load_agent(session_factory, agent_id: str) -> dict | None:
     return row.definition if row else None
 
 
-async def _load_chat_history(session_factory, session_id: str) -> list:
-    """Load message history from Postgres chat_sessions."""
+async def _load_chat_history(session_factory, session_id: str, agent_id: str | None) -> list:
+    """Load message history for this conversation.
+
+    Scoped by agent as well as session: the same session id under a different
+    agent is a different conversation, and this is the read that decides what
+    the model is shown.
+    """
     from sqlalchemy import select
-    from core.scale.models_db import ChatSessionDB
+    from core.store.models import ChatSessionDB
 
     async with session_factory() as session:
         result = await session.execute(
-            select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
+            select(ChatSessionDB).where(
+                ChatSessionDB.tenant_id == get_tenant(),
+                ChatSessionDB.session_id == session_id,
+                ChatSessionDB.agent_id == (agent_id or "default"),
+            )
         )
         row = result.scalar_one_or_none()
 
@@ -726,16 +718,15 @@ async def _upsert_chat_session(
             ChatSessionDB,
             values={
                 "session_id": session_id,
-                "agent_id": agent_id,
+                "agent_id": agent_id or "default",
                 "tenant_id": get_tenant(),
                 "status": status,
                 "messages": messages,
                 "last_message_at": now,
                 "worker_id": _worker_id,
             },
-            index_elements=["session_id"],
-            # The tenant is set when the session is created and never moves.
-            update=["agent_id", "status", "messages", "last_message_at", "worker_id"],
+            index_elements=["tenant_id", "session_id", "agent_id"],
+            update=["status", "messages", "last_message_at", "worker_id"],
         )
         await session.commit()
 

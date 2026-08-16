@@ -576,11 +576,23 @@ async def v2_chat_status(
     sf = _get_pg_session_factory(request)
 
     from sqlalchemy import select
-    from core.scale.models_db import ChatSessionDB
+    from core.store.models import ChatSessionDB
+    from core.tenancy import get_tenant
 
+    # A session id can name more than one conversation — the same id under a
+    # different agent is a different one — so this returns the most recently
+    # active. API clients mint a session id per conversation, so in practice
+    # there is one row; the ordering is what makes the ambiguous case defined
+    # rather than arbitrary.
     async with sf() as session:
         result = await session.execute(
-            select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
+            select(ChatSessionDB)
+            .where(
+                ChatSessionDB.tenant_id == get_tenant(),
+                ChatSessionDB.session_id == session_id,
+            )
+            .order_by(ChatSessionDB.last_message_at.desc().nullslast())
+            .limit(1)
         )
         row = result.scalar_one_or_none()
 

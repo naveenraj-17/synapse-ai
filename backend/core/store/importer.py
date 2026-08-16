@@ -20,6 +20,7 @@ them a single-machine design.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -47,6 +48,16 @@ def _read(path: Path):
         return None
 
 
+def _parse_stamp(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 async def store_is_empty() -> bool:
     """True when no orchestration, agent, tool or MCP server exists.
 
@@ -70,6 +81,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     from core.store import session, upsert
     from core.store.models import (
         AgentDB,
+        ChatSessionDB,
         MCPServerDB,
         ModelPricingDB,
         OrchestrationDB,
@@ -89,6 +101,10 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
 
     root = Path(data_dir)
     counts = dict.fromkeys(_SOURCES, 0)
+    # Not in _SOURCES: chat history is a directory of per-session files rather
+    # than one file at the root, so it does not take part in the "is there
+    # anything here to import" check.
+    counts["chat_sessions"] = 0
 
     #: source file → (count key, model, conflict target, row builder, "is this
     #: item importable"). The builders are the same ones the live CRUD path
@@ -119,6 +135,35 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
                     index_elements=index_elements,
                 )
                 counts[count_key] += 1
+
+        # ── chat sessions ───────────────────────────────────────────────────
+        # One JSON file per conversation, named `{agent}_{session}.json` — not
+        # reversibly parseable, since both ids may contain the separator, so
+        # the ids come from the body as they always did.
+        for path in sorted((root / "chat_sessions").glob("*.json")):
+            data = _read(path)
+            if not isinstance(data, dict) or not data.get("session_id"):
+                continue
+            messages = []
+            for turn in data.get("turns") or []:
+                if not isinstance(turn, dict):
+                    continue
+                messages.append({"role": "user", "content": turn.get("user", "")})
+                messages.append({
+                    "role": "assistant",
+                    "content": turn.get("assistant", ""),
+                    "tools": turn.get("tools") or [],
+                    "timestamp": turn.get("timestamp"),
+                })
+            s.add(ChatSessionDB(
+                tenant_id=tenant_id,
+                session_id=data["session_id"],
+                agent_id=data.get("agent_id") or "default",
+                messages=messages,
+                cli_session_ids=data.get("cli_session_ids") or {},
+                last_message_at=_parse_stamp(data.get("last_updated")),
+            ))
+            counts["chat_sessions"] += 1
 
         # ── usage log ───────────────────────────────────────────────────────
         # Append-only history rather than a keyed collection, so these are

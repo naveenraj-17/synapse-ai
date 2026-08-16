@@ -57,6 +57,17 @@ def data_dir(tmp_path):
          "created_at": "2026-01-02T03:04:05Z", "next_run_at": "2026-01-02T03:09:05Z",
          "last_run_at": None},
     ]), encoding="utf-8")
+    sessions = root / "chat_sessions"
+    sessions.mkdir()
+    # Two agents under one session id — two files today, and two rows after.
+    for agent in ("agent_a", "agent_b"):
+        (sessions / f"{agent}_sess_1.json").write_text(json.dumps({
+            "session_id": "sess_1", "agent_id": agent,
+            "turns": [{"user": f"hi {agent}", "assistant": "hello",
+                       "tools": ["search"], "timestamp": "2026-01-02T03:04:05.000000Z"}],
+            "last_response": "hello", "last_updated": "2026-01-02T03:04:05.000000Z",
+            "cli_session_ids": {"anthropic_cli": f"cli-{agent}"},
+        }), encoding="utf-8")
     (root / "usage_logs.json").write_text(json.dumps([
         {"timestamp": "2026-01-02T03:04:05.123Z", "model": "claude-x", "provider": "anthropic",
          "session_id": "s1", "agent_id": "a1", "source": "chat", "run_id": None,
@@ -84,7 +95,8 @@ async def test_everything_comes_across(data_dir):
 
     assert counts == {
         "orchestrations": 1, "user_agents": 1, "custom_tools": 1, "mcp_servers": 1,
-        "schedules": 1, "usage_logs": 2, "model_pricing": 1, "settings": 2,
+        "schedules": 1, "chat_sessions": 2, "usage_logs": 2, "model_pricing": 1,
+        "settings": 2,
     }
 
     async with session() as s:
@@ -126,6 +138,21 @@ async def test_everything_comes_across(data_dir):
     assert usage[1].details["chars_saved"] == 600
     # An edited rate card survives; it is not overwritten by the shipped one.
     assert priced.entry["input_per_1m"] == 7.5
+
+
+async def test_chat_history_comes_across_per_agent(data_dir):
+    """Two agents shared one session id on disk, and must still afterwards."""
+    from core.session import _get_conversation_history, get_cli_session_id
+
+    await import_data_dir(data_dir)
+
+    a = await _get_conversation_history("sess_1", "agent_a")
+    b = await _get_conversation_history("sess_1", "agent_b")
+
+    assert [t["user"] for t in a] == ["hi agent_a"]
+    assert [t["user"] for t in b] == ["hi agent_b"]
+    assert a[0]["tools"] == ["search"]
+    assert await get_cli_session_id("sess_1", "agent_a", "anthropic_cli") == "cli-agent_a"
 
 
 async def test_imported_rows_land_on_the_single_tenant(data_dir):

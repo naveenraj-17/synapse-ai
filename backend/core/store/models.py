@@ -398,13 +398,28 @@ class ScheduleDB(Base):
 # ---------------------------------------------------------------------------
 
 class ChatSessionDB(Base):
+    """One conversation: a session id, under one agent, for one tenant.
+
+    ``agent_id`` is part of the key, not an attribute of it. The UI keeps a
+    single session id per browser and switches agents underneath it, so the
+    same session id genuinely names several conversations — the history sidebar
+    lists them separately and labels each with its agent. Keyed on
+    ``session_id`` alone they would collapse into one row, which is not only a
+    lost sidebar entry: the next turn would feed one agent the other agent's
+    conversation.
+
+    ``messages`` is ``[{role, content}]``. Entries may also carry ``tools`` and
+    ``timestamp``; readers that do not know about those ignore them, which is
+    what keeps the v2 chat API's response shape unchanged.
+    """
     __tablename__ = "chat_sessions"
 
-    session_id = Column(String(255), primary_key=True)
-    agent_id = Column(String(255))
+    session_id = Column(String(255), nullable=False)
+    agent_id = Column(String(255), nullable=False, default="default", server_default="default")
     tenant_id = _tenant_column()
     status = Column(String(50), default="idle")   # idle | running | completed | failed
     messages = Column(JSONType, nullable=False, default=list)
+    cli_session_ids = Column(JSONType, default=dict)   # provider key → CLI session id
     last_message_at = Column(DateTime(timezone=True))
     worker_id = Column(String(255))
     job_id = Column(String(255))
@@ -415,6 +430,10 @@ class ChatSessionDB(Base):
     webhook_secret = Column(Text)
 
     __table_args__ = (
+        # Deliberately unnamed: this is the one table core/store/migrate.py
+        # rebuilds, and a named constraint would collide with the live table's
+        # while the staging copy exists.
+        PrimaryKeyConstraint("tenant_id", "session_id", "agent_id"),
         Index("idx_chat_tenant_time", "tenant_id", "last_message_at"),
     )
 

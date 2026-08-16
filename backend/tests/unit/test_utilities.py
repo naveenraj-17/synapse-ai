@@ -107,19 +107,19 @@ class TestVault:
 
 
 class TestSession:
-    def test_cli_session_id_roundtrip(self):
+    async def test_cli_session_id_roundtrip(self):
         import uuid
         from core.session import get_cli_session_id, save_cli_session_id
         sid = f"sess_{uuid.uuid4().hex[:8]}"
-        assert get_cli_session_id(sid, "agent1", "anthropic_cli") is None
-        save_cli_session_id(sid, "agent1", "anthropic_cli", "cli-xyz")
-        assert get_cli_session_id(sid, "agent1", "anthropic_cli") == "cli-xyz"
+        assert await get_cli_session_id(sid, "agent1", "anthropic_cli") is None
+        await save_cli_session_id(sid, "agent1", "anthropic_cli", "cli-xyz")
+        assert await get_cli_session_id(sid, "agent1", "anthropic_cli") == "cli-xyz"
 
-    def test_history_and_sessions_empty(self):
+    async def test_history_and_sessions_empty(self):
         from core.session import get_recent_history_messages, list_chat_sessions, delete_chat_session
-        assert get_recent_history_messages("ghost") == []
-        assert isinstance(list_chat_sessions(), list)
-        assert delete_chat_session("ghost") is False
+        assert await get_recent_history_messages("ghost") == []
+        assert isinstance(await list_chat_sessions(), list)
+        assert await delete_chat_session("ghost") is False
 
 
 class TestConfig:

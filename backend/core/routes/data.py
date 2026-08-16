@@ -14,7 +14,7 @@ import httpx
 
 from core.config import load_settings, DATA_DIR
 from core.llm_providers import _make_aws_client
-from core.session import session_state, _CHAT_SESSIONS_DIR
+from core.session import session_state, clear_all_chat_sessions
 from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_DIR
 
 router = APIRouter()
@@ -727,21 +727,10 @@ async def get_bedrock_inference_profiles():
 
 @router.delete("/api/history/recent")
 async def clear_recent_history():
-    """Clears all persisted JSON session files and in-memory session state."""
-    import shutil
-    import os
+    """Clears all persisted chat sessions and in-memory session state."""
     session_state.clear()
-    # Delete all JSON session files
-    cleared = 0
-    if os.path.isdir(_CHAT_SESSIONS_DIR):
-        for fname in os.listdir(_CHAT_SESSIONS_DIR):
-            if fname.endswith(".json"):
-                try:
-                    os.remove(os.path.join(_CHAT_SESSIONS_DIR, fname))
-                    cleared += 1
-                except Exception:
-                    pass
-    return {"status": "success", "message": f"Cleared {cleared} session file(s) and in-memory state."}
+    cleared = await clear_all_chat_sessions()
+    return {"status": "success", "message": f"Cleared {cleared} session(s) and in-memory state."}
 
 
 @router.delete("/api/history/all")
@@ -751,22 +740,13 @@ async def clear_all_history():
     import core.server as _server
 
     session_state.clear()
-    # Delete all JSON session files
-    cleared = 0
-    if os.path.isdir(_CHAT_SESSIONS_DIR):
-        for fname in os.listdir(_CHAT_SESSIONS_DIR):
-            if fname.endswith(".json"):
-                try:
-                    os.remove(os.path.join(_CHAT_SESSIONS_DIR, fname))
-                    cleared += 1
-                except Exception:
-                    pass
+    cleared = await clear_all_chat_sessions()
     # Clear ChromaDB report-RAG collections
     if _server.memory_store:
         success = _server.memory_store.clear_memory()
         if not success:
             raise HTTPException(status_code=500, detail="Failed to clear long-term memory.")
-    return {"status": "success", "message": f"Cleared {cleared} session file(s) and long-term memory."}
+    return {"status": "success", "message": f"Cleared {cleared} session(s) and long-term memory."}
 
 
 # --- Bulk Memory Clear ---
@@ -786,15 +766,7 @@ async def clear_memory_items(req: MemoryClearRequest):
     # Chat sessions
     if "chat_history" in items:
         session_state.clear()
-        cleared = 0
-        if os.path.isdir(_CHAT_SESSIONS_DIR):
-            for fname in os.listdir(_CHAT_SESSIONS_DIR):
-                if fname.endswith(".json"):
-                    try:
-                        os.remove(os.path.join(_CHAT_SESSIONS_DIR, fname))
-                        cleared += 1
-                    except Exception:
-                        pass
+        cleared = await clear_all_chat_sessions()
         results["chat_history"] = f"Cleared {cleared} session(s)"
 
     # Orchestration run history
