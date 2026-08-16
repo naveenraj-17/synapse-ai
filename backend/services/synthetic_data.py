@@ -4,11 +4,12 @@ import httpx
 from datetime import datetime
 from pydantic import BaseModel
 from typing import List, Optional
-from core.config import DATA_DIR
-
-# Constants
-DATASETS_DIR = os.path.join(DATA_DIR, "datasets")
-os.makedirs(DATASETS_DIR, exist_ok=True)
+#: Blob prefix for generated datasets. Whole-file write, whole-file read,
+#: listing — nothing here needs a directory, so this needs no `runtime_dirs`
+#: entry. Generation streams to scratch and publishes at the end, the same
+#: shape as run logs, so a crashed job still leaves its partial output behind
+#: on the machine that was running it.
+DATASETS_PREFIX = "datasets"
 
 class SyntheticDataRequest(BaseModel):
     topic: str
@@ -44,7 +45,8 @@ async def generate_synthetic_data(request: SyntheticDataRequest):
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"dataset_{request.topic.replace(' ', '_')}_{timestamp}.jsonl"
-    filepath = os.path.join(DATASETS_DIR, filename)
+    from core.storage.scratch import scratch_dir
+    filepath = os.path.join(str(scratch_dir("datasets")), filename)
     current_job["file"] = filename
 
     # Meta Prompt Construction
@@ -131,6 +133,15 @@ async def generate_synthetic_data(request: SyntheticDataRequest):
                     print(f"Error generating record {i}: {e}")
                     # Continue to next record even if one fails
                     continue
+
+        # Publish the finished dataset. In a local install the blob store is a
+        # directory the user can open; in a hosted one it is per-org S3.
+        try:
+            from core.storage import get_blob_store
+            with open(filepath, "r", encoding="utf-8") as f:
+                get_blob_store().put(f"{DATASETS_PREFIX}/{filename}", f.read())
+        except Exception as e:
+            print(f"Warning: could not publish dataset {filename}: {e}")
 
         current_job["status"] = "completed"
         

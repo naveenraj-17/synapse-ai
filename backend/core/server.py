@@ -221,7 +221,12 @@ async def _build_native_mcp_servers() -> list[dict]:
         servers.append({
             "name": "Browser Automation",
             "command": _NPX_CMD,
-            "args": ["-y", "@playwright/mcp", "--browser", "chrome", "--output-dir", "data/vault/playwright"],
+            # Was the relative string "data/vault/playwright", resolved
+            # against the npx subprocess's cwd rather than anything the engine
+            # controls — so screenshots landed wherever the server happened to
+            # be started from.
+            "args": ["-y", "@playwright/mcp", "--browser", "chrome",
+                     "--output-dir", str(_vault_root() / "playwright")],
             "env": env_dict,
         })
 
@@ -239,7 +244,11 @@ async def _build_native_mcp_servers() -> list[dict]:
 
 
     # --- Memory MCP Server ---
-    memory_file_path = DATA_DIR / "memory" / "memory.jsonl"
+    # The knowledge graph this server accumulates is durable tenant state — it
+    # is what the user told it to remember — so it goes beside the rest of the
+    # tenant's content rather than into scratch.
+    from core.runtime_dirs import tenant_dir
+    memory_file_path = tenant_dir("memory") / "memory.jsonl"
     servers.append({
         "name": "Memory",
         "command": _NPX_CMD,

@@ -15,7 +15,7 @@ import httpx
 from core.config import load_settings, DATA_DIR
 from core.llm_providers import _make_aws_client
 from core.session import session_state, clear_all_chat_sessions
-from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_DIR
+from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_PREFIX
 
 router = APIRouter()
 
@@ -56,19 +56,25 @@ async def get_synthetic_status():
 
 @router.get("/api/synthetic/datasets")
 async def list_datasets():
-    if not os.path.exists(DATASETS_DIR):
-        return []
-    files = [f for f in os.listdir(DATASETS_DIR) if f.endswith(".jsonl")]
+    from core.storage import get_blob_store
+
+    store = get_blob_store()
     results = []
-    for f in files:
-        path = os.path.join(DATASETS_DIR, f)
-        stats = os.stat(path)
+    for key in store.list(DATASETS_PREFIX):
+        if not key.endswith(".jsonl"):
+            continue
+        content = store.get(key) or ""
+        path = store.path_for(key)
+        created = (
+            datetime.fromtimestamp(path.stat().st_ctime).isoformat()
+            if path is not None and path.exists() else None
+        )
         results.append({
-            "filename": f,
-            "size": stats.st_size,
-            "created": datetime.fromtimestamp(stats.st_ctime).isoformat()
+            "filename": os.path.basename(key),
+            "size": len(content.encode("utf-8")),
+            "created": created,
         })
-    return sorted(results, key=lambda x: x["created"], reverse=True)
+    return sorted(results, key=lambda x: x["created"] or "", reverse=True)
 
 
 # --- Models ---

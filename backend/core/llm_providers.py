@@ -480,10 +480,12 @@ async def call_cli_provider(
     temp_input_file = None
     temp_output_file = None
 
-    # Use backend/data/tmp for temp files — avoids cross-OS permission issues
-    # with the system temp dir and keeps all runtime files under the project root.
-    _tmp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tmp")
-    os.makedirs(_tmp_dir, exist_ok=True)
+    # Prompt and response files handed to a CLI subprocess and deleted after
+    # the call. Genuinely throwaway, so: scratch. Kept off the system temp dir
+    # for the cross-OS permission reasons that put them under the project root
+    # in the first place.
+    from core.storage.scratch import scratch_dir
+    _tmp_dir = str(scratch_dir("llm_cli"))
 
     try:
         if base_cli == "cli.copilot":

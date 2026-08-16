@@ -12,12 +12,16 @@ class MemoryStore:
         model="llama3",
         embed_fn: Optional[Callable[[str], list[float] | None]] = None,
     ):
-        # Initialize ChromaDB
-        # We use a persistent client so data survives restarts
-        self.storage_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "chroma_db")
-        if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path)
-            
+        # ChromaDB's index is a rebuildable per-replica cache, not tenant
+        # state: the embeddings can be regenerated from their sources, and D10
+        # keeps vectors out of the store because SQLite has no vector type. So
+        # it lives in the state dir. `storage_path` has been ignored since this
+        # was written; it stays in the signature so the existing construction
+        # sites do not have to change.
+        from core.runtime_dirs import state_dir
+
+        self.storage_path = str(state_dir("chroma_db"))
+
         self.client = chromadb.PersistentClient(path=self.storage_path)
         self.collection = self.client.get_or_create_collection(name="chat_history")
         self.model = model

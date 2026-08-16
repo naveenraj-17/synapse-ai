@@ -149,11 +149,13 @@ class WhatsAppAdapter(MessagingAdapter):
             playwright = await async_playwright().start()
             self._playwright = playwright
 
-            # Launch browser with persistent context to preserve WhatsApp Web session
-            from core.config import DATA_DIR
-            import os
-            user_data_dir = os.path.join(DATA_DIR, "whatsapp_sessions", self.channel_id)
-            os.makedirs(user_data_dir, exist_ok=True)
+            # Launch browser with persistent context to preserve the WhatsApp
+            # Web session. This is durable tenant state that cannot be
+            # regenerated without a human scanning a QR code, so tenant_dir()
+            # refuses outright when there is nowhere persistent to put it
+            # rather than writing to storage the next deploy discards.
+            from core.runtime_dirs import tenant_dir
+            user_data_dir = str(tenant_dir("whatsapp_sessions", self.channel_id))
 
             browser = await playwright.chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
