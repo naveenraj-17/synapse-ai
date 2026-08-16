@@ -10,14 +10,14 @@ import pytest
 
 
 class TestUsageTracker:
-    def test_log_and_summarize(self):
+    async def test_log_and_summarize(self):
         from core import usage_tracker
-        usage_tracker.log_usage(model="claude-x", provider="anthropic",
-                                input_tokens=100, output_tokens=50, context_chars=1000,
-                                session_id="s1", source="chat", latency_seconds=0.5)
-        logs = usage_tracker.get_usage_logs(limit=10)
+        await usage_tracker.log_usage(model="claude-x", provider="anthropic",
+                                      input_tokens=100, output_tokens=50, context_chars=1000,
+                                      session_id="s1", source="chat", latency_seconds=0.5)
+        logs = await usage_tracker.get_usage_logs(limit=10)
         assert any(r.get("model") == "claude-x" for r in logs)
-        summary = usage_tracker.get_usage_summary()
+        summary = await usage_tracker.get_usage_summary()
         assert isinstance(summary, dict)
 
     def test_estimate_tokens(self):
@@ -25,19 +25,21 @@ class TestUsageTracker:
         assert usage_tracker.estimate_tokens_from_text("hello world foo bar") > 0
         assert usage_tracker.estimate_tokens_from_text("") == 0
 
-    def test_pricing_table_roundtrip(self):
+    async def test_pricing_table_roundtrip(self):
         from core import usage_tracker
-        table = usage_tracker.get_pricing_table()
+        table = await usage_tracker.get_pricing_table()
         assert isinstance(table, dict)
-        usage_tracker.save_pricing_table({"m": {"provider": "x", "input_per_1m": 1.0, "output_per_1m": 2.0}})
-        assert "m" in usage_tracker.get_pricing_table()
+        await usage_tracker.save_pricing_table(
+            {"m": {"provider": "x", "input_per_1m": 1.0, "output_per_1m": 2.0}}
+        )
+        assert "m" in await usage_tracker.get_pricing_table()
 
-    def test_cache_summary_and_clear(self):
+    async def test_cache_summary_and_clear(self):
         from core import usage_tracker
-        assert isinstance(usage_tracker.get_cache_summary(), dict)
-        usage_tracker.log_usage(model="m", provider="p", input_tokens=1, output_tokens=1,
-                                context_chars=1)
-        assert usage_tracker.clear_usage_logs() >= 0
+        assert isinstance(await usage_tracker.get_cache_summary(), dict)
+        await usage_tracker.log_usage(model="m", provider="p", input_tokens=1, output_tokens=1,
+                                      context_chars=1)
+        assert await usage_tracker.clear_usage_logs() >= 0
 
 
 class TestVault:

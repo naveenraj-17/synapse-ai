@@ -57,6 +57,22 @@ def data_dir(tmp_path):
          "created_at": "2026-01-02T03:04:05Z", "next_run_at": "2026-01-02T03:09:05Z",
          "last_run_at": None},
     ]), encoding="utf-8")
+    (root / "usage_logs.json").write_text(json.dumps([
+        {"timestamp": "2026-01-02T03:04:05.123Z", "model": "claude-x", "provider": "anthropic",
+         "session_id": "s1", "agent_id": "a1", "source": "chat", "run_id": None,
+         "tool_name": None, "input_tokens": 100, "output_tokens": 50, "total_tokens": 150,
+         "context_chars": 900, "estimated_cost": 0.001, "latency_seconds": 0.5,
+         "cache_read_tokens": 0, "cache_write_tokens": 0, "estimated_savings": 0.0,
+         "response_cache_hit": False},
+        {"timestamp": "2026-01-02T03:05:00.000Z", "event_type": "compaction",
+         "source": "compaction", "stage": "trim", "session_id": "s1", "agent_id": "a1",
+         "run_id": None, "chars_before": 1000, "chars_after": 400, "chars_saved": 600,
+         "reduction_pct": 60, "archive_path": None, "model": "", "input_tokens": 0,
+         "output_tokens": 0, "total_tokens": 0, "estimated_cost": 0.0, "latency_seconds": 0.0},
+    ]), encoding="utf-8")
+    (root / "model_pricing.json").write_text(json.dumps({
+        "claude-x": {"provider": "anthropic", "input_per_1m": 7.5, "output_per_1m": 30},
+    }), encoding="utf-8")
     (root / "settings.json").write_text(json.dumps({
         "model": "claude-x", "vault_threshold": 5000,
     }), encoding="utf-8")
@@ -67,8 +83,8 @@ async def test_everything_comes_across(data_dir):
     counts = await import_data_dir(data_dir)
 
     assert counts == {
-        "orchestrations": 1, "user_agents": 1, "custom_tools": 1,
-        "mcp_servers": 1, "schedules": 1, "settings": 2,
+        "orchestrations": 1, "user_agents": 1, "custom_tools": 1, "mcp_servers": 1,
+        "schedules": 1, "usage_logs": 2, "model_pricing": 1, "settings": 2,
     }
 
     async with session() as s:
@@ -94,6 +110,22 @@ async def test_everything_comes_across(data_dir):
     assert sched.definition["interval_value"] == 5
     assert sched.next_run_at.replace(tzinfo=None).isoformat() == "2026-01-02T03:09:05"
     assert sched.created_at.replace(tzinfo=None).isoformat() == "2026-01-02T03:04:05"
+
+    # Usage history comes across, and a compaction event's own fields land in
+    # `details` rather than being dropped for having no column.
+    from core.store.models import ModelPricingDB, UsageLogDB
+
+    async with session() as s:
+        usage = (await s.execute(
+            select(UsageLogDB).order_by(UsageLogDB.timestamp)
+        )).scalars().all()
+        priced = (await s.execute(select(ModelPricingDB))).scalar_one()
+
+    assert [u.event_type for u in usage] == [None, "compaction"]
+    assert usage[0].estimated_cost == 0.001
+    assert usage[1].details["chars_saved"] == 600
+    # An edited rate card survives; it is not overwritten by the shipped one.
+    assert priced.entry["input_per_1m"] == 7.5
 
 
 async def test_imported_rows_land_on_the_single_tenant(data_dir):

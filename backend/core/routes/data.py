@@ -836,7 +836,7 @@ async def clear_memory_items(req: MemoryClearRequest):
 
     # Usage logs
     if "usage" in items:
-        count = clear_usage_logs()
+        count = await clear_usage_logs()
         results["usage"] = f"Cleared {count} usage record(s)"
 
     # Repositories

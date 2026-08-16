@@ -243,7 +243,7 @@ async def estimate_orchestration_cost(orch_id: str, sample_size: int = 5):
     """
     from core.usage_tracker import get_usage_logs
     # Pull recent orchestration logs and filter to this orch_id's runs.
-    raw = get_usage_logs(limit=500, source="orchestration")
+    raw = await get_usage_logs(limit=500, source="orchestration")
     by_run: dict[str, dict] = {}
     for r in raw:
         rid = r.get("run_id") or ""

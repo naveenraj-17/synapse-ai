@@ -289,6 +289,75 @@ class CollectionDB(Base):
 
 
 # ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+
+class UsageLogDB(Base):
+    """One row per LLM call (and per compaction event).
+
+    An append-per-call event log with aggregation over it, which is the other
+    thing ``CollectionDB`` is explicitly not for. As a JSON file every call
+    read the whole list, appended and wrote it all back — on the per-turn path,
+    so the cost of logging a call grew with the number of calls ever made.
+
+    Compaction events share the table because they share every query: the
+    usage screen lists both, and ``event_type`` is the discriminator every
+    aggregate already filters on. Their extra fields live in ``details``
+    rather than as columns no LLM call would ever fill.
+    """
+    __tablename__ = "usage_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = _tenant_column()
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=_now)
+    event_type = Column(String(50))          # NULL for an LLM call, "compaction" otherwise
+    source = Column(String(100), default="chat")
+    model = Column(String(255), default="")
+    provider = Column(String(100), default="")
+    session_id = Column(String(255), default="unknown")
+    agent_id = Column(String(255), default="unknown")
+    run_id = Column(String(255))
+    tool_name = Column(String(255))
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    context_chars = Column(Integer, default=0)
+    estimated_cost = Column(Float, default=0.0)
+    latency_seconds = Column(Float, default=0.0)
+    cache_read_tokens = Column(Integer, default=0)
+    cache_write_tokens = Column(Integer, default=0)
+    estimated_savings = Column(Float, default=0.0)
+    response_cache_hit = Column(Boolean, default=False)
+    details = Column(JSONType)               # compaction-only fields
+
+    __table_args__ = (
+        Index("idx_usage_tenant_time", "tenant_id", "timestamp"),
+        Index("idx_usage_tenant_session", "tenant_id", "session_id"),
+        Index("idx_usage_tenant_run", "tenant_id", "run_id"),
+    )
+
+
+class ModelPricingDB(Base):
+    """The per-model rate card.
+
+    Deliberately **not** tenant data, like ``WorkerDB`` above. It is what a
+    model costs, which is the same number for everyone — so a tenant column
+    would give every org its own copy of one table and mean an operator
+    updating a price reached nobody. In cloud this is staff-managed; in a
+    self-hosted install it is whatever the user edits on the usage screen.
+
+    Seeded from ``core/model_pricing.py`` at startup, inserting only the models
+    that are missing, so neither an edit nor a future automated price feed is
+    undone by a restart.
+    """
+    __tablename__ = "model_pricing"
+
+    model = Column(String(255), primary_key=True)
+    entry = Column(JSONType, nullable=False)   # {provider, input_per_1m, output_per_1m, ...}
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+# ---------------------------------------------------------------------------
 # Schedules
 # ---------------------------------------------------------------------------
 

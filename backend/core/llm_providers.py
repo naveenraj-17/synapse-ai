@@ -2034,7 +2034,7 @@ async def generate_response(
             print(f"DEBUG: ⚡ response_cache hit ({current_model}) — skipping LLM call", flush=True)
             try:
                 provider = detect_provider_from_model(current_model)
-                usage_tracker.log_usage(
+                await usage_tracker.log_usage(
                     model=current_model,
                     provider=provider,
                     input_tokens=0,
@@ -2310,7 +2310,7 @@ async def generate_response(
     # ── Log usage (fire-and-forget, never raises) ────────────────────────────
     try:
         provider = detect_provider_from_model(current_model)
-        usage_tracker.log_usage(
+        await usage_tracker.log_usage(
             model=current_model,
             provider=provider,
             input_tokens=input_tokens,

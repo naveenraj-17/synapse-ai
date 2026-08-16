@@ -249,7 +249,7 @@ class WorkerEngineAdapter:
                 # Aggregate cost/token totals from usage_tracker for this run
                 try:
                     from core.usage_tracker import get_usage_logs
-                    usage_records = get_usage_logs(run_id=self._run_id, limit=100_000)
+                    usage_records = await get_usage_logs(run_id=self._run_id, limit=100_000)
                     values["total_tokens_used"] = sum(r.get("total_tokens", 0) for r in usage_records)
                     values["total_cost_usd"] = round(sum(r.get("estimated_cost", 0.0) for r in usage_records), 8)
                     values["cache_read_tokens"] = sum(r.get("cache_read_tokens", 0) for r in usage_records)

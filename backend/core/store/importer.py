@@ -29,7 +29,8 @@ from core.store.models import DEFAULT_TENANT
 #: Source file → the model it populates and the columns to build from each item.
 #: Order matters only for readability; the tables are independent.
 _SOURCES = (
-    "orchestrations", "user_agents", "custom_tools", "mcp_servers", "schedules", "settings",
+    "orchestrations", "user_agents", "custom_tools", "mcp_servers", "schedules",
+    "usage_logs", "model_pricing", "settings",
 )
 
 
@@ -70,10 +71,12 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     from core.store.models import (
         AgentDB,
         MCPServerDB,
+        ModelPricingDB,
         OrchestrationDB,
         ScheduleDB,
         SettingDB,
         ToolDB,
+        UsageLogDB,
     )
     from core.store.resources import (
         agent_values,
@@ -82,6 +85,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
         tool_values,
     )
     from core.store.schedules import schedule_values
+    from core.store.usage import record_values
 
     root = Path(data_dir)
     counts = dict.fromkeys(_SOURCES, 0)
@@ -115,6 +119,32 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
                     index_elements=index_elements,
                 )
                 counts[count_key] += 1
+
+        # ── usage log ───────────────────────────────────────────────────────
+        # Append-only history rather than a keyed collection, so these are
+        # plain inserts. The store is empty when the import runs, so there is
+        # nothing to conflict with.
+        records = _read(root / "usage_logs.json") or []
+        for record in records if isinstance(records, list) else []:
+            if not isinstance(record, dict):
+                continue
+            s.add(UsageLogDB(tenant_id=tenant_id, **record_values(record)))
+            counts["usage_logs"] += 1
+
+        # ── model pricing ───────────────────────────────────────────────────
+        # Not tenant data — one rate card for the install. Imported so an
+        # edited price survives, then topped up from the shipped defaults at
+        # startup for any model the file predates.
+        pricing = _read(root / "model_pricing.json") or {}
+        for model, entry in (pricing.items() if isinstance(pricing, dict) else []):
+            if not isinstance(entry, dict):
+                continue
+            await upsert(
+                s, ModelPricingDB,
+                values={"model": model, "entry": entry},
+                index_elements=["model"],
+            )
+            counts["model_pricing"] += 1
 
         # ── settings ────────────────────────────────────────────────────────
         settings = _read(root / "settings.json") or {}

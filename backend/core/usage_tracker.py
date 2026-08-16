@@ -1,44 +1,53 @@
 """
 LLM Usage & Cost Tracker
 ------------------------
-Persists every LLM call's token counts, context size, and estimated cost
-to data/usage_logs.json using the pricing table in data/model_pricing.json.
+Persists every LLM call's token counts, context size, and estimated cost to
+the `usage_logs` table, priced from the `model_pricing` table.
 
 Actual token counts are sourced from API response objects where available
 (OpenAI, Anthropic, Gemini all surface usage metadata). Bedrock and Ollama
 fall back to a character-count heuristic (len / 4).
+
+The pricing table is read through a process snapshot, refreshed by the async
+paths below. `calculate_cost` and `calculate_savings` stay synchronous and
+pure: they are called on the per-turn path, priced from a table that changes
+about as often as a vendor changes a price list, and making them `async`
+would push an await into every cost calculation for a lookup in a dict.
 """
-import json
-import os
-import threading
-import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
-from core.config import DATA_DIR
-
-# -------------------------------------------------------------
-# Paths
-# -------------------------------------------------------------
-USAGE_LOGS_FILE = os.path.join(DATA_DIR, "usage_logs.json")
-PRICING_FILE = os.path.join(DATA_DIR, "model_pricing.json")
-
-_lock = threading.Lock()
+from core.store import usage as usage_store
 
 # -------------------------------------------------------------
 # Pricing lookup
 # -------------------------------------------------------------
 
-def _load_pricing() -> dict:
-    """Load the flat model_pricing.json. Returns {} on any error."""
+#: The rate card as last read from the store. `None` means "not loaded yet",
+#: which is distinct from "loaded and empty" — the former is worth a read.
+_pricing_snapshot: dict | None = None
+
+
+async def _refresh_pricing() -> dict:
+    """Load the rate card into the process snapshot."""
+    global _pricing_snapshot
     try:
-        if os.path.exists(PRICING_FILE):
-            with open(PRICING_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+        _pricing_snapshot = await usage_store.load_pricing()
     except Exception as e:
         print(f"DEBUG usage_tracker: could not load pricing: {e}")
-    return {}
+        _pricing_snapshot = _pricing_snapshot or {}
+    return _pricing_snapshot
+
+
+async def _ensure_pricing() -> dict:
+    if _pricing_snapshot is None:
+        return await _refresh_pricing()
+    return _pricing_snapshot
+
+
+def _load_pricing() -> dict:
+    """The rate card, synchronously. Empty until an async path has loaded it."""
+    return _pricing_snapshot or {}
 
 
 def _resolve_pricing_entry(model: str, pricing: dict | None = None) -> dict | None:
@@ -126,17 +135,25 @@ def calculate_savings(
     return round((cache_read_tokens / 1_000_000) * delta_per_1m, 8)
 
 
-def get_pricing_table() -> dict:
+async def get_pricing_table() -> dict:
     """Return the raw pricing table for the API."""
-    return _load_pricing()
+    return await _ensure_pricing()
 
 
-def save_pricing_table(table: dict) -> None:
-    """Overwrite model_pricing.json with an updated table."""
-    with _lock:
-        with open(PRICING_FILE, "w", encoding="utf-8") as f:
-            json.dump(table, f, indent=4)
+async def save_pricing_table(table: dict) -> None:
+    """Replace the rate card."""
+    await usage_store.save_pricing(table)
+    await _refresh_pricing()
     print(f"DEBUG usage_tracker: pricing table updated ({len(table)} entries)", flush=True)
+
+
+async def seed_pricing_table() -> int:
+    """Insert any shipped models the table is missing. Called at startup."""
+    from core.model_pricing import DEFAULT_MODEL_PRICING
+
+    added = await usage_store.seed_pricing(DEFAULT_MODEL_PRICING)
+    await _refresh_pricing()
+    return added
 
 
 # -------------------------------------------------------------
@@ -154,22 +171,7 @@ def estimate_tokens_from_text(text: str) -> int:
 # Usage log persistence
 # -------------------------------------------------------------
 
-def _load_logs() -> list:
-    if not os.path.exists(USAGE_LOGS_FILE):
-        return []
-    try:
-        with open(USAGE_LOGS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-
-def _save_logs(logs: list):
-    with open(USAGE_LOGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(logs, f, indent=2, ensure_ascii=False)
-
-
-def log_usage(
+async def log_usage(
     *,
     model: str,
     provider: str,
@@ -186,19 +188,20 @@ def log_usage(
     cache_write_tokens: int = 0,
     response_cache_hit: bool = False,  # True when the LLM call was skipped entirely
 ):
-    """Append a usage record to usage_logs.json (thread-safe).
+    """Append one usage record.
 
     `input_tokens` should be the cache-miss prompt tokens (i.e. tokens billed
     at the full input rate). Provider helpers split this out before calling us.
     """
+    await _ensure_pricing()
     estimated_cost = calculate_cost(
         model, input_tokens, output_tokens,
         cache_read_tokens=cache_read_tokens,
         cache_write_tokens=cache_write_tokens,
     )
     estimated_savings = calculate_savings(model, cache_read_tokens)
-    record = {
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+    await usage_store.append({
+        "timestamp": datetime.now(timezone.utc),
         "model": model,
         "provider": provider,
         "session_id": session_id or "unknown",
@@ -216,11 +219,7 @@ def log_usage(
         "cache_write_tokens": cache_write_tokens,
         "estimated_savings": estimated_savings,
         "response_cache_hit": response_cache_hit,
-    }
-    with _lock:
-        logs = _load_logs()
-        logs.append(record)
-        _save_logs(logs)
+    })
     _sid_display = (session_id[:8] + '…') if session_id and len(session_id) > 8 else (session_id or '-')
     _cache_tag = ""
     if response_cache_hit:
@@ -234,7 +233,7 @@ def log_usage(
     )
 
 
-def log_compaction_event(
+async def log_compaction_event(
     *,
     stage: str,                        # "trim" | "llm_summary"
     chars_before: int,
@@ -245,7 +244,7 @@ def log_compaction_event(
     archive_path: Optional[str] = None,
     model: str = "",
 ):
-    """Append a compaction event to usage_logs.json.
+    """Append a compaction event.
 
     Tokens and cost are zero — the Stage-2 LLM call is already captured by the
     regular log_usage() call inside llm_providers. This record exists solely for
@@ -253,30 +252,30 @@ def log_compaction_event(
     """
     chars_saved = chars_before - chars_after
     reduction_pct = round(chars_saved / chars_before * 100) if chars_before > 0 else 0
-    record = {
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+    await usage_store.append({
+        "timestamp": datetime.now(timezone.utc),
         "event_type": "compaction",
         "source": "compaction",
-        "stage": stage,
         "session_id": session_id or "unknown",
         "agent_id": agent_id or "unknown",
         "run_id": run_id,
-        "chars_before": chars_before,
-        "chars_after": chars_after,
-        "chars_saved": chars_saved,
-        "reduction_pct": reduction_pct,
-        "archive_path": archive_path,
         "model": model,
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
         "estimated_cost": 0.0,
         "latency_seconds": 0.0,
-    }
-    with _lock:
-        logs = _load_logs()
-        logs.append(record)
-        _save_logs(logs)
+        # The fields only a compaction event has. Columns for these would be
+        # NULL on every LLM-call row, which is the whole table.
+        "details": {
+            "stage": stage,
+            "chars_before": chars_before,
+            "chars_after": chars_after,
+            "chars_saved": chars_saved,
+            "reduction_pct": reduction_pct,
+            "archive_path": archive_path,
+        },
+    })
     archive_note = f" → archived: {archive_path}" if archive_path else ""
     print(
         f"DEBUG usage: [compaction/{stage}] "
@@ -289,7 +288,7 @@ def log_compaction_event(
 # Query helpers
 # -------------------------------------------------------------
 
-def get_usage_logs(
+async def get_usage_logs(
     limit: int = 100,
     offset: int = 0,
     session_id: Optional[str] = None,
@@ -299,35 +298,29 @@ def get_usage_logs(
     """Return paginated usage records.
     - When filtering by session_id or run_id: oldest-first (for per-turn context delta display).
     - Otherwise: newest-first.
+
+    Filtering, ordering and paging all happen in the database now. This used to
+    read every record ever written and slice the result, which is what
+    `limit=100_000` at the end of an orchestration run was paying for.
     """
-    with _lock:
-        logs = _load_logs()
-
-    # Filter
-    if session_id:
-        logs = [r for r in logs if r.get("session_id") == session_id]
-    if run_id:
-        logs = [r for r in logs if r.get("run_id") == run_id]
-    if source:
-        logs = [r for r in logs if r.get("source") == source]
-
-    # Ordering: per-session/run ? chronological (oldest first); global ? newest first
-    if not session_id and not run_id:
-        logs = list(reversed(logs))
-
-    return logs[offset: offset + limit]
+    return await usage_store.query(
+        limit=limit, offset=offset, session_id=session_id, source=source, run_id=run_id,
+    )
 
 
-def get_usage_summary() -> dict:
+async def get_usage_summary() -> dict:
     """Return aggregated cost/token totals grouped by model and session.
 
     Orchestration log entries (those with a non-null run_id) are grouped
     separately by run_id so that each orchestration run appears as a single
     session entry regardless of how many sub-agents ran under it.
     Chat sessions are grouped by session_id as before.
+
+    Grouped in Python rather than by SQL because `models_used` and
+    `agents_used` are sets, and set aggregation is the one thing SQLite and
+    Postgres do not spell the same way — see `core/store/usage.py`.
     """
-    with _lock:
-        logs = _load_logs()
+    logs = await usage_store.all_records()
 
     total_cost = 0.0
     total_input = 0
@@ -523,14 +516,13 @@ def get_usage_summary() -> dict:
         "by_schedule": by_schedule_list,
     }
 
-def get_cache_summary() -> dict:
+async def get_cache_summary() -> dict:
     """Return cache-focused aggregates: per-model + per-run hit rates and savings.
 
     Powers the cache analytics dashboard. Cheaper than walking get_usage_summary()
     on the frontend because it strips out the chat/session detail.
     """
-    with _lock:
-        logs = _load_logs()
+    logs = await usage_store.all_records()
 
     by_model: dict[str, dict] = {}
     by_run: dict[str, dict] = {}
@@ -612,9 +604,6 @@ def get_cache_summary() -> dict:
     }
 
 
-def clear_usage_logs() -> int:
-    """Delete all usage logs. Returns count deleted."""
-    with _lock:
-        count = len(_load_logs())
-        _save_logs([])
-    return count
+async def clear_usage_logs() -> int:
+    """Delete this tenant's usage logs. Returns count deleted."""
+    return await usage_store.clear()

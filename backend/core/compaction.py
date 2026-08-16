@@ -121,7 +121,7 @@ async def maybe_compact(
         stage1_savings_pct = round((total_chars - stage1_total) / total_chars * 100) if total_chars > 0 else 0
         if stage1_total <= threshold and stage1_savings_pct >= MIN_STAGE1_SAVINGS_PCT:
             _log_compaction("Stage-1 trim", total_chars, stage1_total)
-            log_compaction_event(
+            await log_compaction_event(
                 stage="trim",
                 chars_before=total_chars,
                 chars_after=stage1_total,
@@ -191,7 +191,7 @@ async def maybe_compact(
             "reduction_pct": reduction_pct,
         }
         _log_compaction("Stage-2 LLM summary", total_chars, after_chars, str(archive_path) if archive_path else None)
-        log_compaction_event(
+        await log_compaction_event(
             stage="llm_summary",
             chars_before=total_chars,
             chars_after=after_chars,

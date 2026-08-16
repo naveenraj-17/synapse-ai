@@ -430,6 +430,15 @@ async def lifespan(app: FastAPI):
     settings_runtime.install_provider()
     await settings_runtime.refresh()
 
+    # The rate card. Adds only the models the table is missing, so an edited
+    # price is never reverted by a restart — and loads the snapshot that
+    # calculate_cost() reads synchronously on the per-turn path.
+    try:
+        from core.usage_tracker import seed_pricing_table
+        await seed_pricing_table()
+    except Exception as e:
+        print(f"Warning: model pricing seed skipped: {e}")
+
     # After the refresh, not before: this reads login_enabled and asks whether
     # stdio MCP is allowed, and both answers are meaningless while settings are
     # still the shipped defaults.
