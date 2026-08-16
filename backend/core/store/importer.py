@@ -28,10 +28,17 @@ from core.store.models import DEFAULT_TENANT
 
 #: Source file → the model it populates and the columns to build from each item.
 #: Order matters only for readability; the tables are independent.
-_SOURCES = ("orchestrations", "user_agents", "custom_tools", "mcp_servers", "settings")
+_SOURCES = (
+    "orchestrations", "user_agents", "custom_tools", "mcp_servers", "schedules", "settings",
+)
 
 
 def _read(path: Path):
+    # A source file that simply is not there is the normal case — an install
+    # only has the files for features it used — so it is not worth a line of
+    # output. A file that exists and will not parse is.
+    if not path.is_file():
+        return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -64,6 +71,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
         AgentDB,
         MCPServerDB,
         OrchestrationDB,
+        ScheduleDB,
         SettingDB,
         ToolDB,
     )
@@ -73,6 +81,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
         orchestration_values,
         tool_values,
     )
+    from core.store.schedules import schedule_values
 
     root = Path(data_dir)
     counts = dict.fromkeys(_SOURCES, 0)
@@ -90,6 +99,8 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
          tool_values, lambda i: bool(i.get("id") or i.get("name"))),
         ("mcp_servers.json", "mcp_servers", MCPServerDB, ["tenant_id", "name"],
          mcp_server_values, lambda i: bool(i.get("name"))),
+        ("schedules.json", "schedules", ScheduleDB, ["id"],
+         schedule_values, lambda i: bool(i.get("id"))),
     )
 
     async with session() as s:

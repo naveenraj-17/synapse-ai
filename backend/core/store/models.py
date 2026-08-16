@@ -289,6 +289,42 @@ class CollectionDB(Base):
 
 
 # ---------------------------------------------------------------------------
+# Schedules
+# ---------------------------------------------------------------------------
+
+class ScheduleDB(Base):
+    """A scheduled agent or orchestration run.
+
+    One of the collections that earns a real table rather than a slot in
+    ``CollectionDB``: the scheduler asks "enabled and overdue" of the whole
+    table every 30 seconds, and each fire writes one row's ``next_run_at``.
+    As a JSON document that is a whole-file read plus two whole-file rewrites
+    per fire — and it had two independent writers holding two independent
+    locks over one file, so the second rewrite could clobber an edit made
+    through the API while the run was in flight.
+
+    ``enabled``, ``next_run_at`` and ``last_run_at`` are columns rather than
+    keys inside ``definition`` because they are what the tick selects and
+    updates. Everything the user authored stays in ``definition``.
+    """
+    __tablename__ = "schedules"
+
+    id = Column(String(255), primary_key=True)
+    tenant_id = _tenant_column()
+    name = Column(String(500), nullable=False, default="")
+    enabled = Column(Boolean, nullable=False, default=True)
+    definition = Column(JSONType, nullable=False)   # the user-authored fields
+    next_run_at = Column(DateTime(timezone=True))
+    last_run_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    __table_args__ = (
+        Index("idx_schedules_due", "tenant_id", "enabled", "next_run_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Chat sessions
 # ---------------------------------------------------------------------------
 

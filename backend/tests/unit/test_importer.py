@@ -26,6 +26,7 @@ from core.store.models import (
     AgentDB,
     MCPServerDB,
     OrchestrationDB,
+    ScheduleDB,
     SettingDB,
     ToolDB,
 )
@@ -49,6 +50,13 @@ def data_dir(tmp_path):
     (root / "mcp_servers.json").write_text(json.dumps([
         {"name": "github", "label": "GitHub", "url": "https://mcp.example"},
     ]), encoding="utf-8")
+    (root / "schedules.json").write_text(json.dumps([
+        {"id": "sched_9f1", "name": "Nightly", "enabled": True,
+         "target_type": "agent", "target_id": "agent_1700000000", "prompt": "go",
+         "schedule_type": "interval", "interval_value": 5, "interval_unit": "minutes",
+         "created_at": "2026-01-02T03:04:05Z", "next_run_at": "2026-01-02T03:09:05Z",
+         "last_run_at": None},
+    ]), encoding="utf-8")
     (root / "settings.json").write_text(json.dumps({
         "model": "claude-x", "vault_threshold": 5000,
     }), encoding="utf-8")
@@ -60,7 +68,7 @@ async def test_everything_comes_across(data_dir):
 
     assert counts == {
         "orchestrations": 1, "user_agents": 1, "custom_tools": 1,
-        "mcp_servers": 1, "settings": 2,
+        "mcp_servers": 1, "schedules": 1, "settings": 2,
     }
 
     async with session() as s:
@@ -68,6 +76,7 @@ async def test_everything_comes_across(data_dir):
         agent = (await s.execute(select(AgentDB))).scalar_one()
         tool = (await s.execute(select(ToolDB))).scalar_one()
         mcp = (await s.execute(select(MCPServerDB))).scalar_one()
+        sched = (await s.execute(select(ScheduleDB))).scalar_one()
         settings = {r.key: json.loads(r.value)
                     for r in (await s.execute(select(SettingDB))).scalars()}
 
@@ -78,11 +87,19 @@ async def test_everything_comes_across(data_dir):
     assert mcp.definition["url"] == "https://mcp.example"
     assert settings == {"model": "claude-x", "vault_threshold": 5000}
 
+    # Schedule state is promoted to columns the tick can query, and the
+    # original created_at survives — restamping it with the migration time
+    # would lose the ordering the JSON file kept by position.
+    assert sched.enabled is True
+    assert sched.definition["interval_value"] == 5
+    assert sched.next_run_at.replace(tzinfo=None).isoformat() == "2026-01-02T03:09:05"
+    assert sched.created_at.replace(tzinfo=None).isoformat() == "2026-01-02T03:04:05"
+
 
 async def test_imported_rows_land_on_the_single_tenant(data_dir):
     await import_data_dir(data_dir)
     async with session() as s:
-        for model in (OrchestrationDB, AgentDB, ToolDB, MCPServerDB):
+        for model in (OrchestrationDB, AgentDB, ToolDB, MCPServerDB, ScheduleDB):
             row = (await s.execute(select(model))).scalar_one()
             assert row.tenant_id == DEFAULT_TENANT
 

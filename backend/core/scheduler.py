@@ -8,27 +8,12 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
+
+from core.store import schedules as schedule_store
 
 logger = logging.getLogger(__name__)
 
 _TICK_INTERVAL = 30  # seconds between scheduler ticks
-
-# Lazy import of JsonStore to avoid circular imports at module load
-_DATA_DIR = Path(__file__).parent.parent / "data"
-_SCHEDULES_FILE = str(_DATA_DIR / "schedules.json")
-
-
-def _load_schedules() -> list[dict]:
-    from core.json_store import JsonStore
-    store = JsonStore(_SCHEDULES_FILE, default_factory=list)
-    return store.load()
-
-
-def _save_schedules(schedules: list[dict]) -> None:
-    from core.json_store import JsonStore
-    store = JsonStore(_SCHEDULES_FILE, default_factory=list)
-    store.save(schedules)
 
 
 def compute_next_run(schedule: dict, from_dt: datetime) -> datetime:
@@ -129,20 +114,8 @@ class ScheduleManager:
 
     async def _tick(self) -> None:
         """Fire any schedules whose next_run_at has arrived."""
-        schedules = _load_schedules()
-        now = _utc_now()
-        for s in schedules:
-            if not s.get("enabled"):
-                continue
-            next_run = s.get("next_run_at")
-            if not next_run:
-                continue
-            try:
-                due_dt = _parse_iso(next_run)
-            except Exception:
-                continue
-            if due_dt <= now:
-                asyncio.create_task(self._execute_schedule(s["id"]))
+        for s in await schedule_store.due(_utc_now()):
+            asyncio.create_task(self._execute_schedule(s["id"]))
 
     async def _on_startup(self) -> None:
         """
@@ -150,11 +123,10 @@ class ScheduleManager:
         - Interval schedules overdue ? run immediately
         - Cron schedules overdue ? apply missed_run_policy (run_immediately or skip)
         - Never-run schedules ? compute next_run_at from now (run immediately for interval)
-        Saves updated next_run_at values for any schedules that need recalculation.
+        Writes an updated next_run_at for any schedule that needs recalculation.
         """
-        schedules = _load_schedules()
+        schedules = await schedule_store.load()
         now = _utc_now()
-        changed = False
 
         for s in schedules:
             if not s.get("enabled"):
@@ -169,9 +141,7 @@ class ScheduleManager:
                     asyncio.create_task(self._execute_schedule(s["id"]))
                 else:
                     # Cron with no history ? compute from now, no immediate run
-                    next_dt = compute_next_run(s, now)
-                    s["next_run_at"] = _iso(next_dt)
-                    changed = True
+                    await schedule_store.set_next_run(s["id"], compute_next_run(s, now))
                 continue
 
             try:
@@ -196,15 +166,11 @@ class ScheduleManager:
                 else:
                     # Skip: just recalculate next_run_at from now
                     next_dt = compute_next_run(s, now)
-                    s["next_run_at"] = _iso(next_dt)
-                    changed = True
+                    await schedule_store.set_next_run(s["id"], next_dt)
                     logger.info(
                         "[Scheduler] Missed cron schedule '%s' (policy=skip), next run: %s",
-                        s.get("name"), s["next_run_at"],
+                        s.get("name"), _iso(next_dt),
                     )
-
-        if changed:
-            _save_schedules(schedules)
 
     # -- Execution --------------------------------------------------------
 
@@ -213,16 +179,16 @@ class ScheduleManager:
         Fire-and-forget coroutine: runs one schedule invocation end-to-end.
         Advances next_run_at atomically at the start to prevent double-firing.
         """
-        # Step 1: Load schedule and atomically advance next_run_at
-        schedules = _load_schedules()
-        s = next((x for x in schedules if x["id"] == schedule_id), None)
+        # Step 1: Load schedule and advance next_run_at before running, so a
+        # tick arriving mid-run does not fire the same schedule again.
+        s = await schedule_store.get(schedule_id)
         if not s or not s.get("enabled"):
             return
 
         now = _utc_now()
         next_dt = compute_next_run(s, now)
+        await schedule_store.set_next_run(schedule_id, next_dt)
         s["next_run_at"] = _iso(next_dt)
-        _save_schedules(schedules)
 
         logger.info(
             "[Scheduler] Running schedule '%s' (id=%s), next=%s",
@@ -239,7 +205,7 @@ class ScheduleManager:
             prompt=s.get("prompt", ""),
         )
 
-        started_at = _iso(now)
+        started_at = now
         final_response = ""
         status = "completed"
 
@@ -257,13 +223,10 @@ class ScheduleManager:
             sched_log.run_end(status)
             sched_log.close()
 
-        # Step 3: Update last_run_at in store
-        schedules = _load_schedules()
-        for entry in schedules:
-            if entry["id"] == schedule_id:
-                entry["last_run_at"] = started_at
-                break
-        _save_schedules(schedules)
+        # Step 3: Record when this run started. One row update — the whole-file
+        # rewrite this used to be clobbered any edit made through the API while
+        # the run was in flight.
+        await schedule_store.set_last_run(schedule_id, started_at)
 
         # Step 4: Messaging notification
         if final_response and status == "completed":
@@ -305,14 +268,12 @@ class ScheduleManager:
 
     async def _run_orchestration_schedule(self, s: dict, sched_log) -> str:
         """Run orchestration schedule and return the final output text."""
-        from core.json_store import JsonStore
         from core.models_orchestration import Orchestration
         from core.orchestration.engine import OrchestrationEngine
         from core.orchestration.runner import stream_engine_events
+        from core.store.resources import get_orchestration
 
-        orch_store = JsonStore(str(_DATA_DIR / "orchestrations.json"), default_factory=list)
-        orchs = orch_store.load()
-        orch_data = next((o for o in orchs if o["id"] == s.get("target_id")), None)
+        orch_data = await get_orchestration(s.get("target_id"))
         if not orch_data:
             raise ValueError(f"Orchestration {s.get('target_id')} not found")
 
