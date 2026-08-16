@@ -16,7 +16,7 @@ OAuth flow (remote, no token):
   6. callback_handler() returns (code, state), token exchange completes, MCP
      session is established and persisted in self.sessions.
 
-Tokens are stored on disk (FileTokenStorage) so OAuth servers auto-reconnect
+Tokens are stored as tenant-scoped blobs (BlobTokenStorage) so OAuth servers auto-reconnect
 on backend restart without re-authenticating (the provider handles refresh).
 """
 
@@ -86,38 +86,45 @@ def check_stdio_command_allowed(command: str) -> None:
     if allowlist and os.path.basename(command) not in allowlist:
         raise ValueError(f"Command '{command}' is not in the allowed MCP command list.")
 
-MCP_SERVERS_FILE = os.path.join(DATA_DIR, "mcp_servers.json")
-MCP_TOKENS_DIR   = os.path.join(DATA_DIR, "mcp_tokens")
-
 # Redirect URI registered with OAuth servers.
 # Reads SYNAPSE_BACKEND_PORT from env so it matches the running port.
 _BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 OAUTH_CALLBACK_URL = f"http://localhost:{_BACKEND_PORT}/api/mcp/oauth/callback"
 
+#: Blob prefix for MCP OAuth material. Tenant-scoped by the blob store, which
+#: is the point: an access token, a refresh token and a dynamic client
+#: registration are tenant secrets, and they were sitting in a shared folder.
+_TOKENS_PREFIX = "mcp_tokens"
+
 
 # ── Token Storage ──────────────────────────────────────────────────────────────
 
-class FileTokenStorage(TokenStorage):
-    """Persists OAuth tokens and client registration to disk per server."""
+class BlobTokenStorage(TokenStorage):
+    """Persists OAuth tokens and client registration per server, per tenant.
+
+    The four ``TokenStorage`` methods are ``async`` because the MCP SDK
+    requires it, not because the blob store is — ``BlobStore`` is six
+    synchronous methods by design.
+    """
 
     def __init__(self, server_name: str):
-        safe = server_name.replace("/", "_").replace(" ", "_")
-        self._tok  = os.path.join(MCP_TOKENS_DIR, f"{safe}.json")
-        self._cli  = os.path.join(MCP_TOKENS_DIR, f"{safe}_client.json")
+        safe = _safe_server_name(server_name)
+        self._tok = f"{_TOKENS_PREFIX}/{safe}.json"
+        self._cli = f"{_TOKENS_PREFIX}/{safe}_client.json"
 
-    def _read(self, path: str) -> Optional[dict]:
-        if not os.path.exists(path):
-            return None
+    def _store(self):
+        from core.storage import get_blob_store
+        return get_blob_store()
+
+    def _read(self, key: str) -> Optional[dict]:
         try:
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
+            raw = self._store().get(key)
+            return json.loads(raw) if raw else None
         except Exception:
             return None
 
-    def _write(self, path: str, data: dict):
-        os.makedirs(MCP_TOKENS_DIR, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+    def _write(self, key: str, data: dict) -> None:
+        self._store().put(key, json.dumps(data, indent=2))
 
     async def get_tokens(self) -> Optional[OAuthToken]:
         d = self._read(self._tok)
@@ -134,9 +141,24 @@ class FileTokenStorage(TokenStorage):
         self._write(self._cli, info.model_dump(mode="json"))
 
     def delete_all(self):
-        for p in (self._tok, self._cli):
-            if os.path.exists(p):
-                os.remove(p)
+        store = self._store()
+        for key in (self._tok, self._cli):
+            try:
+                store.delete(key)
+            except Exception:
+                pass
+
+
+def _safe_server_name(server_name: str) -> str:
+    """A server name as a blob key segment.
+
+    Stricter than the old filename sanitiser, which replaced only ``/`` and
+    spaces — a server called ``../x`` produced a traversal-shaped path. The
+    blob store's tenant guard would refuse that, but refusing at the boundary
+    means a badly-named server cannot connect at all; keeping every unexpected
+    character out means it just works.
+    """
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in server_name).strip(".") or "_"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -155,7 +177,7 @@ def _make_oauth_provider(
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
         ),
-        storage=FileTokenStorage(name),
+        storage=BlobTokenStorage(name),
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,
     )
@@ -421,7 +443,7 @@ class MCPClientManager:
         name = config["name"]
         url  = config["url"]
 
-        storage = FileTokenStorage(name)
+        storage = BlobTokenStorage(name)
         has_tokens = bool(await storage.get_tokens())
 
         if has_tokens:
@@ -619,7 +641,7 @@ class MCPClientManager:
         self.servers_config = [s for s in self.servers_config if s["name"] != name]
         await self.save_servers()
         self.sessions.pop(name, None)
-        FileTokenStorage(name).delete_all()
+        BlobTokenStorage(name).delete_all()
         return True
 
     # ── helpers ────────────────────────────────────────────────────────────────

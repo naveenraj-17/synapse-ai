@@ -188,11 +188,8 @@ async def sync_mcp_servers_to_pg(
     """Upsert all MCP server configs from local JSON into Postgres.
     Sensitive fields (token) are stripped before storing."""
     try:
-        from core.mcp_client import MCP_SERVERS_FILE
-        with open(MCP_SERVERS_FILE, encoding="utf-8") as f:
-            items = json.load(f)
-        if not isinstance(items, list):
-            items = []
+        from core.store.resources import load_mcp_servers
+        items = await load_mcp_servers()
     except Exception as e:
         return {"synced": 0, "errors": [str(e)]}
 
