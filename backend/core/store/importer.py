@@ -82,6 +82,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     from core.store.models import (
         AgentDB,
         ChatSessionDB,
+        CollectionDB,
         MCPServerDB,
         ModelPricingDB,
         OrchestrationDB,
@@ -105,6 +106,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     # than one file at the root, so it does not take part in the "is there
     # anything here to import" check.
     counts["chat_sessions"] = 0
+    counts["google"] = 0
 
     #: source file → (count key, model, conflict target, row builder, "is this
     #: item importable"). The builders are the same ones the live CRUD path
@@ -190,6 +192,21 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
                 index_elements=["model"],
             )
             counts["model_pricing"] += 1
+
+        # ── google oauth ────────────────────────────────────────────────────
+        # Stored as documents rather than settings rows: load_settings() returns
+        # one dict read on every turn, and a refresh token has no business in it.
+        for filename, key in (("credentials.json", "google_client"),
+                              ("token.json", "google_token")):
+            document = _read(root / filename)
+            if isinstance(document, dict) and document:
+                await upsert(
+                    s, CollectionDB,
+                    values={"tenant_id": tenant_id, "collection": key,
+                            "key": "", "value": document},
+                    index_elements=["tenant_id", "collection", "key"],
+                )
+                counts["google"] += 1
 
         # ── settings ────────────────────────────────────────────────────────
         settings = _read(root / "settings.json") or {}

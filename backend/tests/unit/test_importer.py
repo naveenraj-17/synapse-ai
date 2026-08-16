@@ -84,6 +84,12 @@ def data_dir(tmp_path):
     (root / "model_pricing.json").write_text(json.dumps({
         "claude-x": {"provider": "anthropic", "input_per_1m": 7.5, "output_per_1m": 30},
     }), encoding="utf-8")
+    (root / "credentials.json").write_text(json.dumps({
+        "installed": {"client_id": "cid.apps.googleusercontent.com", "client_secret": "shh"},
+    }), encoding="utf-8")
+    (root / "token.json").write_text(json.dumps({
+        "token": "ya29.x", "refresh_token": "1//refresh", "email": "user@example.com",
+    }), encoding="utf-8")
     (root / "settings.json").write_text(json.dumps({
         "model": "claude-x", "vault_threshold": 5000,
     }), encoding="utf-8")
@@ -96,7 +102,7 @@ async def test_everything_comes_across(data_dir):
     assert counts == {
         "orchestrations": 1, "user_agents": 1, "custom_tools": 1, "mcp_servers": 1,
         "schedules": 1, "chat_sessions": 2, "usage_logs": 2, "model_pricing": 1,
-        "settings": 2,
+        "google": 2, "settings": 2,
     }
 
     async with session() as s:
@@ -138,6 +144,20 @@ async def test_everything_comes_across(data_dir):
     assert usage[1].details["chars_saved"] == 600
     # An edited rate card survives; it is not overwritten by the shipped one.
     assert priced.entry["input_per_1m"] == 7.5
+
+
+async def test_google_credentials_land_as_documents_not_settings(data_dir):
+    """The refresh token must not end up in the widely-read settings dict."""
+    from core.store.settings import load_settings_for_tenant
+    from services import google as google_svc
+
+    await import_data_dir(data_dir)
+
+    assert (await google_svc.load_client_config())["installed"]["client_secret"] == "shh"
+    assert (await google_svc.load_token())["refresh_token"] == "1//refresh"
+
+    settings = await load_settings_for_tenant()
+    assert "refresh_token" not in json.dumps(settings)
 
 
 async def test_chat_history_comes_across_per_agent(data_dir):

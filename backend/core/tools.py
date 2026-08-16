@@ -264,21 +264,16 @@ def build_system_prompt(agent_system_template, tools_json, session_id, session_s
     timezone = "UTC"
 
     # ── Resolve Google Workspace email (used later in the stable section) ──
+    # A plain setting, read off the synchronous snapshot. This function is sync
+    # and on the per-turn path, and all it has ever wanted from the Google
+    # credentials is the address to tell the model to pass to the Workspace
+    # tools — so the account email is stored as its own non-secret setting and
+    # the refresh token stays out of the widely-read settings dict entirely.
     google_email = None
     try:
-        from core.config import TOKEN_FILE
-        import os
-        if os.path.exists(TOKEN_FILE):
-            with open(TOKEN_FILE, "r", encoding="utf-8") as f:
-                token_data = json.load(f)
-                google_email = token_data.get("email")
-                if not google_email and token_data.get("id_token"):
-                    import base64
-                    id_token = token_data["id_token"]
-                    payload_b64 = id_token.split(".")[1]
-                    payload_b64 += "=" * (4 - len(payload_b64) % 4)
-                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-                    google_email = payload.get("email")
+        from services.google import EMAIL_SETTING
+
+        google_email = load_settings().get(EMAIL_SETTING) or None
     except Exception as e:
         print(f"DEBUG: Error reading Google Workspace email: {e}")
 

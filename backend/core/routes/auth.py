@@ -25,7 +25,7 @@ _FRONTEND_BASE = f"http://localhost:{_FRONTEND_PORT}"
 @router.get("/auth/login")
 async def login():
     try:
-        auth_url = get_auth_url(redirect_uri=REDIRECT_URI)
+        auth_url = await get_auth_url(redirect_uri=REDIRECT_URI)
         return RedirectResponse(auth_url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -88,7 +88,7 @@ async def user_logout():
 @router.get("/auth/callback")
 async def callback(code: str, state: str = None):
     try:
-        finish_auth(code=code, redirect_uri=REDIRECT_URI)
+        await finish_auth(code=code, redirect_uri=REDIRECT_URI)
         # Redirect back to the frontend with a success flag so the UI can refresh
         return RedirectResponse(f"{_FRONTEND_BASE}?google_auth=success")
     except Exception as e:

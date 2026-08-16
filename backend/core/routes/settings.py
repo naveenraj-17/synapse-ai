@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE, TOKEN_FILE, sanitize_db_url
+from core.config import load_settings, SETTINGS_FILE, DATA_DIR, sanitize_db_url
 from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
@@ -277,8 +277,8 @@ async def upload_google_creds(request: Request):
         else:
             parsed = data
 
-        with open(CREDENTIALS_FILE, 'w', encoding="utf-8") as f:
-            json.dump(parsed, f, indent=4)
+        from services.google import save_client_config
+        await save_client_config(parsed)
 
         return {"status": "success", "message": "Credentials saved successfully."}
     except Exception as e:
@@ -297,8 +297,8 @@ async def upload_google_token(request: Request):
         else:
             parsed = data
 
-        with open(TOKEN_FILE, 'w', encoding="utf-8") as f:
-            json.dump(parsed, f, indent=4)
+        from services.google import save_token
+        await save_token(parsed)
 
         return {"status": "success", "message": "Token saved successfully."}
     except Exception as e:
@@ -308,53 +308,32 @@ async def upload_google_token(request: Request):
 
 @router.get("/api/config")
 async def get_config():
-    has_credentials = os.path.exists(CREDENTIALS_FILE)
-    has_token = os.path.exists(TOKEN_FILE)
+    from services import google as google_svc
 
-    if not has_credentials:
+    client_config = await google_svc.load_client_config()
+    if not client_config:
         return {"has_credentials": False, "is_connected": False}
 
     try:
-        with open(CREDENTIALS_FILE, 'r', encoding="utf-8") as f:
-            creds = json.load(f)
-            app_info = creds.get("web") or creds.get("installed", {})
+        app_info = client_config.get("web") or client_config.get("installed", {})
 
         client_id_full = app_info.get("client_id", "")
         # Mask: show only last 4 chars, e.g. ****h453
         masked_client_id = ("****" + client_id_full[-8:]) if len(client_id_full) > 8 else "****"
 
-        # Read user email from token.json if available
-        user_email = None
-        if has_token:
-            try:
-                with open(TOKEN_FILE, 'r', encoding="utf-8") as tf:
-                    token_data = json.load(tf)
-                    user_email = token_data.get("id_token_hint") or token_data.get("email")
-                    # google-auth stores it in the token as a raw JWT — try to decode the id_token
-                    if not user_email and token_data.get("id_token"):
-                        import base64
-                        id_token = token_data["id_token"]
-                        payload_b64 = id_token.split(".")[1]
-                        # Add padding
-                        payload_b64 += "=" * (4 - len(payload_b64) % 4)
-                        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-                        user_email = payload.get("email")
-            except Exception:
-                pass
+        token_data = await google_svc.load_token() or {}
+        user_email = google_svc._email_from_token_data(token_data)
 
-        # Real connectivity check: token must be valid (or refreshable) AND
-        # workspace-mcp must have a token file it can read. get_google_credentials()
-        # validates, auto-refreshes, and syncs to the MCP dir on success.
+        # Whether the stored token is currently usable. Deliberately does NOT
+        # refresh: this is a GET the integrations tab polls, and refreshing
+        # here meant a status read performed a network token exchange and
+        # rewrote three files every time the page was opened. The refresh
+        # happens where it belongs — when workspace-mcp is about to be spawned.
         is_connected = False
         try:
-            from services.google import get_google_credentials
-            if get_google_credentials() is not None:
-                mcp_dir = os.path.join(DATA_DIR, "google-credentials")
-                per_user = user_email and os.path.exists(os.path.join(mcp_dir, f"{user_email}.json"))
-                generic = os.path.exists(os.path.join(mcp_dir, "token.json"))
-                is_connected = bool(per_user or generic)
+            is_connected = await google_svc.get_google_credentials(refresh=False) is not None
         except Exception as e:
-            print(f"Warning: get_google_credentials() check failed: {e}")
+            print(f"Warning: Google credential check failed: {e}")
 
         return {
             "has_credentials": True,
@@ -381,7 +360,7 @@ async def get_file(path: str):
     from core.vault import _vault_root
 
     resolved = os.path.realpath(path)
-    allowed_bases = [str(_vault_root())] + _get_repo_paths()
+    allowed_bases = [str(_vault_root())] + await _get_repo_paths()
     if not any(resolved.startswith(os.path.realpath(base)) for base in allowed_bases):
         raise HTTPException(status_code=403, detail="Access denied: path outside allowed directories")
     if not os.path.exists(resolved) or not os.path.isfile(resolved):

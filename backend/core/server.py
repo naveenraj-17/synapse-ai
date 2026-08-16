@@ -80,7 +80,6 @@ if _data_dir_env:
     DATA_DIR = _data_dir_p if _data_dir_p.is_absolute() else _PROJECT_ROOT / _data_dir_p
 else:
     DATA_DIR = BACKEND_ROOT / "data"
-GOOGLE_CREDENTIALS_DIR = DATA_DIR / "google-credentials"
 
 # Settings are deliberately NOT read at import time. There is no store, no
 # event loop and no settings provider installed yet at import, so a module-level
@@ -96,67 +95,72 @@ GOOGLE_CREDENTIALS_DIR = DATA_DIR / "google-credentials"
 from core.tools_registry import ALL_NATIVE_TOOLS
 TOOLS_LIST = dict(ALL_NATIVE_TOOLS)
 
-REPOS_FILE = DATA_DIR / "repos.json"
+async def _get_repo_paths() -> list[str]:
+    """Load repo paths for the filesystem MCP server's permissions.
 
-def _get_repo_paths() -> list[str]:
-    """Load repo paths from repos.json for filesystem MCP server permissions."""
-    if not REPOS_FILE.exists():
-        return []
+    Read from the store; this was a fifth reader of `DATA_DIR/repos.json`
+    after repos moved, so the filesystem server's roots were whatever the
+    repos looked like before the migration.
+    """
+    from core.store import collections
+
     try:
-        repos = json.loads(REPOS_FILE.read_text(encoding="utf-8"))
-        return [r["path"] for r in repos if r.get("path") and os.path.isdir(r["path"])]
+        return [
+            r["path"] for r in await collections.load("repos")
+            if r.get("path") and os.path.isdir(r["path"])
+        ]
     except Exception as e:
         print(f"Warning: Could not load repo paths: {e}")
         return []
 
 
-def _get_google_oauth_env() -> dict[str, str]:
-    """Extract OAuth client_id and client_secret from credentials.json for workspace-mcp.
-    Also reads user email from token.json to pass USER_GOOGLE_EMAIL for single-user mode."""
-    creds_file = DATA_DIR / "credentials.json"
-    token_file = DATA_DIR / "token.json"
-    if not creds_file.exists():
+async def _get_google_oauth_env() -> dict[str, str]:
+    """Build workspace-mcp's environment from the stored Google credentials.
+
+    Also materialises the credential directory the subprocess reads, which is
+    process scratch rebuilt from the store rather than durable state — see
+    services/google.google_credentials_dir.
+    """
+    from services import google as google_svc
+
+    client = await google_svc.load_client_config()
+    if not client:
         return {}
 
     # Refresh the Google token (if expired-but-refreshable) before launching
     # workspace-mcp so the subprocess inherits valid creds and doesn't emit
     # "ACTION REQUIRED: Google Authentication Needed" on the first tool call.
     try:
-        from services.google import get_google_credentials
-        get_google_credentials()
+        await google_svc.get_google_credentials()
     except Exception as e:
         print(f"Warning: Token refresh at startup failed: {e}")
+
     try:
-        creds = json.loads(creds_file.read_text(encoding="utf-8"))
-        installed = creds.get("installed", creds.get("web", {}))
+        installed = client.get("installed", client.get("web", {}))
         client_id = installed.get("client_id", "")
         client_secret = installed.get("client_secret", "")
         if not (client_id and client_secret):
+            return {}
+
+        directory = await google_svc.materialise_mcp_dir()
+        if directory is None:
             return {}
 
         env = {
             "GOOGLE_OAUTH_CLIENT_ID": client_id,
             "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
             "OAUTHLIB_INSECURE_TRANSPORT": "1",  # allow http:// redirect URIs for localhost
-            "GOOGLE_MCP_CREDENTIALS_DIR": str(GOOGLE_CREDENTIALS_DIR.resolve()),
+            "GOOGLE_MCP_CREDENTIALS_DIR": str(directory.resolve()),
         }
 
-        # Read user email from token.json so workspace-mcp can skip the email prompt
-        if token_file.exists():
-            try:
-                import base64
-                token_data = json.loads(token_file.read_text(encoding="utf-8"))
-                email = token_data.get("email")
-                if not email and token_data.get("token"):
-                    id_token = token_data["token"]
-                    payload_b64 = id_token.split(".")[1]
-                    payload_b64 += "=" * (4 - len(payload_b64) % 4)
-                    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-                    email = payload.get("email")
-                if email:
-                    env["USER_GOOGLE_EMAIL"] = email
-            except Exception as e:
-                print(f"Warning: Could not read user email from token.json: {e}")
+        # So workspace-mcp can skip the email prompt. One implementation of
+        # "which Google account is this" now, rather than the four that had
+        # drifted apart — this one read token_data["token"] as a JWT, which it
+        # never is, so it never produced an email at all.
+        token_data = await google_svc.load_token() or {}
+        email = google_svc._email_from_token_data(token_data)
+        if email:
+            env["USER_GOOGLE_EMAIL"] = email
 
         return env
     except Exception as e:
@@ -164,7 +168,7 @@ def _get_google_oauth_env() -> dict[str, str]:
     return {}
 
 
-def _build_native_mcp_servers() -> list[dict]:
+async def _build_native_mcp_servers() -> list[dict]:
     """
     Build the list of native MCP servers to connect at startup.
     Returns a list of dicts with keys: name, command, args, env (optional).
@@ -172,7 +176,7 @@ def _build_native_mcp_servers() -> list[dict]:
     servers = []
 
     # --- Filesystem MCP Server ---
-    repo_paths = _get_repo_paths()
+    repo_paths = await _get_repo_paths()
     # The tenant's vault, from the blob store. Was DATA_DIR/"vault", which the
     # tenant-scoped storage change left pointing at a directory the vault no
     # longer writes to — so the filesystem server's one guaranteed root was
@@ -222,7 +226,7 @@ def _build_native_mcp_servers() -> list[dict]:
         })
 
     # --- Google Workspace MCP Server (Gmail, Drive, Calendar) ---
-    google_env = _get_google_oauth_env()
+    google_env = await _get_google_oauth_env()
     if google_env:
         servers.append({
             "name": "Google Workspace",
@@ -261,7 +265,7 @@ async def _connect_filesystem_mcp(label: str = "started") -> None:
     """
     global _filesystem_stack
 
-    fs_cfg = next((c for c in _build_native_mcp_servers() if c["name"] == "Filesystem"), None)
+    fs_cfg = next((c for c in await _build_native_mcp_servers() if c["name"] == "Filesystem"), None)
     if not fs_cfg:
         print("Warning: Could not build Filesystem MCP config — skipping.")
         return
@@ -501,7 +505,7 @@ async def lifespan(app: FastAPI):
         await _filesystem_ready.wait()  # wait for initial connection attempt before continuing
 
         # --- Initialize Native MCP Servers ---
-        for mcp_cfg in _build_native_mcp_servers():
+        for mcp_cfg in await _build_native_mcp_servers():
             mcp_name = mcp_cfg["name"]
 
             if mcp_name == "Filesystem":
