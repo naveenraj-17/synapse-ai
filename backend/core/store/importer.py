@@ -107,6 +107,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     # anything here to import" check.
     counts["chat_sessions"] = 0
     counts["google"] = 0
+    counts["mcp_tokens"] = 0
 
     #: source file → (count key, model, conflict target, row builder, "is this
     #: item importable"). The builders are the same ones the live CRUD path
@@ -166,6 +167,28 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
                 last_message_at=_parse_stamp(data.get("last_updated")),
             ))
             counts["chat_sessions"] += 1
+
+        # ── mcp oauth tokens ────────────────────────────────────────────────
+        # `mcp_tokens/<server>.json` plus `<server>_client.json` become one
+        # document per server, matching what StoreTokenStorage writes.
+        tokens: dict[str, dict] = {}
+        for path in sorted((root / "mcp_tokens").glob("*.json")):
+            document = _read(path)
+            if not isinstance(document, dict):
+                continue
+            stem = path.stem
+            field = "client" if stem.endswith("_client") else "tokens"
+            server = stem[: -len("_client")] if field == "client" else stem
+            tokens.setdefault(server, {"id": server})[field] = document
+        if tokens:
+            for server, value in tokens.items():
+                await upsert(
+                    s, CollectionDB,
+                    values={"tenant_id": tenant_id, "collection": "mcp_tokens",
+                            "key": server, "value": value},
+                    index_elements=["tenant_id", "collection", "key"],
+                )
+                counts["mcp_tokens"] += 1
 
         # ── usage log ───────────────────────────────────────────────────────
         # Append-only history rather than a keyed collection, so these are

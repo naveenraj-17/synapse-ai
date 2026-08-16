@@ -16,7 +16,7 @@ OAuth flow (remote, no token):
   6. callback_handler() returns (code, state), token exchange completes, MCP
      session is established and persisted in self.sessions.
 
-Tokens are stored as tenant-scoped blobs (BlobTokenStorage) so OAuth servers auto-reconnect
+Tokens are stored per tenant in the database (StoreTokenStorage) so OAuth servers auto-reconnect
 on backend restart without re-authenticating (the provider handles refresh).
 """
 
@@ -91,72 +91,85 @@ def check_stdio_command_allowed(command: str) -> None:
 _BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 OAUTH_CALLBACK_URL = f"http://localhost:{_BACKEND_PORT}/api/mcp/oauth/callback"
 
-#: Blob prefix for MCP OAuth material. Tenant-scoped by the blob store, which
-#: is the point: an access token, a refresh token and a dynamic client
-#: registration are tenant secrets, and they were sitting in a shared folder.
-_TOKENS_PREFIX = "mcp_tokens"
+#: Collection holding MCP OAuth material, one document per server.
+#:
+#: The database rather than the blob store, matching where the Google OAuth
+#: credentials live: an access token, a refresh token and a dynamic client
+#: registration are tenant *secrets*, and in a hosted deployment the database
+#: is what carries KMS envelope encryption and row-level security. The blob
+#: store is for tenant content. They were files in a shared folder with no
+#: tenant dimension at all, so two tenants with a server called `github` had
+#: one credential between them.
+#:
+#: A slot in `collections` rather than a table of its own, per the rule in
+#: core/store/models.py: nothing queries these, they are only ever fetched by
+#: the name of the server they belong to.
+_TOKENS_COLLECTION = "mcp_tokens"
 
 
 # ── Token Storage ──────────────────────────────────────────────────────────────
 
-class BlobTokenStorage(TokenStorage):
+class StoreTokenStorage(TokenStorage):
     """Persists OAuth tokens and client registration per server, per tenant.
 
     The four ``TokenStorage`` methods are ``async`` because the MCP SDK
-    requires it, not because the blob store is — ``BlobStore`` is six
-    synchronous methods by design.
+    requires it — which is what makes this cheap, since the store is async too.
     """
 
     def __init__(self, server_name: str):
-        safe = _safe_server_name(server_name)
-        self._tok = f"{_TOKENS_PREFIX}/{safe}.json"
-        self._cli = f"{_TOKENS_PREFIX}/{safe}_client.json"
+        self._key = _safe_server_name(server_name)
 
-    def _store(self):
-        from core.storage import get_blob_store
-        return get_blob_store()
+    async def _document(self) -> dict:
+        from core.store import collections
 
-    def _read(self, key: str) -> Optional[dict]:
-        try:
-            raw = self._store().get(key)
-            return json.loads(raw) if raw else None
-        except Exception:
-            return None
+        for item in await collections.load(_TOKENS_COLLECTION):
+            if item.get("id") == self._key:
+                return item
+        return {}
 
-    def _write(self, key: str, data: dict) -> None:
-        self._store().put(key, json.dumps(data, indent=2))
+    async def _merge(self, **fields) -> None:
+        from core.store import collections
+
+        items = await collections.load(_TOKENS_COLLECTION)
+        for item in items:
+            if item.get("id") == self._key:
+                item.update(fields)
+                break
+        else:
+            items.append({"id": self._key, **fields})
+        await collections.save(_TOKENS_COLLECTION, items)
 
     async def get_tokens(self) -> Optional[OAuthToken]:
-        d = self._read(self._tok)
+        d = (await self._document()).get("tokens")
         return OAuthToken(**d) if d else None
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
-        self._write(self._tok, tokens.model_dump(mode="json"))
+        await self._merge(tokens=tokens.model_dump(mode="json"))
 
     async def get_client_info(self) -> Optional[OAuthClientInformationFull]:
-        d = self._read(self._cli)
+        d = (await self._document()).get("client")
         return OAuthClientInformationFull(**d) if d else None
 
     async def set_client_info(self, info: OAuthClientInformationFull) -> None:
-        self._write(self._cli, info.model_dump(mode="json"))
+        await self._merge(client=info.model_dump(mode="json"))
 
-    def delete_all(self):
-        store = self._store()
-        for key in (self._tok, self._cli):
-            try:
-                store.delete(key)
-            except Exception:
-                pass
+    async def delete_all(self) -> None:
+        from core.store import collections
+
+        items = [
+            i for i in await collections.load(_TOKENS_COLLECTION)
+            if i.get("id") != self._key
+        ]
+        await collections.save(_TOKENS_COLLECTION, items)
 
 
 def _safe_server_name(server_name: str) -> str:
-    """A server name as a blob key segment.
+    """A server name as a storage key.
 
     Stricter than the old filename sanitiser, which replaced only ``/`` and
-    spaces — a server called ``../x`` produced a traversal-shaped path. The
-    blob store's tenant guard would refuse that, but refusing at the boundary
-    means a badly-named server cannot connect at all; keeping every unexpected
-    character out means it just works.
+    spaces — a server called ``../x`` produced a traversal-shaped path when
+    these were files. Keeping every unexpected character out costs nothing and
+    means a badly-named server is never a question about path handling.
     """
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in server_name).strip(".") or "_"
 
@@ -177,7 +190,7 @@ def _make_oauth_provider(
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
         ),
-        storage=BlobTokenStorage(name),
+        storage=StoreTokenStorage(name),
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,
     )
@@ -443,7 +456,7 @@ class MCPClientManager:
         name = config["name"]
         url  = config["url"]
 
-        storage = BlobTokenStorage(name)
+        storage = StoreTokenStorage(name)
         has_tokens = bool(await storage.get_tokens())
 
         if has_tokens:
@@ -641,7 +654,7 @@ class MCPClientManager:
         self.servers_config = [s for s in self.servers_config if s["name"] != name]
         await self.save_servers()
         self.sessions.pop(name, None)
-        BlobTokenStorage(name).delete_all()
+        await StoreTokenStorage(name).delete_all()
         return True
 
     # ── helpers ────────────────────────────────────────────────────────────────

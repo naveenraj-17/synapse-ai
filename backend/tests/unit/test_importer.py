@@ -84,6 +84,14 @@ def data_dir(tmp_path):
     (root / "model_pricing.json").write_text(json.dumps({
         "claude-x": {"provider": "anthropic", "input_per_1m": 7.5, "output_per_1m": 30},
     }), encoding="utf-8")
+    mcp_tokens = root / "mcp_tokens"
+    mcp_tokens.mkdir()
+    (mcp_tokens / "github.json").write_text(json.dumps({
+        "access_token": "gho_x", "token_type": "Bearer", "refresh_token": "r1",
+    }), encoding="utf-8")
+    (mcp_tokens / "github_client.json").write_text(json.dumps({
+        "client_id": "cid", "redirect_uris": ["http://localhost:8765/api/mcp/oauth/callback"],
+    }), encoding="utf-8")
     (root / "credentials.json").write_text(json.dumps({
         "installed": {"client_id": "cid.apps.googleusercontent.com", "client_secret": "shh"},
     }), encoding="utf-8")
@@ -102,7 +110,7 @@ async def test_everything_comes_across(data_dir):
     assert counts == {
         "orchestrations": 1, "user_agents": 1, "custom_tools": 1, "mcp_servers": 1,
         "schedules": 1, "chat_sessions": 2, "usage_logs": 2, "model_pricing": 1,
-        "google": 2, "settings": 2,
+        "google": 2, "mcp_tokens": 1, "settings": 2,
     }
 
     async with session() as s:
@@ -158,6 +166,17 @@ async def test_google_credentials_land_as_documents_not_settings(data_dir):
 
     settings = await load_settings_for_tenant()
     assert "refresh_token" not in json.dumps(settings)
+
+
+async def test_mcp_tokens_come_across_as_one_document_per_server(data_dir):
+    """Two files per server on disk; one row keyed by the server name after."""
+    from core.mcp_client import StoreTokenStorage
+
+    await import_data_dir(data_dir)
+
+    storage = StoreTokenStorage("github")
+    assert (await storage.get_tokens()).access_token == "gho_x"
+    assert (await storage.get_client_info()).client_id == "cid"
 
 
 async def test_chat_history_comes_across_per_agent(data_dir):
