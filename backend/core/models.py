@@ -139,7 +139,6 @@ class Settings(BaseModel):
     redis_url: str = ""
     scale_postgres_url: str = ""
     scale_mode_enabled: bool = False
-    scale_auto_sync: bool = False
     worker_concurrency: int = 10
     otlp_endpoint: str = ""
     metrics_token: str = ""

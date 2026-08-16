@@ -66,7 +66,7 @@ Coverage is **scoped** (see `[tool.coverage.run] omit` in `pyproject.toml`): mod
 that are inherently external/integration and can't be meaningfully unit-tested are
 excluded from the denominator and instead exercised by the nightly integration job
 (`.github/workflows/nightly.yml`) and manual/e2e testing. These are: the ARQ worker
-runtime (`scale/worker*`, `scale/sync`, `scale/db`, `scale/heartbeat`), live chat-bot
+runtime (`scale/worker*`, `scale/db`, `scale/heartbeat`), live chat-bot
 adapters (`messaging/*`), the MCP subprocess client (`mcp_client`), the cron scheduler,
 the native/builder subprocess tooling, the app lifespan wiring (`server.py`), scale
 admin, vector memory (`memory.py`, chromadb + embeddings), and AWS S3.

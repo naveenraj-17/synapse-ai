@@ -15,7 +15,6 @@ interface ScaleConfig {
     redis_url: string;
     scale_postgres_url: string;
     scale_mode_enabled: boolean;
-    scale_auto_sync: boolean;
     worker_concurrency: number;
     otlp_endpoint: string;
     metrics_token: string;
@@ -29,11 +28,6 @@ interface ScaleConfig {
     s3_access_key_id: string;
     s3_secret_access_key: string;
     s3_endpoint_url: string;
-}
-
-interface SyncStatus {
-    available: boolean;
-    counts?: Record<string, number>;
 }
 
 interface WorkerInfo {
@@ -104,7 +98,6 @@ const DEFAULT_CONFIG: ScaleConfig = {
     redis_url: '',
     scale_postgres_url: '',
     scale_mode_enabled: false,
-    scale_auto_sync: false,
     worker_concurrency: 10,
     otlp_endpoint: '',
     metrics_token: '',
@@ -292,7 +285,6 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                                 <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai  <span className="text-zinc-500 font-normal">(your existing install)</span></p>
                                 <p className="text-zinc-500">→ Hosts the UI and settings</p>
                                 <p className="text-zinc-500">→ Manages orchestrations, agents, tools</p>
-                                <p className="text-zinc-500">→ Syncs definitions to Postgres for workers</p>
                                 <p className="text-zinc-500">→ Enqueues jobs to Redis when V2 API is called</p>
                                 <p className="text-zinc-500">→ Streams SSE events back to clients from Redis</p>
                             </div>
@@ -327,8 +319,7 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                                 <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓ Required</span>
                                 <div>
                                     <p className="text-zinc-200 font-bold">Postgres</p>
-                                    <p className="text-zinc-500 mt-0.5">Workers read orchestration/agent definitions and write run state here. The main instance syncs to it. Any Postgres 14+ works.</p>
-                                    <p className="text-zinc-500 mt-1">After connecting, go to <strong className="text-zinc-300">Postgres Sync → Sync Now</strong> to push your definitions to the database.</p>
+                                    <p className="text-zinc-500 mt-0.5">Orchestrations, agents and tools live here, and workers write run state here. This instance reads and writes the same database, so there is nothing to push. Any Postgres 14+ works.</p>
                                 </div>
                             </div>
                             <div className="flex items-start gap-3 p-3 border border-zinc-800">
@@ -474,11 +465,10 @@ kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda
                             {[
                                 ['1', 'Connect Redis URL in the Redis Connection section above and click Test'],
                                 ['2', 'Enable Scale Mode toggle'],
-                                ['3', 'Connect Postgres URL in the Postgres Sync section and click Test'],
-                                ['4', 'Click Sync Now to push your orchestrations, agents, and tools to Postgres'],
-                                ['5', 'Pull and start the worker image (Docker Run or Docker Compose above)'],
-                                ['6', 'Confirm the worker appears in the Workers panel (it self-registers on startup)'],
-                                ['7', 'Trigger a V2 run via API and watch the Live Queue counter increment → decrement'],
+                                ['3', 'Connect Postgres URL in the Postgres section and click Test'],
+                                ['4', 'Pull and start the worker image (Docker Run or Docker Compose above)'],
+                                ['5', 'Confirm the worker appears in the Workers panel (it self-registers on startup)'],
+                                ['6', 'Trigger a V2 run via API and watch the Live Queue counter increment → decrement'],
                             ].map(([n, text]) => (
                                 <div key={n} className="flex items-start gap-3 py-2 border-b border-zinc-800/50 last:border-b-0">
                                     <span className="w-5 h-5 rounded-full border border-zinc-700 text-zinc-500 text-[10px] font-bold flex items-center justify-center shrink-0">{n}</span>
@@ -511,11 +501,6 @@ export function ScaleTab() {
     const [pgStatus, setPgStatus] = useState<{ ok: boolean; msg: string } | null>(null);
     const [s3Testing, setS3Testing] = useState(false);
     const [s3Status, setS3Status] = useState<{ ok: boolean; msg: string } | null>(null);
-
-    // Sync state
-    const [syncing, setSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState<any>(null);
-    const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
 
     // Workers
     const [workers, setWorkers] = useState<WorkerInfo[]>([]);
@@ -554,11 +539,6 @@ export function ScaleTab() {
         fetch('/api/scale/config')
             .then(r => r.json())
             .then(data => setConfig({ ...DEFAULT_CONFIG, ...data }))
-            .catch(() => {});
-
-        fetch('/api/scale/sync/status')
-            .then(r => r.json())
-            .then(setSyncStatus)
             .catch(() => {});
 
         loadWorkers();
@@ -717,22 +697,6 @@ export function ScaleTab() {
             setS3Status({ ok: false, msg: String(e) });
         } finally {
             setS3Testing(false);
-        }
-    };
-
-    const triggerSync = async () => {
-        setSyncing(true);
-        setSyncResult(null);
-        try {
-            const r = await fetch('/api/scale/sync', { method: 'POST' });
-            const d = await r.json();
-            setSyncResult(d);
-            const status = await fetch('/api/scale/sync/status').then(r => r.json());
-            setSyncStatus(status);
-        } catch (e) {
-            setSyncResult({ error: String(e) });
-        } finally {
-            setSyncing(false);
         }
     };
 
@@ -1205,8 +1169,8 @@ export function ScaleTab() {
                 </div>
             </CollapsibleSection>
 
-            <CollapsibleSection sectionKey="postgres" title="Postgres Sync" icon={Database}
-                subtitle="Workers read orchestrations, agents, and tools from Postgres. Sync after any changes."
+            <CollapsibleSection sectionKey="postgres" title="Postgres" icon={Database}
+                subtitle="Workers read orchestrations, agents and tools from the same database this instance writes."
                 expanded={expandedConfigs.postgres} onToggle={() => toggleSection('postgres')}
             >
                 <div className="space-y-4 mt-4">
@@ -1242,46 +1206,6 @@ export function ScaleTab() {
                         </label>
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-t border-zinc-800">
-                        <div>
-                            <p className="text-sm text-zinc-300 font-medium">Auto-sync on change</p>
-                            <p className="text-xs text-zinc-500 mt-0.5">Automatically sync to Postgres whenever you save an orchestration, agent, or tool.</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" className="sr-only peer" {...toggle('scale_auto_sync')} />
-                            <div className="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-zinc-100 transition-colors" />
-                            <div className="absolute left-1 top-1 bg-white peer-checked:bg-zinc-950 w-4 h-4 rounded-full transition-all peer-checked:translate-x-5" />
-                        </label>
-                    </div>
-
-                    <div className="flex items-center gap-4 pt-2">
-                        <button onClick={triggerSync} disabled={syncing || !config.scale_postgres_url}
-                            className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-40 transition-colors">
-                            {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                            Sync Now
-                        </button>
-                        {syncStatus?.available && syncStatus.counts && (
-                            <div className="flex gap-4 text-[10px] text-zinc-500 font-mono">
-                                {Object.entries(syncStatus.counts).map(([k, v]) => (
-                                    <span key={k}>{k}: <span className="text-zinc-300">{v}</span></span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {syncResult && (
-                        <div className={`mt-3 p-3 border text-xs font-mono ${syncResult.errors?.length ? 'border-red-800 text-red-400' : 'border-emerald-800 text-emerald-400'}`}>
-                            {syncResult.errors?.length
-                                ? `${syncResult.total_synced} synced, ${syncResult.errors.length} error(s): ${syncResult.errors[0]}`
-                                : `✓ Synced ${syncResult.total_synced} items at ${syncResult.synced_at}`
-                            }
-                        </div>
-                    )}
-
-                    <div className="flex items-start gap-2 p-3 bg-amber-900/20 border border-amber-800/40 text-amber-400">
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                        <p className="text-xs">Workers read definitions from Postgres only. Always sync before running V2 jobs after making changes.</p>
-                    </div>
                 </div>
             </CollapsibleSection>
 

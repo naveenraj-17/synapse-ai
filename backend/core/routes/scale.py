@@ -1,6 +1,6 @@
 """
 Scale settings management routes (UI-facing, internal auth).
-Provides connection testing, sync, worker management, and DLQ access.
+Provides connection testing, worker management, and DLQ access.
 """
 import json
 from datetime import datetime, timezone
@@ -22,7 +22,6 @@ class ScaleConfigUpdate(BaseModel):
     redis_url: str = ""
     scale_postgres_url: str = ""
     scale_mode_enabled: bool = False
-    scale_auto_sync: bool = False
     worker_concurrency: int = 10
     otlp_endpoint: str = ""
     metrics_token: str = ""
@@ -48,7 +47,6 @@ async def get_scale_config_route():
         "redis_url": settings.get("redis_url", ""),
         "scale_postgres_url": settings.get("scale_postgres_url", ""),
         "scale_mode_enabled": settings.get("scale_mode_enabled", False),
-        "scale_auto_sync": settings.get("scale_auto_sync", False),
         "worker_concurrency": settings.get("worker_concurrency", 10),
         "otlp_endpoint": settings.get("otlp_endpoint", ""),
         "metrics_token": settings.get("metrics_token", ""),
@@ -67,16 +65,12 @@ async def get_scale_config_route():
 
 @router.post("/scale/config")
 async def update_scale_config_route(body: ScaleConfigUpdate):
-    from core.config import load_settings, SETTINGS_FILE
-    from core.json_store import JsonStore
+    from core.routes.settings import save_settings
 
-    store = JsonStore(SETTINGS_FILE, default_factory=dict)
-    settings = store.load()
-    settings.update({
+    await save_settings({
         "redis_url": body.redis_url,
         "scale_postgres_url": body.scale_postgres_url,
         "scale_mode_enabled": body.scale_mode_enabled,
-        "scale_auto_sync": body.scale_auto_sync,
         "worker_concurrency": body.worker_concurrency,
         "otlp_endpoint": body.otlp_endpoint,
         "metrics_token": body.metrics_token,
@@ -91,7 +85,6 @@ async def update_scale_config_route(body: ScaleConfigUpdate):
         "s3_secret_access_key": body.s3_secret_access_key,
         "s3_endpoint_url": body.s3_endpoint_url,
     })
-    store.save(settings)
     # Invalidate the S3 singleton so the new config is picked up immediately
     from core.s3_storage import invalidate_s3_singleton
     invalidate_s3_singleton()
@@ -163,41 +156,6 @@ async def test_postgres_connection(request: Request):
         return {"status": "ok", "message": "Postgres connection successful"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
-# ---------------------------------------------------------------------------
-# Sync
-# ---------------------------------------------------------------------------
-
-@router.post("/scale/sync")
-async def trigger_sync(request: Request):
-    """Sync all local JSON data to Postgres."""
-    pg_engine = getattr(request.app.state, "pg_engine", None)
-    session_factory = getattr(request.app.state, "pg_session_factory", None)
-    if not session_factory:
-        raise HTTPException(503, detail="Postgres not configured. Enable scale mode first.")
-
-    from core.scale.sync import full_sync
-    from core.scale.config import get_scale_config
-    cfg = get_scale_config()
-
-    async with session_factory() as session:
-        result = await full_sync(session, tenant_id=get_tenant())
-
-    return result
-
-
-@router.get("/scale/sync/status")
-async def sync_status(request: Request):
-    """Return row counts per table (last sync indicator)."""
-    session_factory = getattr(request.app.state, "pg_session_factory", None)
-    if not session_factory:
-        return {"available": False, "message": "Postgres not configured"}
-
-    from core.scale.sync import get_sync_status
-    async with session_factory() as session:
-        counts = await get_sync_status(session)
-    return {"available": True, "counts": counts}
 
 
 # ---------------------------------------------------------------------------
