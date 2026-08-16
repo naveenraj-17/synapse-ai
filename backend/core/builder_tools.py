@@ -12,12 +12,8 @@ import time
 import datetime
 from typing import Any
 
-from core.config import DATA_DIR
-from core.json_store import JsonStore
-
-_repos_store = JsonStore(os.path.join(DATA_DIR, "repos.json"), cache_ttl=5.0)
-_db_store = JsonStore(os.path.join(DATA_DIR, "db_configs.json"), cache_ttl=5.0)
-_mcp_store = JsonStore(os.path.join(DATA_DIR, "mcp_servers.json"), cache_ttl=5.0)
+from core.store import collections
+from core.store.resources import load_mcp_servers
 
 
 def _random_id(prefix: str, length: int = 7) -> str:
@@ -904,9 +900,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             return {"error": f"Could not fetch tool details: {e}"}
 
     elif tool_name == "list_tool_servers":
-        ext_servers = _mcp_store.load()
-        if not isinstance(ext_servers, list):
-            ext_servers = []
+        ext_servers = await load_mcp_servers()
         result = [
             {
                 "name": s.get("name"),
@@ -963,18 +957,14 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             return {"error": f"Could not list tools for server '{server_name}': {e}"}
 
     elif tool_name == "list_repos":
-        repos = _repos_store.load()
-        if not isinstance(repos, list):
-            return []
+        repos = await collections.load("repos")
         return [
             {"id": r.get("id"), "name": r.get("name", r.get("path", "")), "path": r.get("path", "")}
             for r in repos
         ]
 
     elif tool_name == "list_db_configs":
-        dbs = _db_store.load()
-        if not isinstance(dbs, list):
-            return []
+        dbs = await collections.load("db_configs")
         return [
             {"id": d.get("id"), "name": d.get("name", ""), "type": d.get("type", "")}
             for d in dbs

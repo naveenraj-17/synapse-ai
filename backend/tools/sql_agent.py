@@ -7,7 +7,7 @@ import asyncio
 import json
 import os
 from sqlalchemy import create_engine, inspect, text
-from core.config import load_settings, DATA_DIR
+from core.config import load_settings
 
 # Initialize MCP Server
 app = Server("sql-mcp-server")
@@ -27,26 +27,28 @@ def _is_write_query(query: str) -> bool:
     return first_word in _WRITE_KEYWORDS
 
 
-def _load_db_configs() -> list[dict]:
-    """Load db_configs.json from the data directory."""
-    path = os.path.join(DATA_DIR, "db_configs.json")
-    if not os.path.exists(path):
-        return []
+async def _load_db_configs() -> list[dict]:
+    """Load the tenant's database configs from the store.
+
+    This process is a stdio MCP server rather than the backend, so it opens the
+    store itself through SYNAPSE_DB_URL — the same way the engine finds it.
+    """
+    from core.store import collections
+
     try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        return await collections.load("db_configs")
     except Exception:
         return []
 
 
-def get_db_engine(db_id: str | None = None):
+async def get_db_engine(db_id: str | None = None):
     """Return (engine, inspector) for the given db_id, or fall back to global setting."""
     global _engines
 
     if db_id:
         if db_id in _engines:
             return _engines[db_id]
-        configs = _load_db_configs()
+        configs = await _load_db_configs()
         config = next((c for c in configs if c.get("id") == db_id), None)
         if not config:
             raise ValueError(f"No database config found for db_id='{db_id}'.")
@@ -131,7 +133,7 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     try:
         db_id = arguments.get("db_id") or None
-        engine, inspector = get_db_engine(db_id)
+        engine, inspector = await get_db_engine(db_id)
 
         if name == "list_tables":
             tables = inspector.get_table_names()

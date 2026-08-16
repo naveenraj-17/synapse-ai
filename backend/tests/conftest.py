@@ -3,8 +3,9 @@ Root test harness for the Synapse backend suite.
 
 Critical ordering (mirrors backend/tests/unit/test_cache.py): SYNAPSE_DATA_DIR
 and the fake-LLM delay profile are set on the environment **before** any
-``core.*`` module is imported, because many modules bind DATA_DIR and construct
-JsonStore(...) at import time.
+``core.*`` module is imported, because several modules still bind DATA_DIR at
+import time. That constraint shrinks with every collection that moves into the
+store, and goes away entirely when DATA_DIR does.
 
 What this provides
 ------------------

@@ -15,35 +15,45 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from psycopg_pool import ConnectionPool
 
-def _load_repo_paths() -> dict[str, str]:
-    """Load repo_id → absolute_path mapping from repos.json (via core.config DATA_DIR)."""
+async def _load_repos() -> list[dict]:
+    """The tenant's linked repos.
+
+    This process is a stdio MCP server rather than the backend, so it opens the
+    store itself through SYNAPSE_DB_URL — the same way the engine finds it. It
+    used to read `DATA_DIR/repos.json`, which the CRUD path stopped writing
+    when repos moved into the store.
+    """
     try:
-        from core.config import DATA_DIR
-        repos_file = os.path.join(DATA_DIR, "repos.json")
-        with open(repos_file, encoding="utf-8") as f:
-            repos = json.load(f)
-        return {r["id"]: r["path"].rstrip("/") for r in repos if r.get("id") and r.get("path")}
+        from core.store import collections
+        return await collections.load("repos")
     except Exception:
-        return {}
+        return []
 
 
-def _get_allowed_base_paths() -> list[str]:
+async def _load_repo_paths() -> dict[str, str]:
+    """repo_id → absolute path."""
+    return {
+        r["id"]: r["path"].rstrip("/")
+        for r in await _load_repos()
+        if r.get("id") and r.get("path")
+    }
+
+
+async def _get_allowed_base_paths() -> list[str]:
     """Return allowed base paths: all configured repo paths + vault directory."""
+    paths = list((await _load_repo_paths()).values())
     try:
-        from core.config import DATA_DIR
-        vault = os.path.join(DATA_DIR, "vault")
+        from core.vault import _vault_root
+        paths.append(str(_vault_root()))
     except Exception:
-        vault = None
-    paths = list(_load_repo_paths().values())
-    if vault:
-        paths.append(vault)
+        pass
     return paths
 
 
-def _is_path_allowed(path: str) -> bool:
+async def _is_path_allowed(path: str) -> bool:
     """Return True if path resolves to within a configured repo or vault."""
     resolved = os.path.realpath(path)
-    for base in _get_allowed_base_paths():
+    for base in await _get_allowed_base_paths():
         base_real = os.path.realpath(base)
         if resolved == base_real or resolved.startswith(base_real + os.sep):
             return True
@@ -108,16 +118,9 @@ def _get_table_name(repo_id: str) -> str:
     return f"ci_{repo_id}__emb"
 
 
-def _load_indexed_repo_ids() -> list[str]:
-    """Return repo IDs where status == 'indexed' from repos.json."""
-    try:
-        from core.config import DATA_DIR
-        repos_file = os.path.join(DATA_DIR, "repos.json")
-        with open(repos_file, encoding="utf-8") as f:
-            repos = json.load(f)
-        return [r["id"] for r in repos if r.get("status") == "indexed" and r.get("id")]
-    except Exception:
-        return []
+async def _load_indexed_repo_ids() -> list[str]:
+    """Return repo IDs where status == 'indexed'."""
+    return [r["id"] for r in await _load_repos() if r.get("status") == "indexed" and r.get("id")]
 
 
 async def _search(query: str, repo_ids: list[str], top_k: int = 10,
@@ -128,7 +131,7 @@ async def _search(query: str, repo_ids: list[str], top_k: int = 10,
     except Exception as e:
         return [{"error": f"Database connection failed: {e}"}]
 
-    repo_path_map = _load_repo_paths()
+    repo_path_map = await _load_repo_paths()
     try:
         query_vector, model, dim = await _get_query_embedding(query)
     except Exception as e:
@@ -192,7 +195,7 @@ async def _search(query: str, repo_ids: list[str], top_k: int = 10,
     return all_results[:top_k]
 
 
-def _list_files_in_index(repo_id: str, file_filter: str | None = None) -> dict:
+async def _list_files_in_index(repo_id: str, file_filter: str | None = None) -> dict:
     """Query the embedding table for distinct filenames and chunk counts."""
     if not _VALID_REPO_ID.match(repo_id):
         return {"error": f"Invalid repo_id format: {repo_id}"}
@@ -201,7 +204,7 @@ def _list_files_in_index(repo_id: str, file_filter: str | None = None) -> dict:
     except Exception as e:
         return {"error": f"Database connection failed: {e}"}
 
-    repo_path_map = _load_repo_paths()
+    repo_path_map = await _load_repo_paths()
     repo_root = repo_path_map.get(repo_id, "")
     table_name = _get_table_name(repo_id)
 
@@ -239,7 +242,7 @@ def _list_files_in_index(repo_id: str, file_filter: str | None = None) -> dict:
     return {"repo_id": repo_id, "files": files, "total_files": len(files), "total_chunks": total_chunks}
 
 
-def _get_chunks_for_file(repo_id: str, filename: str) -> dict:
+async def _get_chunks_for_file(repo_id: str, filename: str) -> dict:
     """Retrieve all indexed chunks for a specific file."""
     if not _VALID_REPO_ID.match(repo_id):
         return {"error": f"Invalid repo_id format: {repo_id}"}
@@ -248,7 +251,7 @@ def _get_chunks_for_file(repo_id: str, filename: str) -> dict:
     except Exception as e:
         return {"error": f"Database connection failed: {e}"}
 
-    repo_path_map = _load_repo_paths()
+    repo_path_map = await _load_repo_paths()
     repo_root = repo_path_map.get(repo_id, "")
     table_name = _get_table_name(repo_id)
     clean_filename = filename.lstrip("/")
@@ -425,7 +428,7 @@ def _glob_files(
     return results
 
 
-def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100, repo_id: str | None = None) -> dict:
+async def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100, repo_id: str | None = None) -> dict:
     """Read lines [start_line, end_line] (1-indexed, inclusive) from a file."""
     resolved = None
     if os.path.isabs(file_path):
@@ -435,9 +438,9 @@ def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100
     # Fallback: absolute path from a different user/container context — try local vault by filename
     if not resolved and os.path.isabs(file_path) and "vault" in file_path:
         try:
-            from core.config import DATA_DIR
+            from core.vault import _vault_root
             filename = os.path.basename(file_path)
-            local_candidate = os.path.join(DATA_DIR, "vault", "tool_outputs", filename)
+            local_candidate = os.path.join(str(_vault_root()), "tool_outputs", filename)
             if os.path.exists(local_candidate):
                 resolved = local_candidate
         except Exception:
@@ -469,7 +472,7 @@ def _read_file_by_lines(file_path: str, start_line: int = 1, end_line: int = 100
                 resolved = candidate
 
         if not resolved:
-            repo_path_map = _load_repo_paths()
+            repo_path_map = await _load_repo_paths()
             if repo_id and repo_id in repo_path_map:
                 candidate = os.path.join(repo_path_map[repo_id], file_path)
                 if os.path.exists(candidate):
@@ -762,7 +765,7 @@ async def call_tool(
 
             repo_ids = arguments.get("repo_ids") or []
             if not repo_ids:
-                repo_ids = _load_indexed_repo_ids()
+                repo_ids = await _load_indexed_repo_ids()
                 if not repo_ids:
                     return [types.TextContent(type="text", text=json.dumps({"error": "No indexed repos found. Index a repo first."}))]
 
@@ -780,7 +783,7 @@ async def call_tool(
 
             repo_ids = arguments.get("repo_ids") or []
             if not repo_ids:
-                repo_ids = _load_indexed_repo_ids()
+                repo_ids = await _load_indexed_repo_ids()
                 if not repo_ids:
                     return [types.TextContent(type="text", text=json.dumps({"error": "No indexed repos found. Index a repo first."}))]
 
@@ -796,7 +799,7 @@ async def call_tool(
             if not repo_id:
                 return [types.TextContent(type="text", text=json.dumps({"error": "'repo_id' is required."}))]
             file_filter = arguments.get("file_filter") or None
-            result = _list_files_in_index(repo_id, file_filter=file_filter)
+            result = await _list_files_in_index(repo_id, file_filter=file_filter)
             return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
         if name == "get_file_chunks":
@@ -804,7 +807,7 @@ async def call_tool(
             filename = arguments.get("filename", "")
             if not repo_id or not filename:
                 return [types.TextContent(type="text", text=json.dumps({"error": "Both 'repo_id' and 'filename' are required."}))]
-            result = _get_chunks_for_file(repo_id, filename)
+            result = await _get_chunks_for_file(repo_id, filename)
             return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
         if name == "grep":
@@ -820,7 +823,7 @@ async def call_tool(
             max_matches = int(arguments.get("max_matches", 1000))
 
             resolved = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
-            if not _is_path_allowed(resolved):
+            if not await _is_path_allowed(resolved):
                 return [types.TextContent(type="text", text=json.dumps({"error": f"Access denied: '{path}' is not within a configured repository or vault."}))]
             if os.path.isdir(resolved):
                 file_pattern = arguments.get("file_pattern", "*")
@@ -837,7 +840,7 @@ async def call_tool(
                 return [types.TextContent(type="text", text=json.dumps({"error": "'folder_path' is required."}))]
 
             _fp_resolved = folder_path if os.path.isabs(folder_path) else os.path.join(os.getcwd(), folder_path)
-            if not _is_path_allowed(_fp_resolved):
+            if not await _is_path_allowed(_fp_resolved):
                 return [types.TextContent(type="text", text=json.dumps({"error": f"Access denied: '{folder_path}' is not within a configured repository or vault."}))]
 
             pattern = arguments.get("pattern", "**/*")
@@ -856,7 +859,7 @@ async def call_tool(
             start_line = int(arguments.get("start_line", 1))
             end_line = int(arguments.get("end_line", 100))
             repo_id = arguments.get("repo_id")
-            result = _read_file_by_lines(file_path, start_line=start_line, end_line=end_line, repo_id=repo_id)
+            result = await _read_file_by_lines(file_path, start_line=start_line, end_line=end_line, repo_id=repo_id)
             return [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
         return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]

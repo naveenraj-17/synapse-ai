@@ -2,7 +2,7 @@
 Tenant-scoped CRUD for the four resource collections.
 
 Orchestrations, agents, custom tools and MCP servers used to be four JSON files
-under ``DATA_DIR``, read through ``core/json_store.py`` singletons bound at
+under ``DATA_DIR``, read through ``JsonStore`` singletons bound to a path at
 import time. This module is what replaces them.
 
 Two rules run through everything here, and both exist because of the shape of

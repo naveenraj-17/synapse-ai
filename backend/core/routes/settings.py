@@ -14,11 +14,8 @@ from core.config import load_settings, SETTINGS_FILE, DATA_DIR, CREDENTIALS_FILE
 from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
-from core.json_store import JsonStore
 
 router = APIRouter()
-
-_settings_store = JsonStore(SETTINGS_FILE, default_factory=dict, cache_ttl=2.0)
 
 
 class EmbedSetupRequest(BaseModel):

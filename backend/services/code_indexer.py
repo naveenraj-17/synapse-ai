@@ -36,6 +36,8 @@ except ImportError as _coco_import_err:
 
 # Lock for repos.json read/write
 _repos_lock = threading.Lock()
+#: The event loop that started indexing — see _update_repo_status.
+_owner_loop: 'asyncio.AbstractEventLoop | None' = None
 
 # Cache of active CocoIndex Flow objects
 _active_flows: dict[str, object] = {}
@@ -420,19 +422,41 @@ def drop_index(repo_id: str):
         print(f"Warning during drop_index({repo_id}): {e}")
 
 
+async def _write_repo_status(repo_id: str, fields: dict) -> None:
+    from core.store import collections
+
+    repos = await collections.load("repos")
+    for r in repos:
+        if r.get("id") == repo_id:
+            r.update(fields)
+            break
+    else:
+        return
+    await collections.save("repos", repos, key_field="path")
+
+
 def _update_repo_status(repo_id: str, **fields):
-    repos_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "repos.json")
-    if not os.path.exists(repos_file):
+    """Record indexing progress from the indexer thread.
+
+    Indexing runs in a plain daemon thread with no event loop of its own, so
+    the write is submitted to the loop that started it. Running the coroutine
+    on a fresh loop here instead would bind the store's engine to a loop that
+    dies with the thread, which surfaces much later as "Event loop is closed"
+    against whatever unrelated request is running at the time.
+
+    This used to write `backend/data/repos.json` directly — a second writer for
+    a collection that had already moved into the store, so indexing status
+    updates were going to a file nothing reads.
+    """
+    loop = _owner_loop
+    if loop is None or loop.is_closed():
         return
     with _repos_lock:
-        with open(repos_file, "r", encoding="utf-8") as f:
-            repos = json.load(f)
-        for r in repos:
-            if r["id"] == repo_id:
-                r.update(fields)
-                break
-        with open(repos_file, "w", encoding="utf-8") as f:
-            json.dump(repos, f, indent=4)
+        future = asyncio.run_coroutine_threadsafe(_write_repo_status(repo_id, fields), loop)
+        try:
+            future.result(timeout=10)
+        except Exception as e:
+            print(f"Warning: could not record repo status for {repo_id}: {e}")
 
 
 def run_index_task(repo_id: str, repo_path: str, included_patterns: list[str], excluded_patterns: list[str], full_reindex: bool = True):
@@ -566,6 +590,14 @@ def stop_index(repo_id: str) -> bool:
 
 
 def run_index(repo_id: str, repo_path: str, included_patterns: list[str], excluded_patterns: list[str], full_reindex: bool = True):
+    global _owner_loop
+    try:
+        # Captured here, on the caller's thread, because the indexer thread has
+        # no loop to find one from. See _update_repo_status.
+        _owner_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _owner_loop = None
+
     t = threading.Thread(
         target=run_index_task,
         args=(repo_id, repo_path, included_patterns, excluded_patterns, full_reindex),

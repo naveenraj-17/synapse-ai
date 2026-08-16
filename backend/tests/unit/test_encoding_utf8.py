@@ -44,16 +44,3 @@ class TestOrchestrationCheckpoint:
         runs = await state_mod.SharedState.list_runs()
         assert any(r["orchestration_id"] == NON_ASCII for r in runs)
 
-
-class TestJsonStore:
-    def test_roundtrips_non_ascii_as_utf8(self, tmp_path):
-        from core.json_store import JsonStore
-
-        store = JsonStore(str(tmp_path / "data.json"))
-        store.save([{"name": NON_ASCII}])
-
-        raw = (tmp_path / "data.json").read_bytes()
-        # json.dump escapes to ASCII, but the file must still decode as UTF-8
-        # and the value must survive a load round-trip.
-        raw.decode("utf-8")
-        assert JsonStore(str(tmp_path / "data.json")).load() == [{"name": NON_ASCII}]

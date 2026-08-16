@@ -1,11 +1,11 @@
 """
-Data seeders — write agents / orchestrations / API keys into the sandboxed
-SYNAPSE_DATA_DIR so route handlers load them exactly as in production.
+Data seeders — write agents / orchestrations / API keys into the per-test
+store so route handlers load them exactly as in production.
 
 These call the same persistence helpers the app uses (``save_user_agents``,
-``save_orchestrations``, ``generate_api_key``), whose JsonStore updates its
-in-memory cache on write, so a subsequent ``load_*`` returns the seeded data
-immediately (no cache-TTL race).
+``save_orchestrations``, ``generate_api_key``), which invalidate the store's
+read-through cache on write, so a subsequent ``load_*`` returns the seeded
+data immediately.
 """
 from __future__ import annotations
 

@@ -17,7 +17,7 @@ import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from core.config import DATA_DIR, load_settings
+from core.config import load_settings
 
 # ---------------------------------------------------------------------------
 # OS detection
@@ -41,32 +41,38 @@ else:
 # ---------------------------------------------------------------------------
 
 
-def _get_allowed_dirs() -> list[str]:
+async def _get_allowed_dirs() -> list[str]:
     """Return all directories the bash tool is allowed to run commands in.
 
     Always includes:
-    - Paths of linked repos (from repos.json)
+    - Paths of linked repos
     - The vault directory
     - Any extra paths the user added via bash_allowed_dirs in settings
+
+    This process is a stdio MCP server, not the backend, so it reaches the
+    store through SYNAPSE_DB_URL exactly as the engine does. It used to read
+    `DATA_DIR/repos.json` — a file the CRUD path stopped writing — and to
+    mkdir its own `DATA_DIR/vault`, which has not been the vault since the
+    blob store took it over.
     """
+    from core.store import collections
+    from core.vault import _vault_root
+
     settings = load_settings()
     dirs: list[str] = []
 
     # 1. Linked repo paths
-    repos_file = Path(DATA_DIR) / "repos.json"
-    if repos_file.exists():
-        try:
-            repos = json.loads(repos_file.read_text(encoding="utf-8"))
-            dirs += [
-                r["path"]
-                for r in repos
-                if r.get("path") and os.path.isdir(r["path"])
-            ]
-        except Exception:
-            pass
+    try:
+        dirs += [
+            r["path"]
+            for r in await collections.load("repos")
+            if r.get("path") and os.path.isdir(r["path"])
+        ]
+    except Exception:
+        pass
 
     # 2. Vault directory (always present)
-    vault = Path(DATA_DIR) / "vault"
+    vault = _vault_root()
     vault.mkdir(parents=True, exist_ok=True)
     dirs.append(str(vault))
 
@@ -105,7 +111,7 @@ app = Server("bash-server")
 
 @app.list_tools()
 async def list_tools() -> list[types.Tool]:
-    allowed = _get_allowed_dirs()
+    allowed = await _get_allowed_dirs()
     dir_hint = ", ".join(allowed) if allowed else "(none configured yet)"
     return [
         types.Tool(
@@ -156,7 +162,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     if not command:
         return [types.TextContent(type="text", text=json.dumps({"error": "No command provided."}))]
 
-    allowed_dirs = _get_allowed_dirs()
+    allowed_dirs = await _get_allowed_dirs()
 
     # Resolve working directory
     if cwd_arg:
@@ -183,8 +189,14 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 )
             ]
     else:
-        # Default to first available allowed dir
-        cwd = allowed_dirs[0] if allowed_dirs else DATA_DIR
+        # Default to first available allowed dir. _get_allowed_dirs always
+        # includes the vault, so the list is never actually empty.
+        if not allowed_dirs:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({"error": "No directory is configured for the bash tool."}),
+            )]
+        cwd = allowed_dirs[0]
 
     # Build the shell invocation
     shell_cmd = _SHELL_PREFIX + [command]
