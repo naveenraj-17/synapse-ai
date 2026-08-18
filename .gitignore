@@ -57,3 +57,8 @@ backend/var/
 *.db
 *.db-wal
 *.db-shm
+
+# The pre-database data folder, after `synapse migrate` renames it. Holds
+# live credentials — never committed, and gitignored under both names.
+backend/data.migrated/
+backend/data.migrated*/

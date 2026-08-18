@@ -1,8 +1,13 @@
 """Lightweight interactive setup wizard for Synapse.
 
-This writes `settings.json` into the data directory and asks for a
-few common configuration options. It's intentionally small so it
-works when the package is installed via `pip`.
+Writes configuration into the engine's database and asks for a few common
+options. It's intentionally small so it works when the package is installed
+via `pip`.
+
+Settings are rows, not a file — there is no settings.json for the wizard to
+leave behind and nothing to import on first boot. `synapse/_store.py` is the
+one place that knows how to reach the database from a process that is not the
+backend.
 """
 import json
 import os
@@ -11,17 +16,10 @@ import sys
 import urllib.request
 import urllib.error
 
+from synapse import _store
+
 PACKAGE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = PACKAGE_DIR.parent  # project root (synapse-ai/)
-DEFAULT_DATA_DIR = Path.home() / ".synapse" / "data"
-
-_raw_data_dir = os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR))
-if not os.path.isabs(_raw_data_dir):
-    DATA_DIR = (ROOT_DIR / _raw_data_dir).resolve()
-else:
-    DATA_DIR = Path(_raw_data_dir).resolve()
-
-SETTINGS_FILE = DATA_DIR / "settings.json"
 
 DEFAULT_SETTINGS = {
     "agent_name": "Synapse",
@@ -137,20 +135,11 @@ def _fetch_anthropic_models(key):
 
 
 def load_settings():
-    if not SETTINGS_FILE.exists():
-        return dict(DEFAULT_SETTINGS)
-    try:
-        with open(SETTINGS_FILE) as f:
-            saved = json.load(f)
-        return {**DEFAULT_SETTINGS, **saved}
-    except Exception:
-        return dict(DEFAULT_SETTINGS)
+    return {**DEFAULT_SETTINGS, **_store.load_settings()}
 
 
 def save_settings(cfg):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
+    _store.save_settings(cfg)
 
 
 def run():
@@ -280,7 +269,7 @@ def run():
         cfg["frontend_port"] = default_frontend
 
     save_settings(cfg)
-    print(f"\nSettings saved to {SETTINGS_FILE}")
+    print("\nSettings saved.")
     print("You can reconfigure anytime with: synapse setup")
 
 

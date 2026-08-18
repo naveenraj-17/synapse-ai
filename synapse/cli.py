@@ -326,13 +326,8 @@ def _ensure_playwright_browsers():
             return
 
     try:
-        settings_file = DATA_DIR / "settings.json"
-        if settings_file.exists():
-            with open(settings_file, "r") as f:
-                settings = json.load(f)
-            settings["playwright_browsers_path"] = str(browsers_path)
-            with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=4)
+        from synapse import _store
+        _store.save_settings({"playwright_browsers_path": str(browsers_path)})
     except Exception as e:
         print(f"\n  Warning: Failed to save playwright_browsers_path to settings: {e}")
 
@@ -720,16 +715,9 @@ def _reset_password_command():
     if backend_dir not in sys.path:
         sys.path.insert(0, backend_dir)
 
-    settings_file = DATA_DIR / "settings.json"
-    if not settings_file.exists():
-        print("  Error: settings.json not found. Start Synapse first to initialise it.")
-        sys.exit(1)
-
-    try:
-        settings = _json.loads(settings_file.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"  Error reading settings: {e}")
-        sys.exit(1)
+    from synapse import _store
+    _store.prepare()
+    settings = _store.load_settings()
 
     if not settings.get("login_enabled"):
         print("  Login is not currently enabled.")
@@ -764,7 +752,10 @@ def _reset_password_command():
     settings["login_password_hash"] = hash_password(password)
 
     try:
-        settings_file.write_text(_json.dumps(settings, indent=4), encoding="utf-8")
+        _store.save_settings({
+            "login_username": username,
+            "login_password_hash": settings["login_password_hash"],
+        })
         print("\n  Password reset successfully.")
         print("  Re-login will be required if a session was active.")
     except Exception as e:
@@ -772,17 +763,60 @@ def _reset_password_command():
         sys.exit(1)
 
 
+def _migrate_command():
+    """Bring the database up to date, and import a pre-database install.
+
+    The backend does both of these itself on every start, so this exists for
+    the cases where running the server is the wrong way to ask: a deploy that
+    wants the schema in place before the first request, a container entrypoint,
+    or anyone who would rather see what a migration did than infer it from the
+    logs.
+    """
+    from synapse import _store
+
+    print("\n  Synapse - Migrate\n")
+    try:
+        # Touching the store creates missing tables and applies any additive
+        # column changes; both print what they did.
+        _store.run(_noop)
+        print("  Database is up to date.")
+    except Exception as e:
+        print(f"  Error: could not open the database: {e}")
+        sys.exit(1)
+
+    legacy = DATA_DIR
+    try:
+        counts = _store.run(lambda: _import_legacy(legacy))
+    except Exception as e:
+        print(f"  Error during import: {e}")
+        sys.exit(1)
+
+    if counts is None:
+        print(f"  Nothing to import from {legacy}.")
+    else:
+        moved = ", ".join(f"{k}={v}" for k, v in counts.items() if v) or "nothing"
+        print(f"  Imported from {legacy}: {moved}")
+    print()
+
+
+async def _noop():
+    return None
+
+
+async def _import_legacy(root):
+    from core.store.importer import import_legacy_data_if_present
+    return await import_legacy_data_if_present(root)
+
+
 def _api_keys_command(action: str, name: str = "", key_id: str = ""):
     """Manage API keys for external /api/v1/* access."""
-    # Ensure backend modules are importable
-    backend_dir = str(BACKEND_DIR)
-    if backend_dir not in sys.path:
-        sys.path.insert(0, backend_dir)
+    from synapse import _store
+    _store.prepare()
 
     if action == "generate":
         from core.api_keys import generate_api_key
         key_name = name or "CLI-generated key"
-        raw_key, record = generate_api_key(key_name)
+        raw_key, record = _store.run(lambda: generate_api_key(key_name))
         masked_key = f"{raw_key[:6]}...{raw_key[-4:]}" if len(raw_key) >= 10 else "****"
         print(f"\n  API Key generated successfully!")
         print(f"  Name:    {record['name']}")
@@ -799,7 +833,7 @@ def _api_keys_command(action: str, name: str = "", key_id: str = ""):
 
     elif action == "list":
         from core.api_keys import list_api_keys
-        keys = list_api_keys()
+        keys = _store.run(list_api_keys)
         if not keys:
             print("  No API keys found. Generate one with: synapse api-keys generate \"My App\"")
             return
@@ -817,7 +851,7 @@ def _api_keys_command(action: str, name: str = "", key_id: str = ""):
             print("  Error: key ID required. Get IDs with: synapse api-keys list")
             sys.exit(1)
         from core.api_keys import delete_api_key
-        if delete_api_key(key_id):
+        if _store.run(lambda: delete_api_key(key_id)):
             print(f"  API key {key_id} deleted.")
         else:
             print(f"  API key {key_id} not found.")
@@ -840,24 +874,23 @@ def _start_command(
     _ensure_internal_token()
     _ensure_jwt_secret()
 
-    # First-run: no settings.json yet — run setup wizard before starting
-    _settings_file = DATA_DIR / "settings.json"
-    if not _settings_file.exists():
+    # First run — nothing configured yet, so run the wizard before starting.
+    from synapse import _store
+    if not _store.is_configured():
         try:
             from synapse import setup_wizard
             setup_wizard.run()
         except Exception as e:
             print(f"Note: setup wizard error ({e}). Run 'synapse setup' to configure.")
 
-    # Resolve effective ports: CLI arg > settings.json > env var > default
+    # Resolve effective ports: CLI arg > stored setting > env var > default
     _saved_backend_port: int | None = None
     _saved_frontend_port: int | None = None
     try:
-        import json as _json
-        _s = _json.loads(_settings_file.read_text(encoding="utf-8"))
-        if "backend_port" in _s:
+        _s = _store.load_settings()
+        if _s.get("backend_port"):
             _saved_backend_port = int(_s["backend_port"])
-        if "frontend_port" in _s:
+        if _s.get("frontend_port"):
             _saved_frontend_port = int(_s["frontend_port"])
     except Exception:
         pass
@@ -1286,14 +1319,8 @@ def _upgrade_command():
             print(f"  Warning: {coding_req} not found -- skipping.")
 
     # Messaging deps are heavier — only install when the user has opted in.
-    import json as _json
-    settings_file = DATA_DIR / "settings.json"
-    _settings: dict = {}
-    if settings_file.exists():
-        try:
-            _settings = _json.loads(settings_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    from synapse import _store
+    _settings = _store.load_settings()
 
     if _settings.get("messaging_enabled", False):
         messaging_req, _ = _requirements_source("requirements-messaging")
@@ -1803,6 +1830,10 @@ def main():
         help=f"Port for the frontend web UI (overrides SYNAPSE_FRONTEND_PORT env var, default: {DEFAULT_FRONTEND_PORT})",
     )
     sub.add_parser("setup", help="Run interactive setup wizard to configure Synapse")
+    sub.add_parser(
+        "migrate",
+        help="Create or update the database, and import an old backend/data folder if present",
+    )
 
     # upgrade: pull code and rebuild everything
     sub.add_parser(
@@ -1852,6 +1883,8 @@ def main():
         )
     elif args.cmd == "stop":
         _stop_command()
+    elif args.cmd == "migrate":
+        _migrate_command()
     elif args.cmd == "setup":
         try:
             from synapse import setup_wizard
