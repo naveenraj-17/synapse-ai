@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import httpx
 
-from core.config import load_settings, DATA_DIR
+from core.config import load_settings
 from core.llm_providers import _make_aws_client
 from core.session import session_state, clear_all_chat_sessions
 from services.synthetic_data import generate_synthetic_data, SyntheticDataRequest, current_job, DATASETS_PREFIX
@@ -819,36 +819,24 @@ async def clear_memory_items(req: MemoryClearRequest):
 
     # Repositories
     if "repos" in items:
-        repos_path = os.path.join(DATA_DIR, "repos.json")
-        repos = []
-        if os.path.exists(repos_path):
-            try:
-                with open(repos_path, encoding="utf-8") as f:
-                    repos = json.load(f)
-            except Exception:
-                pass
+        from core.store import collections
+
+        repos = await collections.load("repos")
         for repo in repos:
             try:
                 from services.code_indexer import drop_index
                 drop_index(repo["id"])
             except Exception as e:
                 print(f"Error dropping index for repo {repo.get('id')}: {e}")
-        with open(repos_path, "w", encoding="utf-8") as f:
-            json.dump([], f)
+        await collections.save("repos", [], key_field="path")
         results["repos"] = f"Cleared {len(repos)} repo(s)"
 
     # Database configurations
     if "db_configs" in items:
-        configs_path = os.path.join(DATA_DIR, "db_configs.json")
-        configs = []
-        if os.path.exists(configs_path):
-            try:
-                with open(configs_path, encoding="utf-8") as f:
-                    configs = json.load(f)
-            except Exception:
-                pass
-        with open(configs_path, "w", encoding="utf-8") as f:
-            json.dump([], f)
+        from core.store import collections
+
+        configs = await collections.load("db_configs")
+        await collections.save("db_configs", [])
         results["db_configs"] = f"Cleared {len(configs)} config(s)"
 
     return {"status": "success", "cleared": results}
