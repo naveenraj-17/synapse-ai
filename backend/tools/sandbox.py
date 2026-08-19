@@ -4,6 +4,14 @@ Sandbox — secure workspace + Python execution for agents.
 Combines a persistent shared file vault (create / read / write / patch / list /
 delete) with a Docker-based Python executor.  Vault files are auto-mounted at
 /data inside the container so agents can create data, then run code against it.
+
+The vault root comes from `core.vault._vault_root()`, per call. It used to be a
+module constant built from `__file__` — `backend/tools/../data/vault` — which
+stopped being the vault when blob storage became tenant-scoped, and which this
+module also `mkdir`'d at import, quietly recreating `backend/data`. Nothing
+raised: the Docker `-v` mount below is `.exists()`-guarded, so the container
+simply came up without its `/data` mount. Per call rather than cached because
+the path carries the tenant, and one process serves many.
 """
 
 from mcp.server import Server
@@ -23,8 +31,12 @@ server = Server("sandbox")
 
 # ── paths & limits ───────────────────────────────────────────────────────
 
-VAULT_ROOT = Path(__file__).resolve().parent.parent / "data" / "vault"
-VAULT_ROOT.mkdir(parents=True, exist_ok=True)
+def _vault_root() -> Path:
+    """The current tenant's vault, from the blob store."""
+    from core.vault import _vault_root as blob_vault_root
+
+    return blob_vault_root()
+
 
 MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 MB read cap
 DEFAULT_TIMEOUT = 30               # seconds
@@ -45,9 +57,10 @@ def _err(msg: str) -> list[TextContent]:
 
 
 def _safe_path(relative: str) -> Path | None:
-    """Resolve *relative* inside VAULT_ROOT; return None if it escapes."""
-    target = (VAULT_ROOT / relative).resolve()
-    if not str(target).startswith(str(VAULT_ROOT)):
+    """Resolve *relative* inside the vault; return None if it escapes."""
+    root = _vault_root()
+    target = (root / relative).resolve()
+    if not str(target).startswith(str(root)):
         return None
     return target
 
@@ -57,7 +70,7 @@ def _resolve(raw_path: str) -> Path | None:
     p = Path(raw_path)
     if p.is_absolute():
         resolved = p.resolve()
-        if not str(resolved).startswith(str(VAULT_ROOT)):
+        if not str(resolved).startswith(str(_vault_root())):
             return None
         return resolved
     return _safe_path(raw_path)
@@ -91,7 +104,7 @@ def _deep_merge(base: dict, patch: dict) -> dict:
 def _s3_rel(target: Path) -> str | None:
     """Vault-relative path for constructing S3 keys (e.g. 'reports/q1.json')."""
     try:
-        return str(target.resolve().relative_to(VAULT_ROOT.resolve()))
+        return str(target.resolve().relative_to(_vault_root().resolve()))
     except ValueError:
         return None
 
@@ -509,7 +522,8 @@ def _handle_list(args: dict) -> list[TextContent]:
     subdir = args.get("directory", "")
     ext_filter = args.get("extension")
 
-    base = _safe_path(subdir) if subdir else VAULT_ROOT
+    root = _vault_root()
+    base = _safe_path(subdir) if subdir else root
     if base is None:
         return _err("Path escapes the vault directory")
 
@@ -522,7 +536,7 @@ def _handle_list(args: dict) -> list[TextContent]:
                 continue
             if ext_filter and item.suffix != ext_filter:
                 continue
-            rel = str(item.relative_to(VAULT_ROOT))
+            rel = str(item.relative_to(root))
             seen_rels.add(rel)
             files.append({
                 "name": item.name,
@@ -537,7 +551,7 @@ def _handle_list(args: dict) -> list[TextContent]:
             continue
         if rel in seen_rels:
             continue
-        s3_local = VAULT_ROOT / rel
+        s3_local = root / rel
         files.append({
             "name": s3_local.name,
             "path": str(s3_local),
@@ -597,8 +611,9 @@ def _build_docker_cmd(
 
     cmd += ["-v", f"{script_path}:/sandbox/script.py:ro"]
 
-    if VAULT_ROOT.exists():
-        cmd += ["-v", f"{VAULT_ROOT}:/data:ro"]
+    vault_root = _vault_root()
+    if vault_root.exists():
+        cmd += ["-v", f"{vault_root}:/data:ro"]
 
     cmd.append(DOCKER_IMAGE)
 

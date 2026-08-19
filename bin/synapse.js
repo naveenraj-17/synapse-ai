@@ -17,9 +17,7 @@ const REQUIREMENTS = path.join(BACKEND_DIR, 'requirements.txt');
 
 const SYNAPSE_HOME = path.join(os.homedir(), '.synapse');
 const VENV_DIR = path.join(SYNAPSE_HOME, 'venv');
-const DATA_DIR = process.env.SYNAPSE_DATA_DIR || path.join(SYNAPSE_HOME, 'data');
 const HASH_FILE = path.join(SYNAPSE_HOME, 'requirements.hash');
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 let BACKEND_PORT = parseInt(process.env.SYNAPSE_BACKEND_PORT || '8765');
 let FRONTEND_PORT = parseInt(process.env.SYNAPSE_FRONTEND_PORT || '3000');
@@ -262,36 +260,65 @@ async function installPlaywrightBrowsers() {
   }
 
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-      settings.playwright_browsers_path = browsersPath;
-      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 4));
-    }
+    saveStoredSettings({ playwright_browsers_path: browsersPath });
   } catch (e) {
     console.log(`\n  Warning: Failed to save playwright_browsers_path to settings: ${e.message}`);
   }
 }
 
-// ── Data directory ────────────────────────────────────────────────────────────
+// ── Settings, via the engine's store ──────────────────────────────────────────
+//
+// Settings are rows in the engine's database, not a JSON file. This launcher is
+// Node and the database is reached through SQLAlchemy, so both directions go
+// through one short Python program run by the venv interpreter. The npm package
+// ships `backend/core/` but not the `synapse` package, hence PYTHONPATH rather
+// than `from synapse import _store`.
+//
+// Every caller must therefore run after setupVenv(): dependencies first,
+// configuration second.
 
-const DEFAULT_JSON = {
-  'user_agents.json': '[]',
-  'orchestrations.json': '[]',
-  'repos.json': '[]',
-  'mcp_servers.json': '[]',
-  'custom_tools.json': '[]',
-  'db_configs.json': '[]',
-};
+const STORE_BRIDGE = `
+import asyncio, json, sys
+from core.store import get_store
+from core.store.settings import load_settings_for_tenant, save_many
 
-function ensureDataDir() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  for (const sub of ['vault', 'datasets', 'orchestration_runs', 'orchestration_logs']) {
-    fs.mkdirSync(path.join(DATA_DIR, sub), { recursive: true });
+async def main():
+    await get_store()          # creates the schema on first use
+    action = sys.argv[1]
+    if action == "load":
+        print(json.dumps(await load_settings_for_tenant()))
+    else:
+        await save_many(json.loads(sys.stdin.read()))
+
+asyncio.run(main())
+`;
+
+function storeBridge(action, payload) {
+  const result = spawnSync(venvPython(), ['-c', STORE_BRIDGE, action], {
+    input: payload === undefined ? '' : JSON.stringify(payload),
+    env: {
+      ...process.env,
+      PYTHONPATH: BACKEND_DIR + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ''),
+    },
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    const detail = (result.stderr || '').trim().split('\n').slice(-3).join('\n');
+    throw new Error(`Could not reach the Synapse database.\n${detail}`);
   }
-  for (const [file, content] of Object.entries(DEFAULT_JSON)) {
-    const target = path.join(DATA_DIR, file);
-    if (!fs.existsSync(target)) fs.writeFileSync(target, content);
+  return result.stdout;
+}
+
+function loadStoredSettings() {
+  try {
+    return JSON.parse(storeBridge('load') || '{}');
+  } catch (_) {
+    return {};
   }
+}
+
+function saveStoredSettings(cfg) {
+  storeBridge('save', cfg);
 }
 
 // ── Model fetching ────────────────────────────────────────────────────────────
@@ -502,9 +529,8 @@ async function runSetupWizard(ollamaAvailable) {
 
     rl.close();
 
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(cfg, null, 4));
-    console.log('\n[OK] Settings saved to ' + SETTINGS_FILE);
+    saveStoredSettings(cfg);
+    console.log('\n[OK] Settings saved.');
     console.log('     You can reconfigure anytime with: synapse setup\n');
   } catch (err) {
     rl.close();
@@ -517,7 +543,6 @@ async function runSetupWizard(ollamaAvailable) {
 function startBackend() {
   const env = {
     ...process.env,
-    SYNAPSE_DATA_DIR: DATA_DIR,
     SYNAPSE_BACKEND_PORT: String(BACKEND_PORT),
     PYTHONPATH: BACKEND_DIR + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ''),
   };
@@ -597,26 +622,27 @@ async function main() {
 
   const ollamaAvail = checkCmd('ollama');
 
-  // Run setup wizard on first launch (no settings.json yet)
-  if (!fs.existsSync(SETTINGS_FILE)) {
+  // The venv comes up before the wizard: settings are rows in a database now,
+  // and nothing can write them until the dependencies that talk to one exist.
+  await setupVenv();
+
+  // Run the setup wizard on first launch — "first launch" being an install with
+  // no settings rows, where it used to be the absence of a settings.json.
+  let saved = loadStoredSettings();
+  if (!saved.model && !saved.agent_name) {
     if (!ollamaAvail) {
       console.log('\nOllama is not installed -- local models are unavailable.');
     }
     await runSetupWizard(ollamaAvail);
+    saved = loadStoredSettings();
   } else if (!ollamaAvail) {
     console.log("Warning: ollama not found. Local models won't work; cloud API models still work.");
   }
 
-  // Load saved port overrides from settings
-  try {
-    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-    if (saved.backend_port) BACKEND_PORT = saved.backend_port;
-    if (saved.frontend_port) FRONTEND_PORT = saved.frontend_port;
-  } catch (_) {}
+  if (saved.backend_port) BACKEND_PORT = saved.backend_port;
+  if (saved.frontend_port) FRONTEND_PORT = saved.frontend_port;
 
-  await setupVenv();
   await installPlaywrightBrowsers();
-  ensureDataDir();
 
   console.log('Starting backend...');
   const backend = startBackend();
@@ -692,18 +718,24 @@ async function runUninstall() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise((resolve) =>
     rl.question(
-      'This will remove ~/.synapse (venv, data, settings).\nType "yes" to confirm: ',
+      'This will remove ~/.synapse (venv) and the database, vault and logs under\n'
+        + `${path.join(BACKEND_DIR, 'var')}.\nType "yes" to confirm: `,
       (a) => { rl.close(); resolve(a.trim().toLowerCase()); }
     )
   );
   if (answer !== 'yes') { console.log('Aborted.'); return; }
 
-  if (fs.existsSync(SYNAPSE_HOME)) {
-    console.log(`Removing ${SYNAPSE_HOME} ...`);
-    fs.rmSync(SYNAPSE_HOME, { recursive: true, force: true });
-    console.log('  Done.');
-  } else {
-    console.log(`${SYNAPSE_HOME} not found — nothing to remove.`);
+  // Two locations, because the venv and the user's data no longer share one.
+  // Removing only ~/.synapse would report that the data was deleted while
+  // leaving every orchestration, agent and vault file on disk.
+  for (const target of [SYNAPSE_HOME, path.join(BACKEND_DIR, 'var')]) {
+    if (fs.existsSync(target)) {
+      console.log(`Removing ${target} ...`);
+      fs.rmSync(target, { recursive: true, force: true });
+      console.log('  Done.');
+    } else {
+      console.log(`${target} not found — nothing to remove.`);
+    }
   }
 
   console.log('\nNow run: npm uninstall -g synapse-orch-ai');

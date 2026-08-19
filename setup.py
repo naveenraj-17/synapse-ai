@@ -22,8 +22,8 @@ FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 ENV_FILE = os.path.join(ROOT_DIR, ".env")
 
 # ---------------------------------------------------------------------------
-# Load .env BEFORE computing DATA_DIR so that setup.py and cli.py always
-# agree on the same data directory (e.g. SYNAPSE_DATA_DIR=backend/data).
+# Load .env early so an operator's SYNAPSE_DB_URL (and ports) are in the
+# environment before anything reads them.
 # ---------------------------------------------------------------------------
 def _load_dotenv_early(path):
     """Minimal .env loader -- only sets vars not already in the environment."""
@@ -45,16 +45,7 @@ def _load_dotenv_early(path):
 
 _load_dotenv_early(ENV_FILE)
 
-# Resolve DATA_DIR: relative paths are anchored to ROOT_DIR (same logic as cli.py)
-_raw_data_dir = os.environ.get("SYNAPSE_DATA_DIR", os.path.join(BACKEND_DIR, "data"))
-if not os.path.isabs(_raw_data_dir):
-    DATA_DIR = os.path.normpath(os.path.join(ROOT_DIR, _raw_data_dir))
-else:
-    DATA_DIR = _raw_data_dir
-
 EXAMPLES_DIR = os.path.join(BACKEND_DIR, "examples")
-SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
-CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
 
 # Port defaults -- read from env first so an existing .env is respected
 DEFAULT_BACKEND_PORT = int(os.environ.get("SYNAPSE_BACKEND_PORT", "8765"))
@@ -682,30 +673,6 @@ def check_uvx():
 # ---------------------------------------------------------------------------
 # Settings helpers
 # ---------------------------------------------------------------------------
-DEFAULT_MODEL_PRICING = {
-    "gpt-4o": { "provider": "openai", "input_per_1m": 2.5, "output_per_1m": 10 },
-    "gpt-4o-mini": { "provider": "openai", "input_per_1m": 0.15, "output_per_1m": 0.6 },
-    "gpt-4.1": { "provider": "openai", "input_per_1m": 2, "output_per_1m": 8 },
-    "gpt-4.1-mini": { "provider": "openai", "input_per_1m": 0.4, "output_per_1m": 1.6 },
-    "gpt-4.1-nano": { "provider": "openai", "input_per_1m": 0.1, "output_per_1m": 0.4 },
-    "claude-sonnet-4-20250514": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
-    "claude-opus-4-20250514": { "provider": "anthropic", "input_per_1m": 15, "output_per_1m": 75 },
-    "claude-3-5-haiku-20241022": { "provider": "anthropic", "input_per_1m": 0.8, "output_per_1m": 4 },
-    "gemini-2.5-pro": { "provider": "gemini", "input_per_1m": 1.25, "output_per_1m": 10 },
-    "gemini-2.5-flash": { "provider": "gemini", "input_per_1m": 0.3, "output_per_1m": 2.5 },
-    "grok-3": { "provider": "grok", "input_per_1m": 3, "output_per_1m": 15 },
-    "grok-3-mini": { "provider": "grok", "input_per_1m": 0.3, "output_per_1m": 0.5 },
-    "deepseek-chat": { "provider": "deepseek", "input_per_1m": 0.27, "output_per_1m": 1.1 },
-    "deepseek-reasoner": { "provider": "deepseek", "input_per_1m": 0.55, "output_per_1m": 2.19 },
-    "gemini-3.1-pro-preview": { "provider": "gemini", "input_per_1m": 2, "output_per_1m": 12 },
-    "gemini-3-flash-preview": { "provider": "gemini", "input_per_1m": 0.5, "output_per_1m": 3 },
-    "gemini-3.1-flash-lite-preview": { "provider": "gemini", "input_per_1m": 0.125, "output_per_1m": 0.75 },
-    "gemini-2.5-flash-lite": { "provider": "gemini", "input_per_1m": 0.1, "output_per_1m": 0.4 },
-    "claude-sonnet-4-5-20250929": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
-    "claude-sonnet-4-6": { "provider": "anthropic", "input_per_1m": 3, "output_per_1m": 15 },
-    "claude-opus-4-5-20251101": { "provider": "anthropic", "input_per_1m": 5, "output_per_1m": 25 },
-    "claude-opus-4-6": { "provider": "anthropic", "input_per_1m": 5, "output_per_1m": 25 }
-}
 
 DEFAULT_SETTINGS = {
     "agent_name": "Synapse",
@@ -749,45 +716,101 @@ DEFAULT_SETTINGS = {
     "embed_code": False,
 }
 
+# ---------------------------------------------------------------------------
+# Reaching the engine's store
+# ---------------------------------------------------------------------------
+# Settings, agents and Google's OAuth client are rows in the engine's database,
+# not JSON files under a data directory. This installer runs on the *system*
+# interpreter and creates the backend venv as one of its steps, so it cannot
+# import SQLAlchemy itself. Every store access therefore goes through one short
+# program run by the venv interpreter — which means it can only run after
+# install_backend(). See the ordering note in main().
+
+
+def _store_call(body, payload=None, python_exe=None, backend_dir=None):
+    """Run `body` in the backend venv, with `payload` on stdin as JSON.
+
+    Returns whatever the program printed. Raises on failure so callers can
+    report a real error instead of silently losing the user's answers.
+
+    `python_exe` / `backend_dir` override the freshly-installed venv for the
+    upgrade path, which operates on an existing install elsewhere on disk.
+    """
+    program = (
+        "import asyncio, json, sys\n"
+        "from core.store import get_store\n"
+        "async def _main():\n"
+        "    await get_store()\n"
+        "    payload = json.loads(sys.stdin.read() or 'null')\n"
+        + "".join(f"    {line}\n" for line in body.strip().split("\n"))
+        + "asyncio.run(_main())\n"
+    )
+    backend = backend_dir or BACKEND_DIR
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [backend, os.path.dirname(backend)]
+        + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
+    )
+    result = subprocess.run(
+        [python_exe or PYTHON_EXE, "-c", program],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        tail = "\n".join((result.stderr or "").strip().split("\n")[-3:])
+        raise RuntimeError(f"could not reach the Synapse database:\n{tail}")
+    return result.stdout.strip()
+
+
 def load_settings():
-    if not os.path.exists(SETTINGS_FILE):
-        return dict(DEFAULT_SETTINGS)
+    """The install's settings, overlaid on this installer's defaults.
+
+    Falls back to the defaults whenever the store cannot be read — which is the
+    normal case on a fresh install, where the venv does not exist yet.
+    """
     try:
-        with open(SETTINGS_FILE) as f:
-            saved = json.load(f)
-        return {**DEFAULT_SETTINGS, **saved}
+        stored = json.loads(
+            _store_call(
+                "from core.store.settings import load_settings_for_tenant\n"
+                "print(json.dumps(await load_settings_for_tenant()))"
+            )
+            or "{}"
+        )
     except Exception:
         return dict(DEFAULT_SETTINGS)
+    return {**DEFAULT_SETTINGS, **stored}
+
 
 def save_settings(cfg):
-    os.makedirs(DATA_DIR, exist_ok=True)
     # Stamp installation date on first save (fresh install detection for in-app banner)
     if "installed_at" not in cfg:
         import datetime
         cfg["installed_at"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=4)
-        
-    # Always save model pricing on setup in data folder
-    src_pricing = os.path.join(BACKEND_DIR, "data", "model_pricing.json")
-    dst_pricing = os.path.join(DATA_DIR, "model_pricing.json")
-    if os.path.exists(src_pricing):
-        try:
-            if os.path.abspath(src_pricing) != os.path.abspath(dst_pricing):
-                shutil.copy2(src_pricing, dst_pricing)
-        except Exception:
-            pass
-    elif not os.path.exists(dst_pricing):
-        try:
-            with open(dst_pricing, "w", encoding="utf-8") as f:
-                json.dump(DEFAULT_MODEL_PRICING, f, indent=4)
-        except Exception:
-            pass
 
-    # Persist the data directory path into .env so cli.py and synapse start
-    # always find settings in the same location, even with relative paths.
-    _rel = os.path.relpath(DATA_DIR, ROOT_DIR)
-    _update_env_file("SYNAPSE_DATA_DIR", _rel)
+    # `_google_client` is carried on cfg through the wizard but is not a
+    # setting: it is a credential, and it has its own home.
+    google_client = cfg.pop("_google_client", None)
+
+    _store_call(
+        "from core.store.settings import save_many\n"
+        "await save_many(payload)",
+        cfg,
+    )
+
+    if google_client:
+        _store_call(
+            "from services.google import save_client_config\n"
+            "await save_client_config(payload)",
+            google_client,
+        )
+        ok("Google Workspace credentials saved.")
+
+    # No model_pricing.json copy. `DEFAULT_MODEL_PRICING` is the in-code seed
+    # that `init_db` inserts for any model the table is missing, so a copied
+    # file would be a second source of truth for a table that seeds itself —
+    # and one that a restart would silently re-assert over an edited rate.
 
 # ---------------------------------------------------------------------------
 # Q1 -- Coding Agent
@@ -981,16 +1004,10 @@ def ask_google_workspace(cfg):
     # Get backend port from config (or default)
     backend_port = cfg.get("backend_port", DEFAULT_BACKEND_PORT)
 
-    # Skip if credentials already exist
-    if os.path.exists(CREDENTIALS_FILE):
-        ok(f"credentials.json already exists at {CREDENTIALS_FILE} -- skipping.")
-        return
-
     if not ask_yn("Configure Google Workspace now?", default="n"):
         ok("Skipped -- you can configure this later in Settings -> Integrations.")
         return
 
-    os.makedirs(DATA_DIR, exist_ok=True)
     has_gcloud = shutil.which("gcloud") is not None
 
     if has_gcloud:
@@ -1094,14 +1111,14 @@ def ask_google_workspace(cfg):
         return
 
     try:
-        parsed = json.loads(raw_json)
-        with open(CREDENTIALS_FILE, "w", encoding="utf-8") as f:
-            json.dump(parsed, f, indent=4)
-        ok(f"credentials.json saved to {CREDENTIALS_FILE}")
+        # Carried on cfg and written with the settings, once the venv that can
+        # reach the database exists. `save_settings` pops it back off.
+        cfg["_google_client"] = json.loads(raw_json)
+        ok("Google credentials accepted -- they are saved once the backend is installed.")
         info("After Synapse starts, go to Settings -> Integrations -> 'Connect Google Account' to complete OAuth.")
     except json.JSONDecodeError as e:
         err(f"Invalid JSON: {e}")
-        warn("credentials.json was NOT saved. Configure via Settings -> Integrations later.")
+        warn("The credentials were NOT saved. Configure via Settings -> Integrations later.")
 
 
 # ---------------------------------------------------------------------------
@@ -1608,29 +1625,26 @@ DEFAULT_AGENT = {
 }
 
 def create_default_agent():
-    """Ensure the default 'Synapse AI' agent exists in user_agents.json."""
+    """Ensure the default 'Synapse AI' agent exists as a row in the store."""
     step("Creating Default Agent")
-    agents_file = os.path.join(DATA_DIR, "user_agents.json")
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    agents = []
-    if os.path.exists(agents_file):
-        try:
-            with open(agents_file) as f:
-                agents = json.load(f)
-        except Exception:
-            agents = []
-
-    # Check if already exists
-    if any(a.get("id") == DEFAULT_AGENT["id"] for a in agents):
-        ok("Default 'Synapse AI' agent already exists -- skipping.")
+    try:
+        created = _store_call(
+            "from core.store.resources import get_agent, save_agent\n"
+            "if await get_agent(payload['id']):\n"
+            "    print('exists')\n"
+            "else:\n"
+            "    await save_agent(payload)\n"
+            "    print('created')",
+            DEFAULT_AGENT,
+        )
+    except RuntimeError as e:
+        warn(f"Could not create the default agent: {e}")
         return
 
-    # Prepend so it appears first
-    agents.insert(0, DEFAULT_AGENT)
-    with open(agents_file, "w", encoding="utf-8") as f:
-        json.dump(agents, f, indent=4)
-    ok("Created default 'Synapse AI' agent with access to all tools.")
+    if created == "exists":
+        ok("Default 'Synapse AI' agent already exists -- skipping.")
+    else:
+        ok("Created default 'Synapse AI' agent with access to all tools.")
 
 # ---------------------------------------------------------------------------
 # Install helpers
@@ -1820,9 +1834,6 @@ def start_backend(backend_port: int = DEFAULT_BACKEND_PORT):
     step("Starting Backend Server")
     env = os.environ.copy()
     env["SYNAPSE_BACKEND_PORT"] = str(backend_port)
-    # Always pass SYNAPSE_DATA_DIR as an absolute path so the backend subprocess
-    # resolves it correctly regardless of its working directory.
-    env["SYNAPSE_DATA_DIR"] = os.path.abspath(DATA_DIR)
     return subprocess.Popen([PYTHON_EXE, "main.py"], cwd=BACKEND_DIR, env=env)
 
 def _find_npm_cmd_win():
@@ -2171,15 +2182,22 @@ def _rebuild_backend(install_dir):
         else:
             warn(f"requirements-coding.txt not found at {coding_req}")
 
-    # Messaging deps are heavier — only install when opted in.
+    # Messaging deps are heavier — only install when opted in. The opt-in is a
+    # settings row, read through this install's own interpreter, which the base
+    # requirements above have just made able to reach the database.
     _settings: dict = {}
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            import json as _json
-            with open(SETTINGS_FILE) as _f:
-                _settings = _json.load(_f)
-        except Exception:
-            pass
+    try:
+        _settings = json.loads(
+            _store_call(
+                "from core.store.settings import load_settings_for_tenant\n"
+                "print(json.dumps(await load_settings_for_tenant()))",
+                python_exe=python_exe,
+                backend_dir=backend_dir,
+            )
+            or "{}"
+        )
+    except Exception as e:
+        warn(f"Could not read settings ({e}); skipping optional messaging deps.")
 
     if _settings.get("messaging_enabled", False):
         messaging_req, _ = _requirements_source("requirements-messaging", backend_dir)
@@ -2602,12 +2620,10 @@ def main():
     ask_agent_name(cfg)
     ask_llm(cfg)
 
-    step("Writing Settings")
-    save_settings(cfg)
-    ok(f"Settings saved to {SETTINGS_FILE}")
-
-    create_default_agent()
-
+    # Install before saving. Settings, the default agent and Google's OAuth
+    # client are rows in a database reached through SQLAlchemy, and the venv
+    # that has SQLAlchemy in it is what install_backend() creates. When this
+    # wrote a JSON file it could run either way round; it cannot now.
     try:
         install_backend(
             cfg.get("coding_agent_enabled", False),
@@ -2616,7 +2632,23 @@ def main():
         install_frontend()
     except subprocess.CalledProcessError as e:
         err(f"Installation failed: {e}")
+        # Say so plainly rather than exiting on the error alone: the answers
+        # were collected but never reached the database, and re-running is the
+        # only way to supply them again.
+        warn("Your setup answers were NOT saved — nothing was written.")
+        warn(f"Answered: {', '.join(sorted(k for k in cfg if not k.startswith('_')))}")
+        warn("Fix the error above and run `python setup.py` again.")
         sys.exit(1)
+
+    step("Writing Settings")
+    try:
+        save_settings(cfg)
+    except RuntimeError as e:
+        err(f"Could not save settings: {e}")
+        sys.exit(1)
+    ok("Settings saved to the database.")
+
+    create_default_agent()
 
     setup_path()
 
