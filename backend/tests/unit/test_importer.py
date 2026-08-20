@@ -1,16 +1,18 @@
 """
-The one-time DATA_DIR import.
+The one-time import of a pre-database install.
 
-Existing installs keep their work as JSON files under DATA_DIR. Those files are
-what is being removed, so the upgrade has to bring them across without asking
-anyone to run a command — an upgrade step that can be missed becomes a support
-thread for every self-hoster who misses it.
+Existing installs keep their work as JSON files in a data folder. Those files
+are what is being removed, so the upgrade has to bring them across without
+asking anyone to run a command — an upgrade step that can be missed becomes a
+support thread for every self-hoster who misses it.
 
 The properties that matter are all about not losing or duplicating work:
-nothing runs when the store already has content, the folder is renamed so a
-second boot does not re-import, and a failure leaves the originals in place.
+nothing runs when the store already has content, the consumed files are retired
+so a second boot does not re-import, and a failure leaves the originals in
+place.
 """
 import json
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -215,24 +217,57 @@ async def test_orchestrations_are_active(data_dir):
 
 
 # ── running it at boot ───────────────────────────────────────────────────────
+#
+# `import_legacy_data_if_present()` takes no argument: it finds the folder
+# itself, because after this refactor nothing else in the engine knows where
+# that folder is. `SYNAPSE_DATA_DIR` is its first candidate, read for detection
+# only, which is what these tests drive.
 
-async def test_first_boot_imports_and_renames(data_dir):
-    counts = await import_legacy_data_if_present(data_dir)
+
+@pytest.fixture
+def legacy_install(data_dir, monkeypatch):
+    """A v1.9 install the boot-time importer will discover on its own."""
+    monkeypatch.setenv("SYNAPSE_DATA_DIR", str(data_dir))
+    return data_dir
+
+
+async def test_first_boot_imports_and_renames(legacy_install):
+    counts = await import_legacy_data_if_present()
 
     assert counts is not None
-    assert not data_dir.exists()
-    assert (data_dir.parent / "data.migrated").is_dir()
+    assert not legacy_install.exists()
+    assert (legacy_install.parent / "data.migrated").is_dir()
     # The originals survive the move — nothing is deleted.
-    assert (data_dir.parent / "data.migrated" / "orchestrations.json").is_file()
+    assert (legacy_install.parent / "data.migrated" / "orchestrations.json").is_file()
 
 
-async def test_second_boot_does_nothing(data_dir):
-    await import_legacy_data_if_present(data_dir)
-    again = await import_legacy_data_if_present(data_dir)
+async def test_second_boot_does_nothing(legacy_install):
+    await import_legacy_data_if_present()
+    again = await import_legacy_data_if_present()
     assert again is None
 
 
-async def test_a_populated_store_is_never_overwritten(data_dir):
+async def test_a_folder_holding_live_state_is_not_renamed(legacy_install):
+    """The container case: one volume holds the legacy JSON *and* the database.
+
+    Renaming the folder would move `synapse.db` with it — and the import has
+    just written into that file, so the rename would destroy exactly what it
+    produced. Only the consumed files move.
+    """
+    (legacy_install / "synapse.db").write_text("", encoding="utf-8")
+
+    counts = await import_legacy_data_if_present()
+
+    assert counts is not None
+    assert legacy_install.is_dir()
+    assert (legacy_install / "synapse.db").is_file()
+    assert (legacy_install / "migrated" / "orchestrations.json").is_file()
+    assert not (legacy_install / "orchestrations.json").exists()
+    # And that is enough to stop a second import even before store_is_empty().
+    assert await import_legacy_data_if_present() is None
+
+
+async def test_a_populated_store_is_never_overwritten(legacy_install):
     """The guard that protects work done since the upgrade.
 
     If the rename failed on the first boot, or the folder was restored from a
@@ -243,17 +278,35 @@ async def test_a_populated_store_is_never_overwritten(data_dir):
                               name="Edited since upgrade", definition={"v": 2}))
         await s.commit()
 
-    assert await import_legacy_data_if_present(data_dir) is None
-    assert data_dir.exists()          # left in place for a human to look at
+    assert await import_legacy_data_if_present() is None
+    assert legacy_install.exists()    # left in place for a human to look at
 
     async with session() as s:
         row = (await s.execute(select(OrchestrationDB))).scalar_one()
     assert row.name == "Edited since upgrade"
 
 
-async def test_nothing_happens_without_a_data_dir(tmp_path):
-    assert await import_legacy_data_if_present(tmp_path / "absent") is None
-    assert await import_legacy_data_if_present(tmp_path) is None   # exists, but empty
+async def test_nothing_happens_without_a_data_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("SYNAPSE_DATA_DIR", str(tmp_path / "absent"))
+    assert await import_legacy_data_if_present() is None
+
+    monkeypatch.setenv("SYNAPSE_DATA_DIR", str(tmp_path))   # exists, but empty
+    assert await import_legacy_data_if_present() is None
+
+
+async def test_the_npm_layout_is_a_candidate(data_dir, monkeypatch):
+    """`~/.synapse/data` is where the npm launcher put it.
+
+    It only ever worked because that launcher passed SYNAPSE_DATA_DIR into the
+    backend's environment. That is gone, so without this candidate an npm
+    install's upgrade would silently import nothing.
+    """
+    monkeypatch.delenv("SYNAPSE_DATA_DIR", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: data_dir.parent))
+    (data_dir.parent / ".synapse").mkdir()
+    data_dir.rename(data_dir.parent / ".synapse" / "data")
+
+    assert await import_legacy_data_if_present() is not None
 
 
 async def test_a_corrupt_file_does_not_stop_the_rest(data_dir):

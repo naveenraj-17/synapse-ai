@@ -39,7 +39,7 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 
-from core.config import DATA_DIR, MCP_SESSION_READ_TIMEOUT, load_settings
+from core.config import MCP_SESSION_READ_TIMEOUT, load_settings
 import core.mcp_oauth_state as oauth_state
 
 # ── Constants ──────────────────────────────────────────────────────────────────

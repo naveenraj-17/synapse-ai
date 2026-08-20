@@ -122,15 +122,16 @@ def _load_dotenv(path: Path):
 
 _load_dotenv(_ENV_FILE)
 
-DEFAULT_DATA_DIR = Path.home() / ".synapse" / "data"
-# Always resolve to absolute path so the value is correct regardless of CWD.
-# When SYNAPSE_DATA_DIR is a relative path (e.g. "data" in .env), resolve it
-# relative to the project root rather than wherever `synapse` was invoked from.
-_raw_data_dir = os.getenv("SYNAPSE_DATA_DIR", str(DEFAULT_DATA_DIR))
-if not os.path.isabs(_raw_data_dir):
-    DATA_DIR = (ROOT_DIR / _raw_data_dir).resolve()
-else:
-    DATA_DIR = Path(_raw_data_dir).resolve()
+# Where the CLI keeps its own process bookkeeping. Not user data — the
+# database and the vault live under `backend/var/` — just the two PID files
+# `synapse stop` and `synapse status` need to find the processes `synapse
+# start` launched. Per user rather than per checkout, which is what it always
+# effectively was.
+RUN_DIR = Path.home() / ".synapse" / "run"
+
+# Where a running install keeps its database, vault, logs and caches. Named
+# here only so `synapse uninstall` can offer to remove it.
+STATE_DIR = BACKEND_DIR / "var"
 
 DEFAULT_BACKEND_PORT = int(os.getenv("SYNAPSE_BACKEND_PORT", "8765"))
 DEFAULT_FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))
@@ -140,17 +141,9 @@ DEFAULT_FRONTEND_PORT = int(os.getenv("SYNAPSE_FRONTEND_PORT", "3000"))
 BACKEND_PORT = DEFAULT_BACKEND_PORT
 FRONTEND_PORT = DEFAULT_FRONTEND_PORT
 
-DEFAULT_JSON_FILES = {
-    "user_agents.json": "[]",
-    "orchestrations.json": "[]",
-    "repos.json": "[]",
-    "mcp_servers.json": "[]",
-    "custom_tools.json": "[]",
-}
-
 # PID files
-BACKEND_PID_FILE = DATA_DIR / "backend.pid"
-FRONTEND_PID_FILE = DATA_DIR / "frontend.pid"
+BACKEND_PID_FILE = RUN_DIR / "backend.pid"
+FRONTEND_PID_FILE = RUN_DIR / "frontend.pid"
 
 
 def _find_node_exe_win():
@@ -261,14 +254,15 @@ def check_prerequisites():
         sys.exit(1)
 
 
-def ensure_data_dir():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for subdir in ("vault", "datasets", "orchestration_runs", "orchestration_logs"):
-        (DATA_DIR / subdir).mkdir(exist_ok=True)
-    for filename, default in DEFAULT_JSON_FILES.items():
-        target = DATA_DIR / filename
-        if not target.exists():
-            target.write_text(default, encoding="utf-8")
+def ensure_run_dir():
+    """Make sure there is somewhere to put the PID files.
+
+    This used to be `ensure_data_dir()`: it created a vault, a datasets folder,
+    two log folders and five empty JSON arrays, seeding by hand the shape the
+    engine expected to find. The engine creates its own schema on first use
+    now, so what is left is a directory for two PID files.
+    """
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _ensure_playwright_browsers():
@@ -334,7 +328,6 @@ def _ensure_playwright_browsers():
 
 def start_backend(detach: bool = False, port: int | None = None, profile: bool = False):
     env = os.environ.copy()
-    env["SYNAPSE_DATA_DIR"] = str(DATA_DIR)
     env["PYTHONPATH"] = str(BACKEND_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     if port is not None:
         env["SYNAPSE_BACKEND_PORT"] = str(port)
@@ -784,18 +777,17 @@ def _migrate_command():
         print(f"  Error: could not open the database: {e}")
         sys.exit(1)
 
-    legacy = DATA_DIR
     try:
-        counts = _store.run(lambda: _import_legacy(legacy))
+        counts = _store.run(_import_legacy)
     except Exception as e:
         print(f"  Error during import: {e}")
         sys.exit(1)
 
     if counts is None:
-        print(f"  Nothing to import from {legacy}.")
+        print("  No pre-database install found to import.")
     else:
         moved = ", ".join(f"{k}={v}" for k, v in counts.items() if v) or "nothing"
-        print(f"  Imported from {legacy}: {moved}")
+        print(f"  Imported: {moved}")
     print()
 
 
@@ -803,9 +795,9 @@ async def _noop():
     return None
 
 
-async def _import_legacy(root):
+async def _import_legacy():
     from core.store.importer import import_legacy_data_if_present
-    return await import_legacy_data_if_present(root)
+    return await import_legacy_data_if_present()
 
 
 def _api_keys_command(action: str, name: str = "", key_id: str = ""):
@@ -898,7 +890,7 @@ def _start_command(
     effective_backend_port = backend_port if backend_port is not None else (_saved_backend_port or DEFAULT_BACKEND_PORT)
     effective_frontend_port = frontend_port if frontend_port is not None else (_saved_frontend_port or DEFAULT_FRONTEND_PORT)
 
-    ensure_data_dir()
+    ensure_run_dir()
     _ensure_playwright_browsers()
     _ensure_coding_deps()
 
@@ -1460,13 +1452,16 @@ def _uninstall_command(keep_data: bool = False):
             except Exception:
                 pass
 
-    # 3. Remove data directory (optional)
-    if not keep_data and DATA_DIR.exists():
+    # 3. Remove the user's data (optional). This is backend/var — the database,
+    # the vault, the blob store and the logs. Pointing it at the old data
+    # directory would report that the user's work had been deleted while
+    # leaving every orchestration, agent and vault file on disk.
+    if not keep_data and STATE_DIR.exists():
         try:
-            _rmtree(DATA_DIR)
-            print(f"  Removed data directory: {DATA_DIR}")
+            _rmtree(STATE_DIR)
+            print(f"  Removed data: {STATE_DIR}")
         except Exception as e:
-            print(f"  Warning: could not remove data dir {DATA_DIR}: {e}")
+            print(f"  Warning: could not remove {STATE_DIR}: {e}")
     # Also remove ~/.synapse parent directory (config files, etc.)
     if not keep_data:
         synapse_home = Path.home() / ".synapse"

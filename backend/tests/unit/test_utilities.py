@@ -1,7 +1,7 @@
 """
 Coverage for utility modules: usage_tracker, vault, session, config,
-personal_details, user_auth, compaction, profiling. Pure/JSON-backed logic,
-sandboxed via SYNAPSE_DATA_DIR.
+personal_details, user_auth, compaction, profiling. Store- and blob-backed
+logic, isolated per test by conftest's `_isolate_store`.
 """
 import os
 import pathlib
@@ -46,8 +46,8 @@ class TestVault:
     def _tmpfile(self, name, content):
         # Absolute path under the sandbox data dir (the vault tools resolve paths
         # as-is via _safe_path, so we pass an absolute path).
-        from core.config import DATA_DIR
-        d = pathlib.Path(DATA_DIR) / "vault" / "utiltests"
+        from core.vault import _vault_root
+        d = pathlib.Path(_vault_root()) / "utiltests"
         d.mkdir(parents=True, exist_ok=True)
         p = d / name
         p.write_text(content, encoding="utf-8")

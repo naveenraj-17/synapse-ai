@@ -1,22 +1,20 @@
+"""
+Engine configuration: timeouts, the shipped settings defaults, and the settings
+provider hook.
+
+There is no `DATA_DIR` here, and there is no directory created at import. The
+engine's documents live in `core/store/`, its tenant content in
+`core/storage/`, and the handful of things that genuinely need a directory on
+disk in `core/runtime_dirs.py`. One constant that meant all three is what made
+the engine a thing you installed on a laptop rather than something a request
+can be served by.
+"""
 import os
-import json
 import secrets as _secrets
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
-if _data_dir_env:
-    _p = Path(_data_dir_env)
-    DATA_DIR = str(_p if _p.is_absolute() else _PROJECT_ROOT / _p)
-else:
-    DATA_DIR = str(Path(__file__).resolve().parent.parent / "data")
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
-CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")
-TOKEN_FILE = os.path.join(DATA_DIR, "token.json")
 
 
 # ── Configurable timeouts ────────────────────────────────────────────────────
@@ -87,9 +85,18 @@ def default_settings() -> dict:
 
 
 def load_settings():
+    """The current tenant's settings, or the shipped defaults.
+
+    A provider is installed at startup (`core/settings_runtime.py`) and serves
+    the store. Without one — during import, in a test that has not booted the
+    engine, or in an embedder that has not registered anything yet — this is
+    the shipped baseline. It is deliberately not a file read: settings were a
+    JSON document under a data directory, and the last thing an engine serving
+    many tenants should do is answer from one.
+    """
     if _settings_provider is not None:
         return _settings_provider()
-    return _load_settings_from_disk()
+    return dict(_DEFAULTS)
 
 
 #: Shipped defaults. Module-level so a settings provider can overlay a tenant's
@@ -180,24 +187,13 @@ _DEFAULTS = {
 }
 
 
-def _load_settings_from_disk():
-    if not os.path.exists(SETTINGS_FILE):
-        file_settings = {}
-    else:
-        try:
-            with open(SETTINGS_FILE, 'r', encoding="utf-8") as f:
-                file_settings = json.load(f)
-        except Exception as e:
-            print(f"DEBUG: Error loading settings: {e}")
-            file_settings = {}
-
-    # No SYNAPSE_SETTING_* overlay. Workers used to receive their settings by
-    # having every one of them — provider API keys included — written into the
-    # process environment at startup, then read back out here. That put secrets
-    # in /proc/<pid>/environ and in every subprocess the worker spawns, and it
-    # fixed a worker's settings for its lifetime, which one shared fleet cannot
-    # do. Settings now come from a provider; see set_settings_provider above.
-    return {**_DEFAULTS, **file_settings}
+# There is no settings file, and no SYNAPSE_SETTING_* overlay. Workers used to
+# receive their settings by having every one of them — provider API keys
+# included — written into the process environment at startup and read back out
+# here. That put secrets in /proc/<pid>/environ and in every subprocess the
+# worker spawns, and it fixed a worker's settings for its lifetime, which one
+# shared fleet cannot do. Settings come from a provider; see
+# set_settings_provider above.
 
 
 def get_or_create_jwt_secret() -> str:

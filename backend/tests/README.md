@@ -86,8 +86,10 @@ CI enforces a coverage floor (`--cov-fail-under`) as a regression gate.
 - **Engine-integration tests** drive the *real* `run_agent_step` and
   `OrchestrationEngine` with the fake LLM, proving the interception works
   through the whole stack.
-- Each test gets an isolated, sandboxed `SYNAPSE_DATA_DIR`; stores are reset
-  between tests (see the `_isolate_data` autouse fixture).
+- Each test gets its own database, blob store, scratch and state directory under
+  `tmp_path`, plus a cleared read-through cache (see the `_isolate_store`
+  autouse fixture). A developer's real install is never touched, and nothing one
+  test writes is visible to the next.
 
 ## CI
 

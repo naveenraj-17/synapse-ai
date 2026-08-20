@@ -4,9 +4,9 @@ Unit tests for the cache layer (prompt_cache, tool_cache, response_cache, store)
 Run with:
     python -m pytest backend/tests/unit/test_cache.py -v
 
-Data-dir sandboxing and sys.path setup are handled once by the suite-wide
-conftest.py (backend/tests/conftest.py), which sets SYNAPSE_DATA_DIR before any
-core module is imported.
+Isolation and sys.path setup are handled once by the suite-wide conftest.py
+(backend/tests/conftest.py), which gives every test its own database, blob
+store, scratch and state directory.
 """
 import time
 from unittest.mock import patch

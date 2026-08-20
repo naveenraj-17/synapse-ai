@@ -74,12 +74,6 @@ _NPX_CMD = "npx.cmd" if _IS_WIN else "npx"
 TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _PROJECT_ROOT = BACKEND_ROOT.parent
-_data_dir_env = os.getenv("SYNAPSE_DATA_DIR", "")
-if _data_dir_env:
-    _data_dir_p = Path(_data_dir_env)
-    DATA_DIR = _data_dir_p if _data_dir_p.is_absolute() else _PROJECT_ROOT / _data_dir_p
-else:
-    DATA_DIR = BACKEND_ROOT / "data"
 
 # Settings are deliberately NOT read at import time. There is no store, no
 # event loop and no settings provider installed yet at import, so a module-level
@@ -431,7 +425,7 @@ async def lifespan(app: FastAPI):
     # step that can be missed becomes a support thread for everyone who misses it.
     try:
         from core.store.importer import import_legacy_data_if_present
-        await import_legacy_data_if_present(DATA_DIR)
+        await import_legacy_data_if_present()
     except Exception as e:
         print(f"Warning: legacy data import skipped: {e}")
 

@@ -171,7 +171,7 @@ targets = ["backend", "synapse"]
 exclude_dirs = [
     "backend/venv",
     "backend/.venv",
-    "backend/data",
+    "backend/var",
     "backend/logs",
     "backend/chroma_db",
     "backend/tests",

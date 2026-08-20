@@ -20,6 +20,7 @@ them a single-machine design.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +34,49 @@ _SOURCES = (
     "orchestrations", "user_agents", "custom_tools", "mcp_servers", "schedules",
     "usage_logs", "model_pricing", "settings",
 )
+
+
+def _legacy_data_dir() -> Path | None:
+    """Where a pre-database install kept its JSON, or None.
+
+    This module is the only one that knows about that folder, deliberately: a
+    shared `DATA_DIR` constant is what every other module used to derive paths
+    from, and re-introducing one would invite the same thing again. Here it is
+    not configuration — it is the location of the thing being migrated away
+    from, and it stops mattering the moment the import has run.
+
+    Three candidates, first with legacy content wins, because the three
+    installers put it in three different places:
+
+    1. ``SYNAPSE_DATA_DIR`` — a deployment that still sets it. Read for
+       detection only; nothing else in the engine looks at it any more.
+    2. ``backend/data`` — the git-clone and pip layout.
+    3. ``~/.synapse/data`` — the npm layout. Without this candidate the npm
+       launcher's installs would import nothing, because what used to make them
+       work was that launcher passing SYNAPSE_DATA_DIR into the backend's
+       environment.
+    """
+    configured = (os.getenv("SYNAPSE_DATA_DIR") or "").strip()
+    candidates = []
+    if configured:
+        path = Path(configured)
+        candidates.append(
+            path if path.is_absolute()
+            else Path(__file__).resolve().parent.parent.parent.parent / path
+        )
+    candidates.append(Path(__file__).resolve().parent.parent.parent / "data")
+    candidates.append(Path.home() / ".synapse" / "data")
+
+    for candidate in candidates:
+        if _has_legacy_content(candidate):
+            return candidate
+    return None
+
+
+def _has_legacy_content(root: Path) -> bool:
+    return root.is_dir() and any(
+        (root / f"{name}.json").is_file() for name in _SOURCES
+    )
 
 
 def _read(path: Path):
@@ -249,17 +293,56 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     return counts
 
 
-async def import_legacy_data_if_present(data_dir: str | Path) -> dict | None:
-    """Import `data_dir` once, on first boot after the upgrade.
+def _holds_live_state(root: Path) -> bool:
+    """Whether `root` is also where this install keeps its current state.
+
+    True for the container images, whose one persistent volume holds both the
+    legacy JSON and the database that replaced it. Renaming such a folder would
+    take `synapse.db` with it — and the data has just been imported *into* that
+    file, so the rename would destroy exactly what the import produced.
+    """
+    return any((root / name).exists() for name in ("synapse.db", "blobs", "state"))
+
+
+def _retire(root: Path) -> str:
+    """Put the imported files beyond the reach of a second import.
+
+    Normally the whole folder is renamed, which is legible from a file manager
+    and obviously reversible. When the folder also holds live state, only the
+    files that were consumed move into `<root>/migrated/`, which achieves the
+    same thing without touching anything else in there.
+    """
+    if _holds_live_state(root):
+        destination = root / "migrated"
+        destination.mkdir(exist_ok=True)
+        for name in (*_SOURCES, "credentials", "token"):
+            source = root / f"{name}.json"
+            if source.is_file():
+                source.rename(destination / source.name)
+        for name in ("chat_sessions", "mcp_tokens"):
+            source = root / name
+            if source.is_dir():
+                source.rename(destination / name)
+        return str(destination)
+
+    migrated = root.parent / f"{root.name}.migrated"
+    if migrated.exists():
+        # A previous import already claimed the name. Keep both rather than
+        # overwriting whatever is in there.
+        migrated = root.parent / f"{root.name}.migrated.{int(root.stat().st_mtime)}"
+    root.rename(migrated)
+    return migrated.name
+
+
+async def import_legacy_data_if_present() -> dict | None:
+    """Import a pre-database install's JSON once, on first boot after upgrade.
 
     Returns the per-source counts when an import ran, None when there was
     nothing to do. Never raises: a failed import must not stop the process from
     starting, and leaving the folder in place means the next boot retries.
     """
-    root = Path(data_dir)
-    if not root.is_dir():
-        return None
-    if not any((root / f"{name}.json").is_file() for name in _SOURCES):
+    root = _legacy_data_dir()
+    if root is None:
         return None
 
     try:
@@ -270,23 +353,19 @@ async def import_legacy_data_if_present(data_dir: str | Path) -> dict | None:
         print(f"[import] import from {root} failed, leaving it in place: {exc}", flush=True)
         return None
 
-    migrated = root.parent / f"{root.name}.migrated"
     try:
-        if migrated.exists():
-            # A previous import already claimed the name. Keep both rather than
-            # overwriting whatever is in there.
-            migrated = root.parent / f"{root.name}.migrated.{int(root.stat().st_mtime)}"
-        root.rename(migrated)
+        where = _retire(root)
     except OSError as exc:
-        # The data is in the store either way; the rename is only what stops a
-        # second import, and `store_is_empty()` already does that.
-        print(f"[import] imported, but could not rename {root}: {exc}", flush=True)
+        # The data is in the store either way; retiring the files is only what
+        # stops a second import, and `store_is_empty()` already does that.
+        print(f"[import] imported, but could not retire {root}: {exc}", flush=True)
+        where = str(root)
 
     total = sum(counts.values())
     print(
-        f"[import] moved {total} items from {root.name} into the store "
+        f"[import] moved {total} items from {root} into the store "
         f"({', '.join(f'{k}={v}' for k, v in counts.items() if v)}). "
-        f"The folder is now {migrated.name}.",
+        f"The old files are now under {where}.",
         flush=True,
     )
     return counts

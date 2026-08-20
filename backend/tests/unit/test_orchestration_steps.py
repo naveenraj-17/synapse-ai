@@ -4,7 +4,7 @@ Orchestration engine — real execution of representative step types.
 Unlike the route tests (which patch the engine), these drive the REAL
 OrchestrationEngine so the step executors, shared-state plumbing, and — for the
 LLM step — the fake-LLM interception are all exercised end to end. Checkpoints
-and logs land in the sandbox DATA_DIR.
+land in the test's own store and logs in its own blob directory.
 """
 import types
 

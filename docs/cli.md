@@ -33,7 +33,9 @@ synapse setup
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SYNAPSE_DATA_DIR` | `~/.synapse/data` | Path to data directory |
+| `SYNAPSE_DB_URL` | `sqlite+aiosqlite:///backend/var/synapse.db` | Database holding settings, agents, orchestrations, tools, schedules, runs and usage |
+| `SYNAPSE_BLOB_DIR` | `backend/var/blobs` | Vault, run logs and cached responses (or set the `S3_*` variables) |
+| `SYNAPSE_STATE_DIR` | `backend/var/state` | Rebuildable per-replica state (the ChromaDB index) |
 | `SYNAPSE_BACKEND_PORT` | `8765` | Backend API server port |
 | `SYNAPSE_FRONTEND_PORT` | `3000` | Frontend web UI port |
 | `SYNAPSE_PROFILING` | `false` | Enable performance profiling (set by `--profile`) |
@@ -73,13 +75,16 @@ synapse restart --detach --backend-port 8080 --frontend-port 4000
 # run interactive setup wizard (configure API keys and settings)
 synapse setup
 
+# create or update the database schema, and import a pre-database install
+synapse migrate
+
 # pull latest code and rebuild everything
 synapse upgrade
 
 # uninstall Synapse AI (removes all files, executable, and PATH entries)
 synapse uninstall
 
-# uninstall but keep data directory (~/.synapse)
+# uninstall but keep the database, vault and logs
 synapse uninstall --keep-data
 ```
 
@@ -125,7 +130,17 @@ Equivalent to `stop` followed by `start`. Accepts the same port and detach flags
 
 ### `setup`
 
-Runs the interactive setup wizard. Prompts for API keys and settings and writes them to the project `.env` file.
+Runs the interactive setup wizard. Prompts for API keys and settings and writes them to the database, creating it if it does not exist.
+
+### `migrate`
+
+Creates the database if it is missing, applies any additive schema changes, and imports a pre-database install's JSON files if one is found. Prints what it did.
+
+The server does the same work on its first boot after an upgrade, so this is never required. It exists for the cases where starting the server is the wrong way to ask: a deployment that wants the schema in place before the first request, a container entrypoint or Kubernetes init container, and anyone who would rather see what a migration did than infer it from the logs.
+
+```bash
+synapse migrate
+```
 
 ### `upgrade`
 
@@ -148,21 +163,21 @@ Permanently removes Synapse AI. Prompts for confirmation before proceeding.
 Steps performed:
 1. Stops running services
 2. Removes startup registration (systemd user service on Linux, LaunchAgent on macOS, Registry run key on Windows)
-3. Removes the data directory (`~/.synapse/data`) and Synapse home (`~/.synapse`) — skipped with `--keep-data`
+3. Removes the user's data (`backend/var` — the database, vault, blob store and logs) and Synapse home (`~/.synapse`) — both skipped with `--keep-data`
 4. Removes the installation directory (project root), including `backend/venv` and `frontend/node_modules`
 5. Runs `pip uninstall -y synapse-ai` to remove the package and console script; falls back to deleting the `synapse` executable directly if found on `PATH`; on Windows also removes `synapse.exe` / `synapse-script.py` from the Python Scripts directory
 6. Cleans `PATH` additions from `~/.bashrc`, `~/.zshrc`, `~/.bash_profile`, `~/.profile` (Unix) or the user `Environment` registry key (Windows)
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--keep-data` | off | Preserve `~/.synapse` data directory when uninstalling |
+| `--keep-data` | off | Preserve `backend/var` and `~/.synapse` when uninstalling |
 
 ## PID files
 
-PID files are written to the data directory:
+PID files are process bookkeeping, not user data, and are written per user:
 
-- `~/.synapse/data/backend.pid`
-- `~/.synapse/data/frontend.pid`
+- `~/.synapse/run/backend.pid`
+- `~/.synapse/run/frontend.pid`
 
 ## Profiling
 

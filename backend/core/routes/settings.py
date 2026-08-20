@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from core.config import load_settings, SETTINGS_FILE, DATA_DIR, sanitize_db_url
+from core.config import load_settings, sanitize_db_url
 from core.models import Settings, PersonalDetails
 from core.personal_details import load_personal_details, save_personal_details
 from core.llm_providers import _make_aws_client, OLLAMA_MODEL
@@ -350,11 +350,11 @@ async def get_config():
 async def get_file(path: str):
     """Serve a local file. Restricted to the tenant's vault and configured repos.
 
-    This used to allow the whole home directory alongside DATA_DIR. Once the
-    vault moved out of DATA_DIR, "home directory" became the only allowance that
-    matched anything — turning a vault-file endpoint into a read primitive over
-    every file the server user owns. The allowance is now the two directories
-    whose contents this endpoint exists to serve.
+    This used to allow the whole home directory alongside the old data
+    directory. Once the vault moved out of it, "home directory" became the only
+    allowance that matched anything — turning a vault-file endpoint into a read
+    primitive over every file the server user owns. The allowance is now the two
+    directories whose contents this endpoint exists to serve.
     """
     from core.server import _get_repo_paths
     from core.vault import _vault_root

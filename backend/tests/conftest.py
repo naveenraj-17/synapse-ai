@@ -1,15 +1,16 @@
 """
 Root test harness for the Synapse backend suite.
 
-Critical ordering (mirrors backend/tests/unit/test_cache.py): SYNAPSE_DATA_DIR
-and the fake-LLM delay profile are set on the environment **before** any
-``core.*`` module is imported, because several modules still bind DATA_DIR at
-import time. That constraint shrinks with every collection that moves into the
-store, and goes away entirely when DATA_DIR does.
+No module binds a directory at import any more, so there is no ordering
+constraint here to respect: isolation is per test, in ``_isolate_store`` below,
+which points the database, the blob store, scratch and the state dir at that
+test's ``tmp_path``. This file used to open by setting ``SYNAPSE_DATA_DIR``
+before the first ``core.*`` import, because several modules computed paths from
+it at module scope. That is what the store replaced.
 
 What this provides
 ------------------
-- Full data-dir isolation (temp dir, real user data never touched).
+- Full isolation from a developer's real install, per test.
 - ``fake_llm`` (autouse): swaps the real LLM at all three binding sites so no
   test can ever hit a network or need an API key. Tests that want to control
   the response just take the ``fake_llm`` parameter and call ``.script([...])``.
@@ -21,19 +22,14 @@ What this provides
 """
 from __future__ import annotations
 
-import os
 import pathlib
 import sys
-import tempfile
 
-# ── 1. Sandbox env BEFORE importing core.* ───────────────────────────────────
-_TMP_DATA_DIR = tempfile.mkdtemp(prefix="synapse_test_")
-os.environ["SYNAPSE_DATA_DIR"] = _TMP_DATA_DIR
-# Fake-LLM delay defaults to 0 (instant) when these are unset — see FakeLLM.
-# The stress suite sets them to the 5-90s profile. We deliberately do NOT
-# setdefault them here, so the stress conftest's fallbacks can take effect.
+# Fake-LLM delay defaults to 0 (instant) when its env vars are unset — see
+# FakeLLM. The stress suite sets them to the 5-90s profile. We deliberately do
+# NOT setdefault them here, so the stress conftest's fallbacks can take effect.
 
-# ── 2. Make backend/ and tests/ importable ───────────────────────────────────
+# ── Make backend/ and tests/ importable ──────────────────────────────────────
 _TESTS_DIR = pathlib.Path(__file__).resolve().parent
 _BACKEND_DIR = _TESTS_DIR.parent
 for _p in (str(_BACKEND_DIR), str(_TESTS_DIR)):
@@ -118,6 +114,12 @@ def _isolate_run_checkpoints(tmp_path, monkeypatch):
     # Scratch too — logs and run-event journals are appended there before being
     # published, and the default sits inside the repo.
     monkeypatch.setenv("SYNAPSE_SCRATCH_DIR", str(tmp_path / "scratch"))
+
+    # And the state dir, which is ChromaDB's index. Its default is also inside
+    # the repo, so without this a test that touches memory leaves a vector
+    # store in the developer's working tree — the same way the suite used to
+    # slowly fill backend/data.
+    monkeypatch.setenv("SYNAPSE_STATE_DIR", str(tmp_path / "state"))
 
     # The store's read-through cache is a module global, so it outlives the
     # database that tmp_path just replaced.

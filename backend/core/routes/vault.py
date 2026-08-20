@@ -17,7 +17,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from core.config import DATA_DIR
 
 router = APIRouter()
 

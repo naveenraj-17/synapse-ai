@@ -7,7 +7,12 @@ services:
     env_file:
       - .env
     environment:
-      - SYNAPSE_DATA_DIR=/data
+      # The database is deployment configuration. Compose runs its own Postgres
+      # below, so the API and the worker read the same one — which is what lets
+      # a job run in any process, and is the same shape every other deployment
+      # of this uses.
+      - SYNAPSE_DB_URL=postgresql+asyncpg://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse}@synapse-postgres:5432/${POSTGRES_DB:-synapse}
+      - SYNAPSE_BLOB_DIR=/blobs
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host-gateway:11434}
       - CORS_ORIGINS=http://localhost:${SYNAPSE_FRONTEND_PORT:-3000}
       - SYNAPSE_INTERNAL_TOKEN=${SYNAPSE_INTERNAL_TOKEN}
@@ -15,10 +20,17 @@ services:
       # the frontend can read the same value (see docker/entrypoint.sh).
       - SYNAPSE_SECRETS_DIR=/secrets
     volumes:
-      - synapse-data:/data
-      - ./backend/data:/data
+      - synapse-blobs:/blobs
       - synapse-secrets:/secrets
+      # Upgrading from a version that kept JSON files? Uncomment this for one
+      # boot. The importer finds it, moves everything into the database, and
+      # renames the host folder to backend/data.migrated — after which the line
+      # can go. Fresh installs never need it.
+      # - ./backend/data:/app/backend/data
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       # Bind to loopback by default: the frontend reaches the backend over the
       # compose network (synapse-backend:8765), and external API consumers use
@@ -64,6 +76,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: synapse-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-synapse}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-synapse}
+      - POSTGRES_DB=${POSTGRES_DB:-synapse}
+    volumes:
+      - synapse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Backend and worker both wait on this. Without it they race the database
+      # to accept connections and crash-loop through their restart policy until
+      # it wins, which looks like a broken image rather than a slow start.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-synapse} -d ${POSTGRES_DB:-synapse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - default
+
   # ---------------------------------------------------------------------------
   # Scale profile services (not started in standalone mode)
   # Usage: docker compose --profile scale up
@@ -99,15 +132,19 @@ services:
     environment:
       - REDIS_URL=redis://synapse-redis:6379/0
       - SCALE_POSTGRES_URL=${SCALE_POSTGRES_URL}
-      - SYNAPSE_DATA_DIR=/data
+      # The same database the API writes: that is what makes a shared fleet a
+      # fleet rather than a set of processes each holding its own install.
+      - SYNAPSE_DB_URL=postgresql+asyncpg://${POSTGRES_USER:-synapse}:${POSTGRES_PASSWORD:-synapse}@synapse-postgres:5432/${POSTGRES_DB:-synapse}
+      - SYNAPSE_BLOB_DIR=/blobs
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-10}
       - WORKER_JOB_TIMEOUT=${WORKER_JOB_TIMEOUT:-3600}
       - WORKER_MAX_RETRIES=${WORKER_MAX_RETRIES:-3}
       - WORKER_HEALTH_PORT=9000
-      - WORKER_FILESYSTEM_PATHS=/data
+      # WORKER_FILESYSTEM_PATHS is deliberately unset. It used to be /data —
+      # every tenant's config and credentials, handed to the Filesystem MCP
+      # server. Unset, that server is rooted at the tenant's vault, which is
+      # what it was always meant to expose.
       - NUM_QUEUE_SHARDS=${NUM_QUEUE_SHARDS:-1}
-      - DEFAULT_TENANT_ID=${DEFAULT_TENANT_ID:-default}
-      - ENABLE_TENANT_ISOLATION=${ENABLE_TENANT_ISOLATION:-0}
       - PGBOUNCER_MODE=${PGBOUNCER_MODE:-0}
       - K8S_MODE=0
       - S3_BUCKET=${S3_BUCKET:-}
@@ -119,11 +156,15 @@ services:
       - OTLP_ENDPOINT=${OTLP_ENDPOINT:-}
       - METRICS_TOKEN=${METRICS_TOKEN:-}
     volumes:
-      - synapse-data:/data
-      - ./backend/data:/data
+      # The same blob volume as the API, so a vaulted result written by one is
+      # readable by the other. A real deployment uses S3 (the S3_* vars above)
+      # and needs no shared filesystem at all.
+      - synapse-blobs:/blobs
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     ports:
       - "${WORKER_HEALTH_PORT:-9000}:9000"
@@ -201,7 +242,11 @@ services:
       - default
 
 volumes:
-  synapse-data:
+  # Was `synapse-data`, which had never held anything: a bind mount of
+  # ./backend/data sat at the same /data and shadowed it in every service.
+  synapse-blobs:
+    driver: local
+  synapse-postgres-data:
     driver: local
   synapse-secrets:
     driver: local
