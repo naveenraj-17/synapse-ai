@@ -11,19 +11,22 @@ The vault root comes from the blob store, which scopes it to the current tenant 
 so two tenants running in one process cannot read each other's tool output, and
 there is no DATA_DIR involved.
 
-NOTE for object-store backends: the vault hands *filesystem paths* to the LLM and
-to the Filesystem MCP server, so it needs `BlobStore.path_for()` to return a real
-path. `S3BlobStore` returns None, and the vault falls back to a local root in that
-case. Making the vault work directly against an object store means changing the
-contract with the Filesystem MCP server (or materialising a per-run scratch
-directory), which is a deliberate design decision and not made here.
+The vault hands *filesystem paths* to the LLM and to the Filesystem MCP server,
+so it always needs a real directory. Whether that directory *is* the vault or a
+working copy of one is `core/vault_backend.py`'s decision, taken from whether the
+blob store can offer a path: a local install gets its folder, an object store
+gets a materialised working copy under the scratch root, hydrated on demand.
+
+That note used to read "the vault falls back to a local root ... a deliberate
+design decision and not made here". The decision has now been made, because the
+fallback was writing an object-store deployment's vault to the pod's own disk.
 """
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
-from core.storage import LocalBlobStore, get_blob_store
+from core.vault_backend import get_vault
 
 VAULT_THRESHOLD = 100000  # characters (fallback default)
 
@@ -31,14 +34,14 @@ VAULT_THRESHOLD = 100000  # characters (fallback default)
 def _vault_root() -> Path:
     """The current tenant's vault directory.
 
-    Comes from the blob store so it carries the tenant prefix. A store with no
-    filesystem (S3) has no path to give, so a local one is used instead — see
-    the module docstring.
+    A real directory either way, because the Filesystem MCP server and the
+    sandbox mount need one. What differs is whether it *is* the vault or a
+    working copy of it — see `core/vault_backend.py`. It used to fall back to a
+    plain `LocalBlobStore()` when the store had no path, which meant a
+    deployment on object storage wrote its vault to the pod's own disk and lost
+    it when the pod went away.
     """
-    path = get_blob_store().path_for("vault")
-    if path is None:
-        path = LocalBlobStore().path_for("vault")
-    return Path(path)
+    return get_vault().root
 
 
 def _vault_outputs_dir() -> Path:
@@ -80,22 +83,12 @@ def maybe_vault(tool_name: str, raw_output: str) -> str:
         ext = "txt"
         content = raw_output
 
+    # One write, and the backend decides what durable means. On a plain install
+    # that is the file. On object storage it is the object, and a failure to
+    # store it raises rather than being swallowed — the reference below tells
+    # the model the output is saved, and it has to be true.
     path = _make_vault_path(tool_name, ext)
-    path.write_text(content, encoding="utf-8")
-    try:
-        path.chmod(0o644)
-    except Exception:
-        pass
-
-    # Upload to S3 for durability in scale mode (fire-and-forget; local path still used by tools)
-    try:
-        from core.s3_storage import get_s3
-        s3 = get_s3()
-        if s3:
-            s3_rel_key = f"vault/tool_outputs/{path.name}"
-            s3.upload_text(s3_rel_key, content)
-    except Exception:
-        pass  # S3 upload failure must never break local execution
+    get_vault().write(path, content)
 
     total_lines = content.count("\n") + 1
     return json.dumps({
@@ -142,16 +135,14 @@ def expand_vault_mentions(message: str) -> str:
 
         content: str | None = None
 
-        # Try S3 first in scale mode
+        # Materialise it if this replica does not have it. One question to the
+        # backend, rather than asking `core.s3_storage` directly and treating a
+        # second answer to "is this cloud" as authoritative.
         try:
-            from core.s3_storage import get_s3
-            s3 = get_s3()
-            if s3:
-                content = s3.download_text(f"vault/{rel}")
+            resolved = Path(get_vault().ensure_local(resolved))
         except Exception:
             pass
 
-        # Fall back to local filesystem
         if content is None:
             if not resolved.exists() or not resolved.is_file():
                 return match.group(0)
@@ -172,40 +163,17 @@ def _safe_path(path: str) -> Path:
 
 
 def _ensure_local_path(path: str) -> str:
-    """
-    If path doesn't exist locally but the file is a user vault file, try to download
-    it from S3 (scale mode) to a temp location and return the temp path.
-    Returns the original path if no S3 download is needed or possible.
-    """
-    p = Path(path)
-    if p.exists():
-        return path
+    """Materialise a vault file this replica does not have yet.
 
-    vault_root = _vault_root().resolve()
+    A no-op on a plain install, where the file is simply there. On object
+    storage the backend pulls it into the working copy — **at its real path**,
+    not into a mangled name under the system temp directory as this used to do.
+    That matters: the path is handed to the model and to the Filesystem MCP
+    server, and one that has been flattened to `tool_outputs_thing.json` in
+    /tmp is not a path any of the vault's own guards will accept afterwards.
+    """
     try:
-        resolved = p.resolve()
-        if not str(resolved).startswith(str(vault_root)):
-            return path  # not a vault file; leave as-is (will 404 below)
-        rel = str(resolved.relative_to(vault_root))
-    except Exception:
-        return path
-
-    try:
-        from core.s3_storage import get_s3
-        s3 = get_s3()
-        if not s3:
-            return path
-        content = s3.download_text(f"vault/{rel}")
-        if content is None:
-            return path
-        # Write to a temp file alongside the vault directory
-        import tempfile
-        tmp_dir = Path(tempfile.gettempdir()) / "synapse_vault_cache"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        safe = re.sub(r"[/\\]", "_", rel)
-        tmp_path = tmp_dir / safe
-        tmp_path.write_text(content, encoding="utf-8")
-        return str(tmp_path)
+        return str(get_vault().ensure_local(Path(path)))
     except Exception:
         return path
 

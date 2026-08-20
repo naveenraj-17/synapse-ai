@@ -84,6 +84,27 @@ class WorkerServerModule:
         instance = cls()
         disabled = set(disabled_mcp_names or [])
 
+        # If the vault is an object store, this replica's working copy of it may
+        # be empty — a pod that has never served this tenant, or one that was
+        # replaced. Materialise it before rooting the Filesystem MCP server at
+        # it, or the tenant's own `search_files` reports an empty vault. A no-op
+        # on a plain install, where the directory *is* the vault.
+        from core.vault_backend import get_vault
+
+        vault = get_vault()
+        if getattr(vault, "materialises", False):
+            try:
+                pulled = vault.hydrate()
+                if pulled:
+                    print(
+                        f"[worker_server_module] materialised {pulled} vault file(s)",
+                        flush=True,
+                    )
+            except Exception as exc:
+                # A cold working copy degrades the vault; it must not stop the
+                # tenant's session set from being built.
+                print(f"[worker_server_module] vault hydration failed: {exc}", flush=True)
+
         if shared is not None:
             instance.agent_sessions.update(shared.agent_sessions)
             instance._session_tools.update(shared._session_tools)
