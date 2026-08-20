@@ -111,11 +111,18 @@ branch = false
 # unit-tested (they need a live ARQ worker, real Redis/Postgres, chat-platform
 # bot connections, or spawned MCP/CLI subprocesses). These are exercised by the
 # nightly integration job (.github/workflows/nightly.yml) instead.
+#
+# Four entries left this list rather than being maintained in it:
+#   scale/sync.py                 deleted with the one-way JSON mirror (D30)
+#   scale/worker.py               the job functions run under a real arq.worker
+#   scale/worker_server_module.py .Worker on fakeredis in the fast suite now —
+#                                 see tests/unit/test_shared_fleet.py
+#   scheduler.py                  store-backed and unit-testable since Phase 6
+#
+# An omit that is wrong hides real coverage, and this list had been hiding the
+# scheduler's 17% since it stopped being a filesystem poller.
 omit = [
-    "*/core/scale/worker.py",
     "*/core/scale/worker_engine_adapter.py",
-    "*/core/scale/worker_server_module.py",
-    "*/core/scale/sync.py",
     "*/core/scale/telemetry.py",
     "*/core/scale/metrics.py",
     "*/core/scale/heartbeat.py",
@@ -124,7 +131,6 @@ omit = [
     "*/core/messaging/*",
     "*/core/mcp_client.py",
     "*/core/mcp_oauth_state.py",
-    "*/core/scheduler.py",
     "*/core/schedule_logger.py",
     "*/core/native_builder/*",
     "*/core/builder_tools.py",
