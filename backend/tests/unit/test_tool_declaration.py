@@ -33,13 +33,14 @@ class _Session:
 
 
 @pytest.fixture
-def declared(monkeypatch):
+def declared():
     """Run aggregation over a set of sessions and return the declared MCP names.
 
     Builder tools are filtered out: they are added from `BUILDER_TOOL_SCHEMAS`
     whenever an agent says "all", and they are not what any of this is about.
     """
-    import core.server as server
+    import types
+
     import core.tools as tools_mod
     from core.builder_tools import BUILDER_TOOL_SCHEMAS
 
@@ -58,11 +59,18 @@ def declared(monkeypatch):
                     alias=not external,
                 )
 
-        monkeypatch.setattr(server, "tool_router", router, raising=False)
-        monkeypatch.setattr(tools_mod, "_session_tools_cache", {}, raising=False)
+        # The same shape a worker's WorkerServerModule has, which is the point:
+        # aggregation now reads the router and the tool cache off whatever owns
+        # the sessions rather than off core.server.
+        server_module = types.SimpleNamespace(
+            agent_sessions=sessions,
+            tool_router=router,
+            memory_store=None,
+            _session_tools={},
+        )
 
         all_tools, _, _, _ = await tools_mod.aggregate_all_tools(
-            sessions, agent, custom_tools or []
+            server_module, agent, custom_tools or []
         )
         return [t.name for t in all_tools if t.name not in builder_names]
 

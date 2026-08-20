@@ -137,9 +137,10 @@ class TestChatRealEngine:
         fake LLM returning a plain final answer."""
         agent = await seed_agent(tools=[], skip_default_tools=True)
         # Prime the per-session tool cache so aggregate_all_tools doesn't touch
-        # the placeholder session object.
-        import core.tools as tools
-        monkeypatch.setitem(tools._session_tools_cache, "_test", [])
+        # the placeholder session object. It lives on the server module now,
+        # beside the sessions it describes.
+        import core.server as server
+        monkeypatch.setitem(server._session_tools, "_test", [])
         fake_llm.set_default("The answer is 42.")
 
         resp = await client.post("/chat", json={"message": "meaning of life?",

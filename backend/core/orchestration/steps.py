@@ -352,7 +352,7 @@ class ToolStepExecutor:
         active_agent = (await resolve_agent(step.agent_id) if step.agent_id else None) or {}
         custom_tools = await resolve_custom_tools()
         all_tools, _, _, _ = await aggregate_all_tools(
-            engine.server_module.agent_sessions, active_agent, custom_tools
+            engine.server_module, active_agent, custom_tools
         )
 
         tool_name = step.forced_tool

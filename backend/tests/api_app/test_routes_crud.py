@@ -83,10 +83,10 @@ class TestCustomToolRoutes:
         assert "cov_tool" in [t["name"] for t in listed.json()]
         assert (await client.delete("/api/tools/custom/cov_tool")).status_code == 200
 
-    async def test_available_tools_listing(self, client, monkeypatch):
-        # Prime the tool cache so aggregation doesn't introspect the fake session.
-        import core.tools as tools
-        monkeypatch.setitem(tools._session_tools_cache, "_test", [])
+    async def test_available_tools_listing(self, client):
+        # No cache priming: /api/tools/available calls session.list_tools()
+        # directly and never reaches aggregate_all_tools, so the line that used
+        # to sit here was load-bearing only by accident.
         resp = await client.get("/api/tools/available")
         assert resp.status_code < 500
 

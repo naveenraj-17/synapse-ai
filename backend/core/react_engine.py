@@ -694,7 +694,7 @@ async def run_agent_step(
         custom_tools = await _ctx_resolve_tools()
         print(f"DEBUG RUN_AGENT: start agent_id={agent_id_for_session}, sessions={list(server_module.agent_sessions.keys())}", flush=True)
         all_tools, tool_schema_map, ollama_tools, tools_json = await aggregate_all_tools(
-            server_module.agent_sessions, active_agent, custom_tools
+            server_module, active_agent, custom_tools
         )
         print(f"DEBUG RUN_AGENT: aggregate_all_tools done, tool_count={len(all_tools)}", flush=True)
     allowed_tools = list(allowed_tools_override) if allowed_tools_override else active_agent.get("tools", ["all"])

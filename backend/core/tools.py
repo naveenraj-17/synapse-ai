@@ -55,11 +55,6 @@ Your mission is to assist the user with everyday tasks, retrieving personal info
 """
 
 
-# Module-level cache of MCP session tools — populated on first successful list_tools() call.
-# Avoids re-querying flaky sessions (e.g. mcp-remote after OAuth state changes) on every agent call.
-_session_tools_cache: dict = {}
-
-
 class VirtualTool:
     """A lightweight tool descriptor that mimics the shape of an MCP tool."""
     def __init__(self, name, description, inputSchema):
@@ -72,28 +67,54 @@ def build_virtual_tools():
     return []
 
 
-async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
+async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
     """
     Aggregate all available tools: MCP tools + virtual tools + custom tools.
-    
+
+    Takes the server module rather than its `agent_sessions`, because the
+    sessions are not the only thing here that belongs to it: so do the tool
+    router that decides which of them services a call, and the cache of what each
+    one advertises. Reading those from `core.server` while the sessions came from
+    somewhere else is what made this function wrong inside a worker.
+
     Returns:
         tuple: (all_tools, tool_schema_map, ollama_tools, tools_json)
     """
     all_tools = []
     tool_schema_map = {}  # name -> inputSchema
 
+    agent_sessions = getattr(server_module, "agent_sessions", None) or {}
+
     # tool_router is the single source of truth for dispatch (name -> session).
     # A tool name can be exposed by multiple native MCP servers (e.g.
     # read_file_by_lines in both file_reader and code_search); we use this map
     # to declare only the copy from the server that will actually service the
-    # call. Deferred import avoids a circular import at module load — aggregation
-    # always runs per-request, long after startup has populated the map.
-    from core import server as _server
-    tool_router = getattr(_server, "tool_router", None)
+    # call.
+    #
+    # It comes off `server_module`, not `core.server`. It used to be imported
+    # from that module directly, which meant a worker — holding a
+    # `WorkerServerModule` with its own populated router — read the API server's
+    # empty module global instead, and the collision handling below quietly did
+    # nothing there.
+    tool_router = getattr(server_module, "tool_router", None)
     # Test doubles and embedders hand over a plain dict; wrapping gives it the
     # alias table without making every caller construct one.
     if not isinstance(tool_router, ToolRouter):
         tool_router = ToolRouter(tool_router or {})
+
+    # Tools each session advertised, cached after the first successful
+    # `list_tools()` — this avoids re-querying flaky sessions (mcp-remote after
+    # an OAuth state change, say) on every agent call. Keyed by session name, and
+    # therefore only safe on the object that owns those sessions: as a module
+    # global it was shared by every tenant a process served, so two tenants with
+    # a server of the same name saw one tool list, whichever answered first.
+    session_tools_cache = getattr(server_module, "_session_tools", None)
+    if session_tools_cache is None:
+        session_tools_cache = {}
+        try:
+            server_module._session_tools = session_tools_cache
+        except (AttributeError, TypeError):
+            pass  # a read-only stand-in still works, just uncached
 
     allowed_tools = active_agent.get("tools", ["all"])
 
@@ -118,8 +139,8 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     # Standard MCP Tools
     for session_name, session in agent_sessions.items():
         # Use cached tools from previous successful call — avoids hanging on flaky sessions
-        if session_name in _session_tools_cache:
-            session_tools = _session_tools_cache[session_name]
+        if session_name in session_tools_cache:
+            session_tools = session_tools_cache[session_name]
             print(f"DEBUG: 📦 Using cached tools for '{session_name}' ({len(session_tools)} tools)", flush=True)
         else:
             try:
@@ -130,7 +151,7 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
                 with anyio.fail_after(MCP_LIST_TOOLS_TIMEOUT):
                     result = await session.list_tools()
                 session_tools = result.tools
-                _session_tools_cache[session_name] = session_tools
+                session_tools_cache[session_name] = session_tools
                 print(f"DEBUG: ✅ Fetched+cached tools for '{session_name}' ({len(session_tools)} tools)", flush=True)
             except TimeoutError:
                 print(f"DEBUG: ⏱ Skipping session '{session_name}' — list_tools timed out after 15s", flush=True)

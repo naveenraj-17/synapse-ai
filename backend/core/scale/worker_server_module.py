@@ -24,6 +24,7 @@ class WorkerServerModule:
     def __init__(self):
         self.agent_sessions: dict = {}     # mcp_server_name -> ClientSession
         self.tool_router = ToolRouter()    # {server}__{tool} -> (session_name, tool_name)
+        self._session_tools: dict = {}     # session name -> tools it advertised
         self.memory_store = None           # workers don't maintain long-term memory store
         self.mcp_disabled: list[str] = []  # names of MCP servers that failed to connect
         self._exit_stack = None

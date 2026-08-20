@@ -383,6 +383,12 @@ async def restart_filesystem_mcp() -> None:
 # ---------------------------------------------------------------------------
 agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
 tool_router: ToolRouter = ToolRouter()           # {server}__{tool} -> (session_name, actual_tool_name)
+
+#: What each session advertised, cached after the first successful list_tools().
+#: Lives beside the sessions it describes rather than in core/tools.py, because
+#: that made it process-global: a worker serving many tenants would have served
+#: them all from whichever tenant's server answered first.
+_session_tools: dict[str, list] = {}
 exit_stack: Optional[AsyncExitStack] = None
 _filesystem_stack: Optional[AsyncExitStack] = None          # owned exclusively by _filesystem_mcp_manager
 _filesystem_restart_queue: Optional[asyncio.Queue] = None   # route handlers put Futures here to request restarts

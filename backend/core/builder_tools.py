@@ -863,7 +863,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
                 active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
                 custom_tools = await load_custom_tools()
                 all_tools, _, _, _ = await aggregate_all_tools(
-                    server_module.agent_sessions, active_agent, custom_tools
+                    server_module, active_agent, custom_tools
                 )
                 return [
                     {"name": t.name, "description": (t.description or "")[:120]}
@@ -881,7 +881,7 @@ async def _dispatch(tool_name: str, args: dict, server_module: Any) -> Any:
             active_agent = next((a for a in _agents if a.get("type") != "builder"), _agents[0] if _agents else {})
             custom_tools = await load_custom_tools()
             all_tools, _, _, _ = await aggregate_all_tools(
-                server_module.agent_sessions, active_agent, custom_tools
+                server_module, active_agent, custom_tools
             )
             requested = set(args.get("tool_names", []))
             result = {}
