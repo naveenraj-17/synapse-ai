@@ -18,6 +18,7 @@ from arq import ArqRedis
 from arq.connections import RedisSettings
 
 from core import settings_runtime
+from core.scale import mcp_pool
 from core.scale.config import QUEUE_NAME, get_scale_config
 from core.tenancy import get_tenant, tenant_scope
 
@@ -592,7 +593,6 @@ async def worker_startup(ctx: dict) -> None:
     # The native tool servers, which are the same for every tenant. A tenant's
     # own MCP — and the Filesystem server, which is rooted at its vault — is
     # built per job by core.scale.mcp_pool and cached there.
-    from core.scale import mcp_pool
     from core.scale.worker_server_module import WorkerServerModule
     server_module = await WorkerServerModule.build_shared()
     mcp_pool.set_shared(server_module)
