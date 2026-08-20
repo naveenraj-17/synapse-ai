@@ -3,6 +3,7 @@ OrchestrationEngine -- walks a graph of steps, managing shared state,
 checkpointing, loop guards, and yielding SSE events.
 """
 import asyncio
+import calendar
 import time
 from typing import AsyncGenerator, Awaitable, Callable
 
@@ -13,6 +14,22 @@ from core.models_orchestration import Orchestration, OrchestrationRun, StepConfi
 from .state import SharedState
 from .steps import STEP_EXECUTORS
 from .logger import OrchestrationLogger
+
+
+def _seconds_since(iso_timestamp: str | None) -> float | None:
+    """Wall-clock seconds since an ISO-8601 Z timestamp, or None if unparseable.
+
+    Used for a human step's duration, which is measured across a checkpoint and
+    possibly across processes — so the two ends cannot share a monotonic clock
+    and the stored timestamp is all there is.
+    """
+    if not iso_timestamp:
+        return None
+    try:
+        started = calendar.timegm(time.strptime(iso_timestamp, "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError):
+        return None
+    return round(max(0.0, time.time() - started), 2)
 
 
 MAX_NESTED_DEPTH = 3
@@ -235,6 +252,29 @@ class OrchestrationEngine:
                                 else:
                                     run.nested_run_id = None
                                     run.nested_orch_id = None
+                                # A human step is a step. It used to be the one
+                                # kind that never reached `step_history`: the
+                                # break below skips the "record step completion"
+                                # block, and `resume()` moves past it. So an
+                                # approval was invisible to the run detail view,
+                                # uncounted by billing, and — worse — invisible
+                                # to `_apply_loop_guard`, which counts entries
+                                # per step id, so a loop containing a human step
+                                # could iterate without limit.
+                                #
+                                # Recorded here as "paused" and completed on
+                                # resume, so history means "steps that started"
+                                # whether or not the run is still waiting.
+                                run.step_history.append({
+                                    "step_id": step.id,
+                                    "step_name": step.name,
+                                    "step_type": step.type.value,
+                                    "status": "paused",
+                                    "started_at": time.strftime(
+                                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime(step_start_time)
+                                    ),
+                                    "output_key": step.output_key,
+                                })
                                 await state.checkpoint()
                                 if logger:
                                     logger.step_end(step.id, "paused")
@@ -485,6 +525,8 @@ class OrchestrationEngine:
         run.status = "running"
 
         if current_step:
+            # Before _resolve_next, so the loop guard counts this iteration.
+            engine._complete_human_step(run, current_step)
             next_id, _ = engine._resolve_next(current_step, run)
             run.current_step_id = next_id
             print(f"[engine.resume] ➡  _resolve_next({run.current_step_id!r} was HUMAN) → next_step_id={next_id!r}", flush=True)
@@ -730,6 +772,40 @@ class OrchestrationEngine:
             return fallback, loop_event
 
         return next_id, None
+
+    @staticmethod
+    def _complete_human_step(run: OrchestrationRun, step) -> None:
+        """Close out the `paused` entry a human step left in `step_history`.
+
+        Called on resume, *before* `_resolve_next`, so `_apply_loop_guard` counts
+        this iteration.
+
+        `duration_seconds` here is wall-clock and therefore mostly the human's
+        thinking time. That is what the step actually took; billing does not read
+        it — an embedder that meters excludes paused time from a separate pause
+        timestamp — but anything rendering a run's timeline wants it.
+
+        A run that paused before this existed has no entry to close, so one is
+        appended instead. Without that, an in-flight paused run would resume with
+        its approval still missing from history.
+        """
+        started_at = None
+        for entry in reversed(run.step_history):
+            if entry.get("step_id") == step.id and entry.get("status") == "paused":
+                started_at = entry.get("started_at")
+                entry["status"] = "completed"
+                entry["ended_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                entry["duration_seconds"] = _seconds_since(started_at)
+                return
+
+        run.step_history.append({
+            "step_id": step.id,
+            "step_name": step.name,
+            "step_type": step.type.value,
+            "status": "completed",
+            "ended_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "output_key": step.output_key,
+        })
 
     def _build_final_response(self, run: OrchestrationRun) -> str:
         """Build a human-readable summary from the run."""

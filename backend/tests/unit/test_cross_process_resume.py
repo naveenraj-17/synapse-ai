@@ -36,11 +36,7 @@ from _fakes import seed as S
 _BACKEND = Path(__file__).resolve().parent.parent.parent
 
 #: print -> human -> print, so there is history on *both* sides of the pause and
-#: the crossing is observable. A human step is deliberately not the first step:
-#: a paused step is never appended to `step_history` (engine.py breaks out before
-#: the "record step completion" block and `_resolve_next` moves past it on
-#: resume), so a human-first workflow would have nothing to carry across and the
-#: assertion below would be vacuous.
+#: the crossing is observable from either end.
 PAUSING = dict(
     id="orch_cross_process",
     entry_step_id="before",
@@ -77,6 +73,7 @@ async def main(run_id):
         "status": run.status,
         "shared_state": run.shared_state,
         "step_ids": [s.get("step_id") for s in run.step_history],
+        "step_history": run.step_history,
         "waiting_for_human": run.waiting_for_human,
     }))
 
@@ -154,8 +151,13 @@ class TestAPausedRunIsPortable:
         assert result["shared_state"].get("approval") == {"decision": "yes"}
         assert "yes" in " ".join(result["finals"])
         # And the history spans both processes: `before` was recorded by the
-        # process that paused, `after` by the process that resumed.
-        assert result["step_ids"] == ["before", "after"], result["step_ids"]
+        # process that paused, `after` by the process that resumed — and the
+        # human step's own entry was *opened* by the first and *closed* by the
+        # second, which is the crossing at its narrowest.
+        assert result["step_ids"] == ["before", "h", "after"], result["step_ids"]
+        human = result["step_history"][1]
+        assert human["status"] == "completed"
+        assert human["started_at"] and human["ended_at"]
 
     def test_nothing_local_could_have_satisfied_the_restore(self, tmp_path):
         """The inverted form of "delete the checkpoint file first".
