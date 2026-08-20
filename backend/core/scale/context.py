@@ -54,9 +54,12 @@ def set_resource_provider(provider: ResourceProvider | None) -> None:
     way to resolve resources would hand every tenant the same agents and tools,
     which is worse than refusing to switch at all.
     """
-    global _provider
+    global _provider, _job_tenant_resolver
     _provider = provider
     if provider is None:
+        # The job resolver goes with it. Leaving one installed would have it
+        # naming tenants that tenant_scope() then refuses to enter.
+        _job_tenant_resolver = None
         disable_multi_tenancy()
     else:
         enable_multi_tenancy()
@@ -64,6 +67,62 @@ def set_resource_provider(provider: ResourceProvider | None) -> None:
 
 def get_resource_provider() -> ResourceProvider | None:
     return _provider
+
+
+# ---------------------------------------------------------------------------
+# Whose job is this?
+# ---------------------------------------------------------------------------
+
+#: How an embedder says which tenant a queued job belongs to.
+#:
+#: The job functions in ``core/scale/worker.py`` deliberately take no
+#: ``tenant_id`` parameter — it used to come from the job payload, which meant
+#: any caller that could enqueue could label its run with any tenant it liked.
+#: But something has to establish the tenant before the job body runs, and in a
+#: shared fleet that is per job rather than per process.
+#:
+#: The resolver is given the ARQ context and the job's own arguments and answers
+#: from whatever it considers authoritative — for a service that mints run rows
+#: under row-level security, reading the row is authoritative and the payload is
+#: not. Returning ``None`` runs the job as the default tenant.
+_job_tenant_resolver = None
+
+
+def set_job_tenant_resolver(resolver) -> None:
+    """Install the hook that names the tenant for each job.
+
+    **This is not a second way to obtain multi-tenancy**, and it deliberately
+    refuses to pretend otherwise: without a resource provider it raises, because
+    the tenant it named would be unusable — ``tenant_scope()`` is shut until
+    ``set_resource_provider()`` opens it. So the resolver adds no capability. It
+    only says *where* an embedder plugs in, which is the whole point of the OSS
+    engine being the core and a service being the wrapper.
+
+    `resolver(ctx, job_name, args, kwargs) -> str | None`, awaitable.
+    """
+    global _job_tenant_resolver
+
+    if resolver is not None and _provider is None:
+        from core.tenancy import SingleTenantError
+
+        raise SingleTenantError(
+            "set_job_tenant_resolver() requires a resource provider. A tenant "
+            "named without one cannot be entered — tenant_scope() refuses to "
+            "open — so this would resolve a tenant the engine then ignores. "
+            "Call set_resource_provider() first; see core/tenancy.py."
+        )
+    _job_tenant_resolver = resolver
+
+
+def get_job_tenant_resolver():
+    return _job_tenant_resolver
+
+
+async def resolve_job_tenant(ctx: dict, job_name: str, args: tuple, kwargs: dict) -> str | None:
+    """The tenant this job belongs to, or None for the default tenant."""
+    if _job_tenant_resolver is None:
+        return None
+    return await _job_tenant_resolver(ctx, job_name, args, kwargs)
 
 
 # ---------------------------------------------------------------------------

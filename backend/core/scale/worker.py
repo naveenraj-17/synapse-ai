@@ -4,6 +4,7 @@ Defines the job functions and WorkerSettings class consumed by `arq run_worker`.
 Entry point: backend/worker_main.py
 """
 import asyncio
+import functools
 import json
 import os
 import socket
@@ -18,7 +19,7 @@ from arq.connections import RedisSettings
 
 from core import settings_runtime
 from core.scale.config import QUEUE_NAME, get_scale_config
-from core.tenancy import get_tenant
+from core.tenancy import get_tenant, tenant_scope
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,32 @@ _active_jobs: int = 0        # approximate counter updated by jobs
 
 def _get_active_jobs() -> int:
     return _active_jobs
+
+
+def _for_the_jobs_tenant(fn):
+    """Establish the job's tenant around the handler, if an embedder said how.
+
+    The tenant has to be in the context before the body runs: `_load_job_settings`
+    reads it, `mcp_pool.acquire()` keys on it, and the run row is written with
+    it. A decorator rather than a line inside each handler so there is one place
+    it can be got wrong, and so `functools.wraps` keeps the signature the four
+    handlers advertise — `tests/unit/test_tenancy.py` inspects it to assert none
+    of them takes a `tenant_id`, and that has to keep meaning something.
+
+    In the shipped single-tenant product no resolver is registered, this returns
+    None, and the handler runs exactly as before.
+    """
+    @functools.wraps(fn)
+    async def wrapper(ctx: dict, *args, **kwargs):
+        from core.scale.context import resolve_job_tenant
+
+        tenant = await resolve_job_tenant(ctx, fn.__name__, args, kwargs)
+        if tenant is None:
+            return await fn(ctx, *args, **kwargs)
+        with tenant_scope(tenant):
+            return await fn(ctx, *args, **kwargs)
+
+    return wrapper
 
 
 async def _load_job_settings() -> None:
@@ -55,6 +82,7 @@ async def _load_job_settings() -> None:
 # Job: run an orchestration
 # ---------------------------------------------------------------------------
 
+@_for_the_jobs_tenant
 async def run_orchestration_job(
     ctx: dict,
     run_id: str,
@@ -217,6 +245,7 @@ async def run_orchestration_job(
 # Job: resume after human input
 # ---------------------------------------------------------------------------
 
+@_for_the_jobs_tenant
 async def resume_orchestration_job(
     ctx: dict,
     run_id: str,
@@ -346,6 +375,7 @@ async def resume_orchestration_job(
 # Job: resume a failed run
 # ---------------------------------------------------------------------------
 
+@_for_the_jobs_tenant
 async def resume_failed_job(ctx: dict, run_id: str) -> dict:
     """Retry a failed or cancelled orchestration run from its last checkpoint."""
     global _active_jobs
@@ -407,6 +437,7 @@ async def resume_failed_job(ctx: dict, run_id: str) -> dict:
 # Job: run an agent chat turn
 # ---------------------------------------------------------------------------
 
+@_for_the_jobs_tenant
 async def run_agent_chat_job(
     ctx: dict,
     session_id: str,

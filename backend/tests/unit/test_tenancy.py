@@ -104,6 +104,114 @@ def test_job_functions_take_no_tenant_argument():
         assert "tenant_id" not in params, f"{name} still accepts tenant_id"
 
 
+class TestTheJobTenantResolver:
+    """The hook that lets an embedder say which tenant a queued job belongs to.
+
+    It is the one place tenancy enters the worker, so the thing worth pinning is
+    that it is not a *second* place multi-tenancy can be obtained from. It is
+    strictly downstream of `set_resource_provider()`: without one it refuses to
+    register, and even if it were installed the tenant it named could not be
+    entered, because `tenant_scope()` is shut.
+    """
+
+    def test_it_refuses_to_register_without_a_resource_provider(self):
+        from core.scale import context
+
+        context.set_resource_provider(None)
+        with pytest.raises(tenancy.SingleTenantError):
+            context.set_job_tenant_resolver(lambda *a: None)
+
+        assert context.get_job_tenant_resolver() is None
+        assert tenancy.is_multi_tenant() is False
+
+    def test_removing_the_provider_removes_the_resolver(self):
+        from core.scale import context
+
+        context.set_resource_provider(_Provider())
+        context.set_job_tenant_resolver(lambda *a: None)
+        assert context.get_job_tenant_resolver() is not None
+
+        context.set_resource_provider(None)
+        assert context.get_job_tenant_resolver() is None, (
+            "a resolver left installed would name tenants nothing can enter"
+        )
+
+    async def test_no_resolver_means_the_default_tenant(self):
+        """The shipped product: the handler runs exactly as it did before."""
+        from core.scale import context, worker
+
+        context.set_resource_provider(None)
+        seen = []
+
+        @worker._for_the_jobs_tenant
+        async def a_job(ctx, value):
+            seen.append((tenancy.get_tenant(), value))
+
+        await a_job({}, "x")
+        assert seen == [(DEFAULT_TENANT, "x")]
+
+    async def test_the_resolver_establishes_the_tenant_around_the_body(self):
+        from core.scale import context, worker
+
+        context.set_resource_provider(_Provider())
+        try:
+            async def resolver(ctx, job_name, args, kwargs):
+                return kwargs.get("whose") or args[0]
+
+            context.set_job_tenant_resolver(resolver)
+            seen = []
+
+            @worker._for_the_jobs_tenant
+            async def a_job(ctx, *args, **kwargs):
+                seen.append(tenancy.get_tenant())
+
+            await a_job({}, "acme")
+            await a_job({}, whose="globex")
+
+            assert seen == ["acme", "globex"]
+            assert tenancy.get_tenant() == DEFAULT_TENANT, "the scope leaked past the job"
+        finally:
+            context.set_resource_provider(None)
+
+    async def test_concurrent_jobs_keep_their_own_tenant(self):
+        """The property the whole shared fleet rests on, at the job boundary."""
+        from core.scale import context, worker
+
+        context.set_resource_provider(_Provider())
+        try:
+            async def resolver(ctx, job_name, args, kwargs):
+                return args[0]
+
+            context.set_job_tenant_resolver(resolver)
+            observed: dict[str, list[str]] = {}
+
+            @worker._for_the_jobs_tenant
+            async def a_job(ctx, whose):
+                seen = []
+                for _ in range(3):
+                    seen.append(tenancy.get_tenant())
+                    await asyncio.sleep(0)   # the other job runs here
+                observed[whose] = seen
+
+            await asyncio.gather(a_job({}, "acme"), a_job({}, "globex"))
+
+            assert observed["acme"] == ["acme"] * 3
+            assert observed["globex"] == ["globex"] * 3
+        finally:
+            context.set_resource_provider(None)
+
+    def test_the_decorator_preserves_the_signature_it_guards(self):
+        """`test_job_functions_take_no_tenant_argument` must keep meaning something."""
+        from core.scale import worker
+
+        params = inspect.signature(worker.run_orchestration_job).parameters
+        assert "run_id" in params and "orch_id" in params
+        assert "tenant_id" not in params
+        assert worker.run_orchestration_job.__name__ == "run_orchestration_job", (
+            "ARQ dispatches on __name__"
+        )
+
+
 def test_the_v2_api_does_not_accept_a_tenant():
     from core.routes.api_v2 import V2ChatRequest, V2OrchestrationRunRequest
 
