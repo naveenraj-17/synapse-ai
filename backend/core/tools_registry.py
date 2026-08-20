@@ -22,6 +22,25 @@ ALL_NATIVE_TOOLS: dict[str, str] = {
     "file_reader":       str(_TOOLS_DIR / "file_reader.py"),
 }
 
+# Tools whose *subprocess* resolves tenant state for itself — the vault, the
+# store, or the tenant's settings — rather than being handed what it needs.
+#
+# A ContextVar does not cross a process boundary, so one of these spawned once
+# and shared reads the default tenant's data whoever calls it. They are
+# therefore spawned per tenant, with `core/tool_server.py` telling each which
+# tenant it serves. Everything not listed here advertises the same behaviour to
+# everybody and is shared process-wide.
+#
+# `tests/install/test_tenant_scoped_tools.py` derives this set from the imports
+# and fails if a tool starts reading tenant state without joining it.
+TENANT_SCOPED_TOOLS: set[str] = {
+    "bash",
+    "code_vault_search",
+    "file_reader",
+    "sql",
+    "vault_sandbox",
+}
+
 # Tools safe for headless worker processes.
 # Excluded from workers: sql (needs DB config injection), personal_details (UI-only),
 # code_vault_search (large index, memory-heavy in workers).

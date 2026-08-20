@@ -212,6 +212,11 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
 
 
 async def main():
+    # This process serves exactly one tenant, and it has to be told which —
+    # see core/tool_server.py.
+    from core.tool_server import bootstrap
+    await bootstrap()
+
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,

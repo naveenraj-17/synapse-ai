@@ -287,7 +287,12 @@ def _get_native_mcp_servers(
     import os
     from pathlib import Path as _Path
     from mcp import StdioServerParameters
-    from core.tools_registry import ALL_NATIVE_TOOLS, WORKER_NATIVE_TOOLS, WORKER_NPX_TOOLS
+    from core.tools_registry import (
+        ALL_NATIVE_TOOLS,
+        TENANT_SCOPED_TOOLS,
+        WORKER_NATIVE_TOOLS,
+        WORKER_NPX_TOOLS,
+    )
 
     if scope not in ("shared", "tenant", "all"):
         raise ValueError(f"unknown scope {scope!r}")
@@ -301,20 +306,41 @@ def _get_native_mcp_servers(
 
     servers = {}
 
+    def _python_tool(name: str, env: dict) -> None:
+        script = _Path(ALL_NATIVE_TOOLS[name])
+        if script.exists():
+            servers[name] = StdioServerParameters(command=sys.executable, args=[str(script)], env=env)
+        else:
+            print(f"[worker_server_module] Tool script not found, skipping '{name}': {script}", flush=True)
+
     if scope in ("shared", "all"):
-        # Python-native tools (subset safe for headless worker processes)
-        for name in WORKER_NATIVE_TOOLS:
-            script = _Path(ALL_NATIVE_TOOLS[name])
-            if script.exists():
-                servers[name] = StdioServerParameters(command=sys.executable, args=[str(script)], env=tool_env)
-            else:
-                print(f"[worker_server_module] Tool script not found, skipping '{name}': {script}", flush=True)
+        # Python-native tools (subset safe for headless worker processes) that
+        # advertise the same behaviour to everybody.
+        for name in sorted(WORKER_NATIVE_TOOLS - TENANT_SCOPED_TOOLS):
+            _python_tool(name, tool_env)
 
         # npx-based tools available to workers
         for name, args in WORKER_NPX_TOOLS.items():
             servers[name] = StdioServerParameters(command=_NPX_CMD, args=args)
 
     if scope in ("tenant", "all"):
+        # Tools whose subprocess resolves the vault, the store or settings for
+        # itself. A ContextVar does not survive a fork+exec, so one of these
+        # spawned once and shared reads the *default* tenant's data whoever
+        # calls it. Spawned per tenant instead, told who they serve.
+        #
+        # The arithmetic is worth knowing: this is one extra subprocess per tool
+        # per live pool entry. In the shipped single-tenant product that is the
+        # same count as before. On a cloud worker `sql` and `code_vault_search`
+        # are already excluded, and D8 drops `bash` and `vault_sandbox`, which
+        # leaves `file_reader` — one process, plus the Filesystem server below.
+        from core.tenancy import get_tenant
+
+        tenant_env = dict(tool_env)
+        tenant_env["SYNAPSE_TENANT_ID"] = get_tenant()
+        for name in sorted(WORKER_NATIVE_TOOLS & TENANT_SCOPED_TOOLS):
+            _python_tool(name, tenant_env)
+
         # Filesystem MCP (Node.js) — rooted at the current tenant's vault, which
         # is the only directory a worker has any business exposing. It used to be
         # SYNAPSE_DATA_DIR, i.e. every tenant's config and credentials on a

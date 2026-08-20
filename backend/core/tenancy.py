@@ -78,6 +78,31 @@ def disable_multi_tenancy() -> None:
     _multi_tenant = False
 
 
+def adopt_process_tenant(tenant_id: str) -> None:
+    """Make *this process* serve one tenant, for its whole life.
+
+    A native tool server is a subprocess. A ``ContextVar`` does not cross a
+    process boundary, so a spawned `bash` or `vault_sandbox` server resolved
+    ``get_tenant()`` to the default and read the default tenant's vault, whoever
+    had called it. The parent spawns one such server per tenant and tells it
+    which one it is; this is how it is told.
+
+    **This is not a way to serve two tenants**, and it does not weaken the
+    single-tenant boundary D30 describes. It sets one value, once, in a process
+    that exists to serve exactly one tenant. ``tenant_scope()`` is still shut
+    unless an embedder registers a resource provider, so nothing here lets a
+    process switch tenants, and no environment variable read by the *engine* can
+    produce a second one. `tests/unit/test_tool_server.py` pins both halves.
+
+    Called only from ``core/tool_server.py``, which is the one module allowed to
+    read ``SYNAPSE_TENANT_ID`` — the same arrangement as ``core/store/importer.py``
+    being the one module allowed to name ``SYNAPSE_DATA_DIR``.
+    """
+    if not tenant_id:
+        return
+    _current_tenant.set(tenant_id)
+
+
 @contextmanager
 def tenant_scope(tenant_id: str) -> Iterator[str]:
     """Run a block as `tenant_id`.
