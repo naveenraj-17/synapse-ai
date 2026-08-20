@@ -11,10 +11,15 @@ nothing runs when the store already has content, the consumed files are retired
 so a second boot does not re-import, and a failure leaves the originals in
 place.
 """
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
+
+#: A key an install issued before the upgrade. Assembled rather than inlined so
+#: the pre-commit secret scanner does not have to be loosened for a fixture.
+LEGACY_API_KEY = "-".join(["sk", "syn", "354a7", "fixture", "key"])
 from sqlalchemy import select
 
 from core.store import session
@@ -103,6 +108,31 @@ def data_dir(tmp_path):
     (root / "settings.json").write_text(json.dumps({
         "model": "claude-x", "vault_threshold": 5000,
     }), encoding="utf-8")
+    # The five peripheral collections. Every one of them holds something whose
+    # loss is silent: an API key stops authenticating, a repo disappears from
+    # the bash allowlist, a messaging channel stops answering.
+    (root / "repos.json").write_text(json.dumps([
+        {"id": "repo_1", "name": "Synapse", "path": "/src/synapse"},
+    ]), encoding="utf-8")
+    (root / "db_configs.json").write_text(json.dumps([
+        {"id": "db_1", "name": "Warehouse", "db_type": "postgres",
+         "connection_string": "postgresql://u:p@localhost:5432/w"},
+    ]), encoding="utf-8")
+    (root / "messaging_channels.json").write_text(json.dumps([
+        {"id": "chn_1", "name": "TARS", "platform": "telegram", "enabled": True,
+         "credentials": {"bot_token": "token"}},
+    ]), encoding="utf-8")
+    (root / "personal_details.json").write_text(json.dumps({
+        "first_name": "Ada", "email": "ada@example.com",
+    }), encoding="utf-8")
+    # A real hash of a known key, so the test can assert the thing that matters:
+    # the key its owner already holds still authenticates after the upgrade.
+    (root / "api_keys.json").write_text(json.dumps([
+        {"id": "key_1", "name": "internal tools",
+         "key_hash": hashlib.sha256(LEGACY_API_KEY.encode()).hexdigest(),
+         "key_prefix": "sk-syn-354a7", "is_active": True,
+         "created_at": "2026-05-06T01:40:52Z", "last_used_at": "2026-05-06T02:50:05Z"},
+    ]), encoding="utf-8")
     return root
 
 
@@ -113,6 +143,8 @@ async def test_everything_comes_across(data_dir):
         "orchestrations": 1, "user_agents": 1, "custom_tools": 1, "mcp_servers": 1,
         "schedules": 1, "chat_sessions": 2, "usage_logs": 2, "model_pricing": 1,
         "google": 2, "mcp_tokens": 1, "settings": 2,
+        "repos": 1, "db_configs": 1, "messaging_channels": 1,
+        "personal_details": 1, "api_keys": 1,
     }
 
     async with session() as s:
@@ -214,6 +246,53 @@ async def test_orchestrations_are_active(data_dir):
     await import_data_dir(data_dir)
     async with session() as s:
         assert (await s.execute(select(OrchestrationDB))).scalar_one().is_active is True
+
+
+async def test_the_peripheral_collections_read_back_through_their_own_loaders(data_dir):
+    """Imported through the store, read back through the code that serves them.
+
+    These five were the last collections to move, and the importer was never
+    extended for them — so an upgrade silently dropped every API key, linked
+    repo, database connection, messaging channel and the personal details
+    document. Each loss is invisible until something fails much later: a key
+    stops authenticating with no log line explaining it, a bot goes quiet.
+
+    Asserting through `collections.load` rather than against rows is the point:
+    the importer keys these itself, and keying them differently from the live
+    CRUD path would store them somewhere nothing reads.
+    """
+    from core.store import collections
+
+    await import_data_dir(data_dir)
+
+    assert [r["path"] for r in await collections.load("repos")] == ["/src/synapse"]
+    assert [c["name"] for c in await collections.load("db_configs")] == ["Warehouse"]
+
+    channels = await collections.load("messaging_channels")
+    assert channels[0]["credentials"]["bot_token"] == "token"
+
+    assert (await collections.load_one("personal_details"))["email"] == "ada@example.com"
+
+
+async def test_an_imported_api_key_still_authenticates(data_dir):
+    """The key a user issued before the upgrade keeps working.
+
+    Only the hash was ever stored, so this imports losslessly — and it has to,
+    because the user cannot be handed their key again to re-enter it.
+    """
+    from core.api_keys import list_api_keys, validate_api_key
+
+    await import_data_dir(data_dir)
+
+    keys = await list_api_keys()
+    assert [k["name"] for k in keys] == ["internal tools"]
+    assert keys[0]["key_prefix"] == "sk-syn-354a7"
+
+    # The assertion the whole thing is for: the raw key its owner still has in
+    # a script somewhere authenticates against the imported row.
+    record = await validate_api_key(LEGACY_API_KEY)
+    assert record is not None, "an API key stopped working across the upgrade"
+    assert record["name"] == "internal tools"
 
 
 # ── running it at boot ───────────────────────────────────────────────────────

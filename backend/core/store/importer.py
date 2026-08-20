@@ -125,6 +125,7 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     from core.store import session, upsert
     from core.store.models import (
         AgentDB,
+        ApiKeyDB,
         ChatSessionDB,
         CollectionDB,
         MCPServerDB,
@@ -152,6 +153,12 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
     counts["chat_sessions"] = 0
     counts["google"] = 0
     counts["mcp_tokens"] = 0
+    # Also not in _SOURCES: these five are peripheral, so an install having only
+    # them is not an install worth importing — but when there *is* something to
+    # import, they come across with it.
+    for _name in ("repos", "db_configs", "messaging_channels",
+                  "personal_details", "api_keys"):
+        counts[_name] = 0
 
     #: source file → (count key, model, conflict target, row builder, "is this
     #: item importable"). The builders are the same ones the live CRUD path
@@ -182,6 +189,64 @@ async def import_data_dir(data_dir: str | Path, tenant_id: str = DEFAULT_TENANT)
                     index_elements=index_elements,
                 )
                 counts[count_key] += 1
+
+        # ── the peripheral collections ──────────────────────────────────────
+        # Repos, database configs and messaging channels are lists keyed by id;
+        # personal details is a single document under the empty key. Keyed
+        # exactly as `core/store/collections.py` keys them, including its
+        # fall back to the item's position, or an imported install would read
+        # back differently from a natively-created one.
+        for filename, name in (
+            ("repos.json", "repos"),
+            ("db_configs.json", "db_configs"),
+            ("messaging_channels.json", "messaging_channels"),
+        ):
+            items = _read(root / filename) or []
+            for index, item in enumerate(items if isinstance(items, list) else []):
+                if not isinstance(item, dict):
+                    continue
+                await upsert(
+                    s, CollectionDB,
+                    values={"tenant_id": tenant_id, "collection": name,
+                            "key": str(item.get("id") or index), "value": item},
+                    index_elements=["tenant_id", "collection", "key"],
+                )
+                counts[name] += 1
+
+        details = _read(root / "personal_details.json")
+        if isinstance(details, dict) and details:
+            await upsert(
+                s, CollectionDB,
+                values={"tenant_id": tenant_id, "collection": "personal_details",
+                        "key": "", "value": details},
+                index_elements=["tenant_id", "collection", "key"],
+            )
+            counts["personal_details"] += 1
+
+        # ── api keys ────────────────────────────────────────────────────────
+        # A real table, not a collection: every authenticated request looks a
+        # key up by hash. The hash is what is stored, so these import losslessly
+        # — the keys a user already issued keep working, which is the whole
+        # point. Losing them means every script and integration they have built
+        # starts returning 401 with nothing in the logs to explain it.
+        for item in _read(root / "api_keys.json") or []:
+            if not isinstance(item, dict) or not item.get("key_hash"):
+                continue
+            await upsert(
+                s, ApiKeyDB,
+                values={
+                    "id": str(item.get("id") or item["key_hash"][:32]),
+                    "tenant_id": tenant_id,
+                    "name": item.get("name") or "",
+                    "key_hash": item["key_hash"],
+                    "key_prefix": item.get("key_prefix") or "",
+                    "is_active": bool(item.get("is_active", True)),
+                    "created_at": _parse_stamp(item.get("created_at")),
+                    "last_used_at": _parse_stamp(item.get("last_used_at")),
+                },
+                index_elements=["id"],
+            )
+            counts["api_keys"] += 1
 
         # ── chat sessions ───────────────────────────────────────────────────
         # One JSON file per conversation, named `{agent}_{session}.json` — not
@@ -315,7 +380,12 @@ def _retire(root: Path) -> str:
     if _holds_live_state(root):
         destination = root / "migrated"
         destination.mkdir(exist_ok=True)
-        for name in (*_SOURCES, "credentials", "token"):
+        consumed = (
+            *_SOURCES, "credentials", "token",
+            "repos", "db_configs", "messaging_channels", "personal_details",
+            "api_keys",
+        )
+        for name in consumed:
             source = root / f"{name}.json"
             if source.is_file():
                 source.rename(destination / source.name)
