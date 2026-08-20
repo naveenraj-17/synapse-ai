@@ -29,10 +29,14 @@ import sys
 # FakeLLM. The stress suite sets them to the 5-90s profile. We deliberately do
 # NOT setdefault them here, so the stress conftest's fallbacks can take effect.
 
-# ── Make backend/ and tests/ importable ──────────────────────────────────────
+# ── Make backend/, tests/ and the repo root importable ───────────────────────
+# The repo root is what makes `synapse.cli` importable. Without it the CLI tests
+# skip themselves, and a skip that nobody notices is how `synapse api-keys`
+# stayed broken for a release.
 _TESTS_DIR = pathlib.Path(__file__).resolve().parent
 _BACKEND_DIR = _TESTS_DIR.parent
-for _p in (str(_BACKEND_DIR), str(_TESTS_DIR)):
+_REPO_ROOT = _BACKEND_DIR.parent
+for _p in (str(_REPO_ROOT), str(_BACKEND_DIR), str(_TESTS_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

@@ -73,7 +73,19 @@ def test_archive_dir_is_not_bound_at_import():
 
 @pytest.mark.parametrize(
     "module_name",
-    ["core.orchestration.steps", "core.react_engine", "core.server"],
+    [
+        "core.orchestration.steps",
+        "core.react_engine",
+        "core.server",
+        # The stdio tool servers. They are separate processes, so nothing in the
+        # rest of the suite would notice them drifting — and `tools/sandbox.py`
+        # had in fact never been repointed: it built `backend/data/vault` from
+        # `__file__` and mkdir'd it at import, which is what kept recreating
+        # `backend/data` on developer machines. The docstring above warned that
+        # this list was the gap; these two are it closing.
+        "tools.bash",
+        "tools.sandbox",
+    ],
 )
 def test_nothing_re_derives_the_old_vault_path(module_name):
     """No module may reconstruct `.../data/vault` from `__file__` or DATA_DIR.
