@@ -10,6 +10,7 @@ import zoneinfo
 import anyio
 
 from core.config import load_settings, MCP_LIST_TOOLS_TIMEOUT
+from core.tool_router import SEP, ToolRouter
 
 
 # Tools auto-injected per agent type. These bypass the agent's tools[] array.
@@ -88,7 +89,11 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
     # call. Deferred import avoids a circular import at module load — aggregation
     # always runs per-request, long after startup has populated the map.
     from core import server as _server
-    tool_router = getattr(_server, "tool_router", {}) or {}
+    tool_router = getattr(_server, "tool_router", None)
+    # Test doubles and embedders hand over a plain dict; wrapping gives it the
+    # alias table without making every caller construct one.
+    if not isinstance(tool_router, ToolRouter):
+        tool_router = ToolRouter(tool_router or {})
 
     allowed_tools = active_agent.get("tools", ["all"])
 
@@ -135,25 +140,34 @@ async def aggregate_all_tools(agent_sessions, active_agent, custom_tools_list):
                 continue
 
         is_external = session_name.startswith("ext_mcp_")
-        server_name = session_name[len("ext_mcp_"):] if is_external else None
 
-        if is_external:
-            for t in session_tools:
-                prefixed = f"{server_name}__{t.name}"
-                if "all" in allowed_tools or prefixed in allowed_tools:
-                    all_tools.append(VirtualTool(prefixed, t.description, t.inputSchema))
-        else:
-            candidate = session_tools if "all" in allowed_tools \
-                else [t for t in session_tools if t.name in allowed_tools]
-            for t in candidate:
-                # A tool name can be exposed by multiple native MCP servers
-                # (e.g. read_file_by_lines in BOTH file_reader and code_search).
-                # tool_router decides which server services a call (last to
-                # register at startup wins). Declare only the copy from that
-                # server, so the LLM sees the schema of the impl that runs — and
-                # Gemini never receives a duplicate function declaration.
-                routed = tool_router.get(t.name)
-                if routed and routed[0] != session_name:
+        for t in session_tools:
+            key = tool_router.key_for(session_name, t.name)
+
+            if is_external:
+                # External servers have always been declared to the model as
+                # `{server}__{tool}`, and that is what an agent's stored tools[]
+                # array holds. Unchanged deliberately: renaming them would make
+                # every existing agent's list silently stop matching.
+                name = key or f"{session_name[len('ext_mcp_'):]}{SEP}{t.name}"
+                if "all" in allowed_tools or name in allowed_tools:
+                    all_tools.append(VirtualTool(name, t.description, t.inputSchema))
+                continue
+
+            # A native tool an agent asked for *by its namespaced key*. This is
+            # the escape hatch that makes the loser of a collision reachable —
+            # e.g. code_vault_search__read_file_by_lines, whose repo-aware
+            # implementation file_reader has always shadowed.
+            if key is not None and key in allowed_tools:
+                all_tools.append(VirtualTool(key, t.description, t.inputSchema))
+                continue
+
+            # Otherwise a native tool is declared under its bare name, but only
+            # by the server a bare call actually reaches, so the LLM sees the
+            # schema of the implementation that runs — and Gemini never receives
+            # a duplicate function declaration.
+            if "all" in allowed_tools or t.name in allowed_tools:
+                if key is not None and not tool_router.declares(session_name, t.name):
                     continue
                 all_tools.append(t)
 

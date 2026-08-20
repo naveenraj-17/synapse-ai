@@ -290,7 +290,9 @@ class MCPClientManager:
             _server.agent_sessions[agent_key] = session
             tools = await session.list_tools()
             for tool in tools.tools:
-                _server.tool_router[f"{name}__{tool.name}"] = (agent_key, tool.name)
+                _server.tool_router.register(
+                    name, tool.name, session_key=agent_key, alias=False
+                )
             print(f"[MCP] Registered {len(tools.tools)} tools for '{name}': "
                   f"{[t.name for t in tools.tools]}")
         except Exception as e:

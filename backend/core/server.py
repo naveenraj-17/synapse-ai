@@ -28,6 +28,7 @@ except ImportError:
     MemoryStore = None
 
 from core.mcp_client import MCPClientManager
+from core.tool_router import ToolRouter
 from core.config import load_settings, get_or_create_jwt_secret
 from core.routes.settings import _init_memory_store
 
@@ -294,7 +295,7 @@ async def _connect_filesystem_mcp(label: str = "started") -> None:
         # log spam on every /api/tools/available poll.
         agent_sessions["Filesystem"] = session
         for tool in tools.tools:
-            tool_router[tool.name] = ("Filesystem", tool.name)
+            tool_router.register("Filesystem", tool.name)
         print(f"Filesystem MCP server {label} ({len(tools.tools)} tools registered).")
     except Exception as e:
         print(f"Failed to start Filesystem MCP server: {e}")
@@ -381,7 +382,7 @@ async def restart_filesystem_mcp() -> None:
 # The react_engine receives this module as a parameter for testability.
 # ---------------------------------------------------------------------------
 agent_sessions: dict[str, ClientSession] = {}   # client_name -> MCP session
-tool_router: dict[str, tuple[str, str]] = {}     # tool_key -> (session_name, actual_tool_name)
+tool_router: ToolRouter = ToolRouter()           # {server}__{tool} -> (session_name, actual_tool_name)
 exit_stack: Optional[AsyncExitStack] = None
 _filesystem_stack: Optional[AsyncExitStack] = None          # owned exclusively by _filesystem_mcp_manager
 _filesystem_restart_queue: Optional[asyncio.Queue] = None   # route handlers put Futures here to request restarts
@@ -486,8 +487,8 @@ async def lifespan(app: FastAPI):
                 # Register tools
                 tools = await session.list_tools()
                 for tool in tools.tools:
-                    tool_router[tool.name] = (agent_name, tool.name)
-                    print(f"  Registered tool: {tool.name} -> {agent_name}")
+                    key = tool_router.register(agent_name, tool.name)
+                    print(f"  Registered tool: {key} -> {agent_name}")
             except BaseException as e:
                 print(f"  Warning: Failed to connect agent '{agent_name}': {e}")
                 try:
@@ -546,8 +547,8 @@ async def lifespan(app: FastAPI):
 
                 tools = await session.list_tools()
                 for tool in tools.tools:
-                    tool_router[tool.name] = (mcp_name, tool.name)
-                    print(f"  Registered tool: {tool.name} -> {mcp_name}")
+                    key = tool_router.register(mcp_name, tool.name)
+                    print(f"  Registered tool: {key} -> {mcp_name}")
             except Exception as e:
                 print(f"  Failed to connect native MCP server '{mcp_name}': {e}")
 
@@ -567,8 +568,10 @@ async def lifespan(app: FastAPI):
                 tools = await session.list_tools()
                 print(f"  MCP Server '{name}' returned {len(tools.tools)} tools.")
                 for tool in tools.tools:
-                    tool_router[f"{name}__{tool.name}"] = (agent_key, tool.name)
-                    print(f"  Registered external tool: {name}__{tool.name} -> {agent_key}")
+                    key = tool_router.register(
+                        name, tool.name, session_key=agent_key, alias=False
+                    )
+                    print(f"  Registered external tool: {key} -> {agent_key}")
             except Exception as e:
                 print(f"  Error listing tools for {name}: {e}")
                 import traceback

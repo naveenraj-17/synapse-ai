@@ -8,6 +8,8 @@ import platform
 import sys
 from pathlib import Path
 
+from core.tool_router import ToolRouter
+
 _IS_WIN = platform.system() == "Windows"
 _NPX_CMD = "npx.cmd" if _IS_WIN else "npx"
 
@@ -21,7 +23,7 @@ class WorkerServerModule:
 
     def __init__(self):
         self.agent_sessions: dict = {}     # mcp_server_name -> ClientSession
-        self.tool_router: dict = {}        # tool_name -> session
+        self.tool_router = ToolRouter()    # {server}__{tool} -> (session_name, tool_name)
         self.memory_store = None           # workers don't maintain long-term memory store
         self.mcp_disabled: list[str] = []  # names of MCP servers that failed to connect
         self._exit_stack = None
@@ -68,11 +70,13 @@ class WorkerServerModule:
                 )
                 await session.initialize()
                 instance.agent_sessions[server_name] = session
-                # Register tools into router: tool_name -> (server_name, actual_tool_name)
-                # matches the interface expected by react_engine.py
+                # Register tools into the router as {server}__{tool}, with the
+                # bare name kept as an alias — see core/tool_router.py. The
+                # worker used to key native *and* user MCP on the bare name, so
+                # a tenant's own server could shadow a native tool.
                 tools_result = await session.list_tools()
                 for tool in tools_result.tools:
-                    instance.tool_router[tool.name] = (server_name, tool.name)
+                    instance.tool_router.register(server_name, tool.name)
             except Exception as e:
                 print(
                     f"[worker_server_module] Skipping MCP server '{server_name}': {e}",
@@ -127,10 +131,24 @@ class WorkerServerModule:
                     ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
                 )
                 await session.initialize()
-                instance.agent_sessions[server_name] = session
+                # `ext_mcp_` is how the rest of the engine spells "this session
+                # belongs to a user-configured MCP server" — core/server.py:563,
+                # routes/tools.py, mcp_client.py, and the three sites in
+                # react_engine.py that strip it back off to name the server in an
+                # error. The worker used its bare name instead, so a user MCP
+                # tool was declared to the model as `sometool` here and as
+                # `myserver__sometool` on the API server: an agent's stored
+                # tools[] array could only ever match in one of the two places,
+                # and on a worker it silently matched nothing.
+                agent_key = f"ext_mcp_{server_name}"
+                instance.agent_sessions[agent_key] = session
                 tools_result = await session.list_tools()
                 for tool in tools_result.tools:
-                    instance.tool_router[tool.name] = (server_name, tool.name)
+                    # alias=False: a tenant's own MCP server must not be able to
+                    # take over a native tool's bare name for that tenant's runs.
+                    instance.tool_router.register(
+                        server_name, tool.name, session_key=agent_key, alias=False
+                    )
                 print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
             except Exception as e:
                 print(
