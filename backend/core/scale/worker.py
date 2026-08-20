@@ -82,9 +82,15 @@ async def run_orchestration_job(
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
-    server_module = ctx["server_module"]
+    leased = False
 
     try:
+        # This tenant's MCP session set, from the bounded pool. It merges the
+        # process-wide native servers with the tenant's own, so what the engine
+        # sees is the shape `ctx["server_module"]` used to be — except that it
+        # is this tenant's, not whoever's was current at worker startup.
+        server_module = await mcp_pool.acquire()
+        leased = True
         # Mark run as picked up in Postgres (UPSERT so DLQ retries work even
         # without a pre-existing row created by the V2 API enqueue path).
         async with session_factory() as session:
@@ -202,6 +208,8 @@ async def run_orchestration_job(
         raise  # ARQ will retry
 
     finally:
+        if leased:
+            await mcp_pool.release()
         _active_jobs = max(0, _active_jobs - 1)
 
 
@@ -224,9 +232,15 @@ async def resume_orchestration_job(
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
-    server_module = ctx["server_module"]
+    leased = False
 
     try:
+        # This tenant's MCP session set, from the bounded pool. It merges the
+        # process-wide native servers with the tenant's own, so what the engine
+        # sees is the shape `ctx["server_module"]` used to be — except that it
+        # is this tenant's, not whoever's was current at worker startup.
+        server_module = await mcp_pool.acquire()
+        leased = True
         print(f"[resume] ▶ job picked up run_id={run_id} human_response_keys={list(human_response.keys()) if isinstance(human_response, dict) else type(human_response).__name__}", flush=True)
 
         # Load run to find orchestration_id
@@ -323,6 +337,8 @@ async def resume_orchestration_job(
         raise
 
     finally:
+        if leased:
+            await mcp_pool.release()
         _active_jobs = max(0, _active_jobs - 1)
 
 
@@ -339,9 +355,15 @@ async def resume_failed_job(ctx: dict, run_id: str) -> dict:
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
-    server_module = ctx["server_module"]
+    leased = False
 
     try:
+        # This tenant's MCP session set, from the bounded pool. It merges the
+        # process-wide native servers with the tenant's own, so what the engine
+        # sees is the shape `ctx["server_module"]` used to be — except that it
+        # is this tenant's, not whoever's was current at worker startup.
+        server_module = await mcp_pool.acquire()
+        leased = True
         async with session_factory() as session:
             from core.scale.models_db import OrchestrationRunDB
             from sqlalchemy import select
@@ -376,6 +398,8 @@ async def resume_failed_job(ctx: dict, run_id: str) -> dict:
         raise
 
     finally:
+        if leased:
+            await mcp_pool.release()
         _active_jobs = max(0, _active_jobs - 1)
 
 
@@ -403,10 +427,16 @@ async def run_agent_chat_job(
 
     redis = ctx["redis"]
     session_factory = ctx["session_factory"]
-    server_module = ctx["server_module"]
+    leased = False
     images = images or []
 
     try:
+        # This tenant's MCP session set, from the bounded pool. It merges the
+        # process-wide native servers with the tenant's own, so what the engine
+        # sees is the shape `ctx["server_module"]` used to be — except that it
+        # is this tenant's, not whoever's was current at worker startup.
+        server_module = await mcp_pool.acquire()
+        leased = True
         # Load agent definition from Postgres
         agent_data = await _load_agent(session_factory, agent_id) if agent_id else None
         # Load prior message history from Postgres chat_sessions
@@ -485,6 +515,8 @@ async def run_agent_chat_job(
         raise
 
     finally:
+        if leased:
+            await mcp_pool.release()
         _active_jobs = max(0, _active_jobs - 1)
 
 
@@ -526,9 +558,13 @@ async def worker_startup(ctx: dict) -> None:
     # and sandbox the worker spawns.
     settings_runtime.install_provider()
 
-    # Build WorkerServerModule (connects to available tools/MCP servers)
+    # The native tool servers, which are the same for every tenant. A tenant's
+    # own MCP — and the Filesystem server, which is rooted at its vault — is
+    # built per job by core.scale.mcp_pool and cached there.
+    from core.scale import mcp_pool
     from core.scale.worker_server_module import WorkerServerModule
-    server_module = await WorkerServerModule.build()
+    server_module = await WorkerServerModule.build_shared()
+    mcp_pool.set_shared(server_module)
     ctx["server_module"] = server_module
 
     # Register worker in Postgres
@@ -592,6 +628,11 @@ async def worker_shutdown(ctx: dict) -> None:
     if session_factory and _worker_id:
         from core.scale.heartbeat import mark_worker_offline
         await mark_worker_offline(_worker_id, session_factory)
+
+    # Every tenant's sessions first, then the shared ones they borrow from.
+    # `drain()` waits, because each entry closes on its own task and the process
+    # exiting underneath one leaves an orphaned MCP subprocess behind.
+    await mcp_pool.drain()
 
     server_module = ctx.get("server_module")
     if server_module:
