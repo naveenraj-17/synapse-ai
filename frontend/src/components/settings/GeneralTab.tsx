@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { Button, Modal } from '@/components/ui';
+import { Button, Input, Label, Modal } from '@/components/ui';
 
 type EmbedIssue = 'no_psql' | 'no_db' | 'existing_url_broken' | 'no_pgvector' | 'connection_error';
 
@@ -152,40 +152,40 @@ export function GeneralTab({
     return (
         <div className="space-y-8">
             <div className="space-y-2">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Global Agent Name</label>
-                <input
+                <Label htmlFor="gen-agentname" size="sm" className="block">Global Agent Name</Label>
+                <Input id="gen-agentname"
                     type="text"
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
+                    className="font-medium"
                     placeholder="Enter Agent Name"
                 />
-                <p className="text-xs text-zinc-600">This name identifies your agent across the system.</p>
+                <p className="text-xs text-text-faint">This name identifies your agent across the system.</p>
             </div>
 
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Large Response Handling</label>
+                <Label size="sm" className="block">Large Response Handling</Label>
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs text-zinc-600 mt-0.5">When enabled, tool outputs exceeding the threshold are saved to a vault file instead of flooding the context.</p>
+                        <p className="text-xs text-text-faint mt-0.5">When enabled, tool outputs exceeding the threshold are saved to a vault file instead of flooding the context.</p>
                     </div>
                     <button
                         onClick={() => setVaultEnabled(!vaultEnabled)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${vaultEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${vaultEnabled ? 'bg-accent' : 'bg-surface-2'}`}
                     >
                         <span
-                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${vaultEnabled ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${vaultEnabled ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`}
                         />
                     </button>
                 </div>
                 {vaultEnabled && (
                     <div className="space-y-2">
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Character Threshold</label>
-                        <p className="text-xs text-zinc-500">
-                            ≈ <span className="text-zinc-300 font-semibold">{Math.round(vaultThreshold / 4).toLocaleString()}</span> tokens
-                            <span className="text-zinc-600 ml-1">(at ~4 chars / token)</span>
+                        <Label htmlFor="gen-character-threshold" size="sm" className="block">Character Threshold</Label>
+                        <p className="text-xs text-text-faint">
+                            ≈ <span className="text-text font-semibold">{Math.round(vaultThreshold / 4).toLocaleString()}</span> tokens
+                            <span className="text-text-faint ml-1">(at ~4 chars / token)</span>
                         </p>
-                        <input
+                        <Input id="gen-character-threshold"
                             type="number"
                             value={vaultDraft}
                             onChange={(e) => setVaultDraft(e.target.value)}
@@ -194,39 +194,39 @@ export function GeneralTab({
                                 setVaultThreshold(v);
                                 setVaultDraft(String(v));
                             }}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
+                            className="font-medium"
                             min={1}
                         />
-                        <p className="text-xs text-zinc-600">Responses longer than this many characters will be saved to a file.</p>
+                        <p className="text-xs text-text-faint">Responses longer than this many characters will be saved to a file.</p>
                     </div>
                 )}
             </div>
 
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Auto Context Compaction</label>
+                <Label size="sm" className="block">Auto Context Compaction</Label>
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs text-zinc-600 mt-0.5">
+                        <p className="text-xs text-text-faint mt-0.5">
                             When the accumulated context exceeds the threshold, the agent summarises everything so far to ~30% of its size and archives the original to the vault so nothing is lost.
                         </p>
                     </div>
                     <button
                         onClick={() => setAutoCompactEnabled(!autoCompactEnabled)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${autoCompactEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${autoCompactEnabled ? 'bg-accent' : 'bg-surface-2'}`}
                     >
                         <span
-                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${autoCompactEnabled ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${autoCompactEnabled ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`}
                         />
                     </button>
                 </div>
                 {autoCompactEnabled && (
                     <div className="space-y-2">
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Compaction Threshold (characters)</label>
-                        <p className="text-xs text-zinc-500">
-                            ≈ <span className="text-zinc-300 font-semibold">{Math.round(autoCompactThreshold / 4).toLocaleString()}</span> tokens
-                            <span className="text-zinc-600 ml-1">(at ~4 chars / token)</span>
+                        <Label htmlFor="gen-compaction-threshold-characters" size="sm" className="block">Compaction Threshold (characters)</Label>
+                        <p className="text-xs text-text-faint">
+                            ≈ <span className="text-text font-semibold">{Math.round(autoCompactThreshold / 4).toLocaleString()}</span> tokens
+                            <span className="text-text-faint ml-1">(at ~4 chars / token)</span>
                         </p>
-                        <input
+                        <Input id="gen-compaction-threshold-characters"
                             type="number"
                             value={compactDraft}
                             onChange={(e) => setCompactDraft(e.target.value)}
@@ -235,10 +235,10 @@ export function GeneralTab({
                                 setAutoCompactThreshold(v);
                                 setCompactDraft(String(v));
                             }}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
+                            className="font-medium"
                             min={10000}
                         />
-                        <p className="text-xs text-zinc-600">
+                        <p className="text-xs text-text-faint">
                             When context exceeds this, it is compacted using the current model. The full original is archived to the vault.
                         </p>
                     </div>
@@ -246,25 +246,25 @@ export function GeneralTab({
             </div>
 
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Database Write Access</label>
+                <Label size="sm" className="block">Database Write Access</Label>
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs text-zinc-600 mt-0.5">
+                        <p className="text-xs text-text-faint mt-0.5">
                             When disabled (default), agents are strictly limited to SELECT/SHOW/DESCRIBE queries.
                             When enabled, INSERT/UPDATE/DELETE and other write queries are allowed — but agents must always ask for confirmation before executing them.
                         </p>
                     </div>
                     <button
                         onClick={() => setAllowDbWrite(!allowDbWrite)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${allowDbWrite ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${allowDbWrite ? 'bg-warning' : 'bg-surface-2'}`}
                     >
                         <span
-                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${allowDbWrite ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${allowDbWrite ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`}
                         />
                     </button>
                 </div>
                 {allowDbWrite && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs rounded-md">
+                    <div className="p-3 bg-warning/10 border border-warning/20 text-warning text-xs rounded-md">
                         <strong>Write mode active.</strong> Agents MUST ask for explicit user confirmation before running any INSERT, UPDATE, DELETE, DROP, or CREATE queries. This is enforced in the system prompt.
                     </div>
                 )}
@@ -272,10 +272,10 @@ export function GeneralTab({
 
             {/* Code Repository Indexing */}
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Code Repository Indexing</label>
+                <Label size="sm" className="block">Code Repository Indexing</Label>
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs text-zinc-600 mt-0.5">
+                        <p className="text-xs text-text-faint mt-0.5">
                             When enabled, agents can semantically search your indexed code repositories using vector embeddings.
                             Requires PostgreSQL with the pgvector extension.
                         </p>
@@ -283,17 +283,17 @@ export function GeneralTab({
                     <button
                         onClick={handleEmbedToggle}
                         disabled={embedChecking}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${embedCode ? 'bg-white' : 'bg-zinc-700'} ${embedChecking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${embedCode ? 'bg-accent' : 'bg-surface-2'} ${embedChecking ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <span
-                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${embedCode ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`}
+                            className={`inline-block h-4 w-4 transform rounded-full transition-transform ${embedCode ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`}
                         />
                     </button>
                 </div>
 
                 {/* Checking state */}
                 {embedChecking && (
-                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <div className="flex items-center gap-2 text-xs text-text-muted">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         Checking PostgreSQL setup…
                     </div>
@@ -301,17 +301,17 @@ export function GeneralTab({
 
                 {/* No psql found */}
                 {embedCheckState?.issue === 'no_psql' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
+                    <div className="p-3 bg-warning/10 border border-warning/20 text-warning text-xs space-y-2 rounded-md">
                         <p><strong>PostgreSQL not found.</strong> Install it to enable code indexing.</p>
-                        <ul className="space-y-0.5 text-amber-300/80">
+                        <ul className="space-y-0.5 text-warning/80">
                             <li><strong>Ubuntu/Debian:</strong> <code className="font-code bg-surface-2 px-1">sudo apt install postgresql postgresql-contrib</code></li>
                             <li><strong>macOS:</strong> <code className="font-code bg-surface-2 px-1">brew install postgresql</code></li>
                             <li><strong>Windows:</strong> Download from <span className="underline">postgresql.org/download/windows</span></li>
                         </ul>
-                        <p className="text-amber-300/60">After installing, also install pgvector: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) or <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS).</p>
+                        <p className="text-warning/60">After installing, also install pgvector: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) or <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS).</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"
+                            className="mt-1 px-3 py-1 text-xs font-bold bg-warning/20 hover:bg-warning/30 text-warning border border-warning/30 transition-colors rounded-md"
                         >
                             Check again
                         </button>
@@ -320,55 +320,55 @@ export function GeneralTab({
 
                 {/* Existing URL configured but connection is failing */}
                 {embedCheckState?.issue === 'existing_url_broken' && (
-                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3 rounded-md">
+                    <div className="p-3 bg-surface-2/60 border border-border-strong text-xs space-y-3 rounded-md">
                         <div className="space-y-1">
-                            <p className="text-zinc-300 font-semibold">Existing connection is failing</p>
-                            <p className="text-zinc-500 font-mono break-all">{embedCheckState.detail}</p>
-                            <p className="text-zinc-500">Please provide new connection details to reconfigure.</p>
+                            <p className="text-text font-semibold">Existing connection is failing</p>
+                            <p className="text-text-faint font-mono break-all">{embedCheckState.detail}</p>
+                            <p className="text-text-faint">Please provide new connection details to reconfigure.</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Host</label>
-                                <input type="text" value={dbForm.host} onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
+                                <Label htmlFor="gen-dbform-host" className="block">Host</Label>
+                                <Input id="gen-dbform-host" type="text" value={dbForm.host} onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))} className="font-mono" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Port</label>
-                                <input type="text" value={dbForm.port} onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
+                                <Label htmlFor="gen-dbform-port" className="block">Port</Label>
+                                <Input id="gen-dbform-port" type="text" value={dbForm.port} onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))} className="font-mono" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Username</label>
-                                <input type="text" value={dbForm.username} onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" autoComplete="off" />
+                                <Label htmlFor="gen-dbform-username" className="block">Username</Label>
+                                <Input id="gen-dbform-username" type="text" value={dbForm.username} onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))} className="font-mono" autoComplete="off" />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Password</label>
-                                <input type="password" value={dbForm.password} onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" autoComplete="new-password" />
+                                <Label htmlFor="gen-dbform-password" className="block">Password</Label>
+                                <Input id="gen-dbform-password" type="password" value={dbForm.password} onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))} className="font-mono" autoComplete="new-password" />
                             </div>
                             <div className="col-span-2 space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Database Name</label>
-                                <input type="text" value={dbForm.dbName} onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
+                                <Label htmlFor="gen-dbform-dbname" className="block">Database Name</Label>
+                                <Input id="gen-dbform-dbname" type="text" value={dbForm.dbName} onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))} className="font-mono" />
                             </div>
                         </div>
-                        {setupError && <p className="text-red-400 font-mono text-[11px]">{setupError}</p>}
+                        {setupError && <p className="text-danger font-mono text-2xs">{setupError}</p>}
                         <div className="flex items-center gap-2 pt-1">
-                            <button onClick={handleSetupDb} disabled={setupInProgress} className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-white text-black hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button onClick={handleSetupDb} disabled={setupInProgress} className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                 {setupInProgress && <Loader2 className="w-3 h-3 animate-spin" />}
                                 {setupInProgress ? 'Connecting…' : 'Save & Connect'}
                             </button>
-                            <button onClick={() => setEmbedCheckState(null)} className="px-3 py-2 text-xs text-zinc-500 hover:text-white transition-colors">Cancel</button>
+                            <button onClick={() => setEmbedCheckState(null)} className="px-3 py-2 text-xs text-text-faint hover:text-text transition-colors">Cancel</button>
                         </div>
                     </div>
                 )}
 
                 {/* pgvector missing */}
                 {embedCheckState?.issue === 'no_pgvector' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
+                    <div className="p-3 bg-warning/10 border border-warning/20 text-warning text-xs space-y-2 rounded-md">
                         <p><strong>pgvector extension not installed.</strong> PostgreSQL is running but the vector extension is missing.</p>
                         <p>Connect to your database and run:</p>
                         <code className="block bg-surface-2 px-2 py-1.5 font-code text-text">CREATE EXTENSION vector;</code>
-                        <p className="text-amber-300/60">Or install the OS package first: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) / <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS), then run the SQL above.</p>
+                        <p className="text-warning/60">Or install the OS package first: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) / <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS), then run the SQL above.</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"
+                            className="mt-1 px-3 py-1 text-xs font-bold bg-warning/20 hover:bg-warning/30 text-warning border border-warning/30 transition-colors rounded-md"
                         >
                             Check again
                         </button>
@@ -377,75 +377,75 @@ export function GeneralTab({
 
                 {/* No DB URL configured — show fresh setup form */}
                 {embedCheckState?.issue === 'no_db' && (
-                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3 rounded-md">
+                    <div className="p-3 bg-surface-2/60 border border-border-strong text-xs space-y-3 rounded-md">
                         <div className="space-y-1">
-                            <p className="text-zinc-300 font-semibold">Set up a PostgreSQL database for code indexing</p>
-                            <p className="text-zinc-500">No database configured yet. Enter your PostgreSQL credentials and we'll create the database and enable pgvector.</p>
+                            <p className="text-text font-semibold">Set up a PostgreSQL database for code indexing</p>
+                            <p className="text-text-faint">No database configured yet. Enter your PostgreSQL credentials and we'll create the database and enable pgvector.</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Host</label>
-                                <input
+                                <Label htmlFor="gen-dbform-host" className="block">Host</Label>
+                                <Input id="gen-dbform-host"
                                     type="text"
                                     value={dbForm.host}
                                     onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
+                                    className="font-mono"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Port</label>
-                                <input
+                                <Label htmlFor="gen-dbform-port" className="block">Port</Label>
+                                <Input id="gen-dbform-port"
                                     type="text"
                                     value={dbForm.port}
                                     onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
+                                    className="font-mono"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Username</label>
-                                <input
+                                <Label htmlFor="gen-dbform-username" className="block">Username</Label>
+                                <Input id="gen-dbform-username"
                                     type="text"
                                     value={dbForm.username}
                                     onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
+                                    className="font-mono"
                                     autoComplete="off"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Password</label>
-                                <input
+                                <Label htmlFor="gen-dbform-password" className="block">Password</Label>
+                                <Input id="gen-dbform-password"
                                     type="password"
                                     value={dbForm.password}
                                     onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
+                                    className="font-mono"
                                     autoComplete="new-password"
                                 />
                             </div>
                             <div className="col-span-2 space-y-1">
-                                <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Database Name</label>
-                                <input
+                                <Label htmlFor="gen-dbform-dbname" className="block">Database Name</Label>
+                                <Input id="gen-dbform-dbname"
                                     type="text"
                                     value={dbForm.dbName}
                                     onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
+                                    className="font-mono"
                                 />
                             </div>
                         </div>
                         {setupError && (
-                            <p className="text-red-400 font-mono text-[11px]">{setupError}</p>
+                            <p className="text-danger font-mono text-2xs">{setupError}</p>
                         )}
                         <div className="flex items-center gap-2 pt-1">
                             <button
                                 onClick={handleSetupDb}
                                 disabled={setupInProgress}
-                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-white text-black hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {setupInProgress && <Loader2 className="w-3 h-3 animate-spin" />}
                                 {setupInProgress ? 'Creating…' : 'Create Database'}
                             </button>
                             <button
                                 onClick={() => setEmbedCheckState(null)}
-                                className="px-3 py-2 text-xs text-zinc-500 hover:text-white transition-colors"
+                                className="px-3 py-2 text-xs text-text-faint hover:text-text transition-colors"
                             >
                                 Cancel
                             </button>
@@ -455,11 +455,11 @@ export function GeneralTab({
 
                 {/* Generic connection error */}
                 {embedCheckState?.issue === 'connection_error' && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs space-y-2 rounded-md">
+                    <div className="p-3 bg-danger/10 border border-danger/20 text-danger text-xs space-y-2 rounded-md">
                         <p><strong>Check failed.</strong> {embedCheckState.detail}</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="px-3 py-1 text-xs font-bold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors rounded-md"
+                            className="px-3 py-1 text-xs font-bold bg-danger/20 hover:bg-danger/30 text-danger border border-danger/30 transition-colors rounded-md"
                         >
                             Try again
                         </button>
@@ -469,19 +469,19 @@ export function GeneralTab({
 
             {/* Bash Command Directories */}
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Allowed Directories</label>
-                <p className="text-xs text-zinc-600">
+                <Label size="sm" className="block">Allowed Directories</Label>
+                <p className="text-xs text-text-faint">
                     Directories the bash tool and filesystem MCP server can access.
                     Linked repos and vault are always included automatically.
                 </p>
                 {bashAllowedDirs.length > 0 && (
                     <div className="space-y-1">
                         {bashAllowedDirs.map((dir, i) => (
-                            <div key={i} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-md">
-                                <span className="text-xs font-mono text-zinc-300 truncate">{dir}</span>
+                            <div key={i} className="flex items-center justify-between bg-surface border border-border px-3 py-2 rounded-md">
+                                <span className="text-xs font-mono text-text truncate">{dir}</span>
                                 <button
                                     onClick={() => setBashAllowedDirs(bashAllowedDirs.filter((_, j) => j !== i))}
-                                    className="text-zinc-600 hover:text-red-400 transition-colors text-xs ml-2 flex-shrink-0"
+                                    className="text-text-faint hover:text-danger transition-colors text-xs ml-2 flex-shrink-0"
                                 >
                                     Remove
                                 </button>
@@ -490,7 +490,7 @@ export function GeneralTab({
                     </div>
                 )}
                 <div className="flex gap-2">
-                    <input
+                    <Input
                         type="text"
                         value={newDir}
                         onChange={e => setNewDir(e.target.value)}
@@ -501,7 +501,8 @@ export function GeneralTab({
                             }
                         }}
                         placeholder="/path/to/directory"
-                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-mono rounded-md"
+                        aria-label="Directory to allow"
+                        className="flex-1 font-mono"
                     />
                     <button
                         onClick={() => {
@@ -511,7 +512,7 @@ export function GeneralTab({
                             }
                         }}
                         disabled={!newDir.trim()}
-                        className="px-4 py-2.5 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-4 py-2.5 text-xs font-bold bg-surface hover:bg-surface-2 text-text transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         Add
                     </button>
@@ -520,12 +521,12 @@ export function GeneralTab({
 
             {/* Transform Step Python Runtime */}
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Transform Step Python Runtime</label>
+                <Label size="sm" className="block">Transform Step Python Runtime</Label>
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs text-zinc-600 mt-0.5">
-                            Where Transform-step Python code runs. <strong className="text-zinc-400">Docker</strong> (default) sandboxes execution with 512 MB / 1 CPU / 60s caps and no GPU access — safe but limited.
-                            <strong className="text-zinc-400"> Host</strong> runs Python directly on the host with full RAM, GPU, filesystem, and network.
+                        <p className="text-xs text-text-faint mt-0.5">
+                            Where Transform-step Python code runs. <strong className="text-text-muted">Docker</strong> (default) sandboxes execution with 512 MB / 1 CPU / 60s caps and no GPU access — safe but limited.
+                            <strong className="text-text-muted"> Host</strong> runs Python directly on the host with full RAM, GPU, filesystem, and network.
                         </p>
                     </div>
                     <button
@@ -536,13 +537,13 @@ export function GeneralTab({
                                 setTransformRuntime('docker');
                             }
                         }}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${transformRuntime === 'host' ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${transformRuntime === 'host' ? 'bg-warning' : 'bg-surface-2'}`}
                     >
-                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${transformRuntime === 'host' ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`} />
+                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${transformRuntime === 'host' ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`} />
                     </button>
                 </div>
                 {transformRuntime === 'host' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-start gap-2 rounded-md">
+                    <div className="p-3 bg-warning/10 border border-warning/20 text-warning text-xs flex items-start gap-2 rounded-md">
                         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                         <div>
                             <strong>Host mode active.</strong> Any Python in any Transform step now runs unsandboxed with full backend permissions. Only use on self-hosted instances you control.
@@ -594,12 +595,12 @@ export function GeneralTab({
 
             {/* Login & Security */}
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Login &amp; Security</label>
+                <Label size="sm" className="block">Login &amp; Security</Label>
 
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-zinc-300 font-medium">Require Login</p>
-                        <p className="text-xs text-zinc-600 mt-0.5">Protect Synapse with a username and password.</p>
+                        <p className="text-sm text-text font-medium">Require Login</p>
+                        <p className="text-xs text-text-faint mt-0.5">Protect Synapse with a username and password.</p>
                     </div>
                     <button
                         onClick={() => {
@@ -609,28 +610,28 @@ export function GeneralTab({
                             setLoginEnabled(!loginEnabled);
                             setLoginFormError('');
                         }}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${loginEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ml-4 ${loginEnabled ? 'bg-accent' : 'bg-surface-2'}`}
                     >
-                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${loginEnabled ? 'translate-x-6 bg-black' : 'translate-x-1 bg-zinc-400'}`} />
+                        <span className={`inline-block h-4 w-4 transform rounded-full transition-transform ${loginEnabled ? 'translate-x-6 bg-accent-fg' : 'translate-x-1 bg-text-muted'}`} />
                     </button>
                 </div>
 
                 {/* Configured state: show summary + actions */}
                 {loginEnabled && !showLoginForm && loginUsername && (
-                    <div className="p-3 bg-zinc-900 border border-zinc-800 space-y-2 rounded-md">
-                        <p className="text-xs text-zinc-400">
-                            Login enabled for user: <span className="text-white font-mono">{loginUsername}</span>
+                    <div className="p-3 bg-surface border border-border space-y-2 rounded-md">
+                        <p className="text-xs text-text-muted">
+                            Login enabled for user: <span className="text-text font-mono">{loginUsername}</span>
                         </p>
                         <div className="flex gap-4">
                             <button
                                 onClick={() => { setShowLoginForm(true); setLoginFormError(''); }}
-                                className="text-xs text-zinc-400 hover:text-white transition-colors"
+                                className="text-xs text-text-muted hover:text-text transition-colors"
                             >
                                 Change Password
                             </button>
                             <button
                                 onClick={() => onSaveLogin(false, '', '')}
-                                className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                                className="text-xs text-danger hover:opacity-80 transition-opacity"
                             >
                                 Disable Login
                             </button>
@@ -640,50 +641,51 @@ export function GeneralTab({
 
                 {/* Credentials form */}
                 {loginEnabled && (showLoginForm || !loginUsername) && (
-                    <div className="p-4 bg-zinc-900 border border-zinc-800 space-y-3 rounded-md">
-                        <p className="text-xs font-bold text-zinc-300">
+                    <div className="p-4 bg-surface border border-border space-y-3 rounded-md">
+                        <p className="text-xs font-bold text-text">
                             {loginUsername ? 'Update Credentials' : 'Set Login Credentials'}
                         </p>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Username</label>
-                            <input
+                            <Label htmlFor="gen-loginusername" className="block">Username</Label>
+                            <Input id="gen-loginusername"
                                 type="text"
                                 value={loginUsername}
                                 onChange={e => setLoginUsername(e.target.value)}
                                 autoComplete="off"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
+                                
                                 placeholder="admin"
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+                            <Label htmlFor="gen-login-password" className="block">
                                 {loginUsername ? 'New Password' : 'Password'}
-                            </label>
-                            <input
+                            </Label>
+                            <Input
+                                id="gen-login-password"
                                 type="password"
                                 value={loginPassword}
                                 onChange={e => setLoginPassword(e.target.value)}
                                 autoComplete="new-password"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
+                                
                                 placeholder={loginUsername ? 'Leave blank to keep current' : 'Min. 8 characters'}
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Confirm Password</label>
-                            <input
+                            <Label htmlFor="gen-loginconfirmpassword" className="block">Confirm Password</Label>
+                            <Input id="gen-loginconfirmpassword"
                                 type="password"
                                 value={loginConfirmPassword}
                                 onChange={e => setLoginConfirmPassword(e.target.value)}
                                 autoComplete="new-password"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
+                                
                             />
                         </div>
 
                         {loginFormError && (
-                            <p className="text-red-400 text-xs">{loginFormError}</p>
+                            <p className="text-danger text-xs">{loginFormError}</p>
                         )}
 
                         <div className="flex gap-2 pt-1">
@@ -712,7 +714,7 @@ export function GeneralTab({
                                     setLoginConfirmPassword('');
                                 }}
                                 disabled={isLoginSaving}
-                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-white text-black hover:bg-zinc-200 transition-all disabled:opacity-50"
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all disabled:opacity-50"
                             >
                                 {isLoginSaving && <Loader2 className="w-3 h-3 animate-spin" />}
                                 {isLoginSaving ? 'Saving…' : 'Save Login Settings'}
@@ -725,15 +727,15 @@ export function GeneralTab({
                                     setLoginConfirmPassword('');
                                     if (!loginUsername) setLoginEnabled(false);
                                 }}
-                                className="px-3 py-2 text-xs text-zinc-500 hover:text-white transition-colors"
+                                className="px-3 py-2 text-xs text-text-faint hover:text-text transition-colors"
                             >
                                 Cancel
                             </button>
                         </div>
 
-                        <p className="text-xs text-zinc-600 pt-1">
+                        <p className="text-xs text-text-faint pt-1">
                             Forgot your password? Run{' '}
-                            <code className="text-zinc-400 bg-zinc-950 px-1 font-code text-[11px]">synapse reset-password</code>
+                            <code className="text-text-muted bg-bg px-1 font-code text-2xs">synapse reset-password</code>
                             {' '}in your terminal.
                         </p>
                     </div>
@@ -744,7 +746,7 @@ export function GeneralTab({
                 <button
                     onClick={onSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isSaving ? 'Saving…' : 'Save Changes'}
