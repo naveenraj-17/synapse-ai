@@ -8,13 +8,22 @@ import {
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '@/store';
 import { setMcpServers } from '@/store/settingsSlice';
+import type { ToastTone } from '@/components/ui';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface McpToast {
-    show: boolean;
+/*
+ * The inline notice above the server list.
+ *
+ * Deliberately NOT the kit's floating `Toast`. "OAuth required — return here
+ * once authorised" is an instruction about this page, and a message that
+ * appears bottom-right and fades after four seconds is the wrong place for
+ * something the user has to come back and act on. Tone comes from the kit so
+ * there is still only one set of names for these three states.
+ */
+export interface McpNotice {
     message: string;
-    type: 'success' | 'warning' | 'error';
+    tone: ToastTone;
 }
 
 type DraftServer = {
@@ -33,8 +42,8 @@ interface McpServersTabProps {
     loadingMcp: boolean;
     isConnecting: boolean;
     lastConnected: boolean | null;
-    mcpToast: McpToast | null;
-    setMcpToast: (t: McpToast | null) => void;
+    notice: McpNotice | null;
+    onNotice: (message: string, tone?: ToastTone) => void;
     pendingServerName: string | null;      // remote server awaiting OAuth
     onPendingResolved: () => void;         // call when connected or timed-out
     draftMcpServer: DraftServer;
@@ -105,13 +114,10 @@ const TypePill = ({ type }: { type?: string }) => (
         : <span className="flex items-center gap-1 text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-md border border-zinc-700 uppercase"><Terminal className="h-2 w-2" />Local</span>
 );
 
-const toastStyles: Record<string, string> = {
-    success: 'bg-green-500/10 border-green-500/30 text-green-400',
-    warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300',
-    error: 'bg-red-500/10   border-red-500/30   text-red-400',
-};
-const ToastIcon: Record<string, React.ElementType> = {
-    success: CheckCircle, warning: AlertCircle, error: XCircle,
+const NOTICE_TONES: Record<ToastTone, { chip: string; icon: React.ElementType }> = {
+    success: { chip: 'bg-success-subtle border-success/40 text-success', icon: CheckCircle },
+    warning: { chip: 'bg-warning-subtle border-warning/40 text-warning', icon: AlertCircle },
+    danger: { chip: 'bg-danger-subtle border-danger/40 text-danger', icon: XCircle },
 };
 
 const inputCls = "w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700";
@@ -121,7 +127,7 @@ const monoInputCls = `${inputCls} font-mono`;
 
 export const McpServersTab = ({
     mcpServers, loadingMcp, isConnecting,
-    mcpToast, setMcpToast,
+    notice, onNotice,
     pendingServerName, onPendingResolved,
     draftMcpServer, setDraftMcpServer,
     onAddServer, onDeleteServer, onReconnectServer,
@@ -188,8 +194,7 @@ export const McpServersTab = ({
                 if (target?.status === 'connected') {
                     stopPolling();
                     onPendingResolved();
-                    setMcpToast({ show: true, message: `✓ ${pendingServerName} connected!`, type: 'success' });
-                    setTimeout(() => setMcpToast(null), 5000);
+                    onNotice(`${pendingServerName} connected`);
                     return;
                 }
             } catch { /* ignore */ }
@@ -261,10 +266,10 @@ export const McpServersTab = ({
             </div>
 
             {/* ── Inline Toast ── */}
-            {mcpToast?.show && (
-                <div className={`flex items-start gap-2.5 px-4 py-3 rounded-md border text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${toastStyles[mcpToast.type]}`}>
-                    {(() => { const Icon = ToastIcon[mcpToast.type]; return <Icon className="h-4 w-4 mt-0.5 shrink-0" />; })()}
-                    <span className="leading-relaxed">{mcpToast.message}</span>
+            {notice && (
+                <div className={`flex items-start gap-2.5 px-4 py-3 rounded-md border text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${NOTICE_TONES[notice.tone].chip}`}>
+                    {(() => { const Icon = NOTICE_TONES[notice.tone].icon; return <Icon className="h-4 w-4 mt-0.5 shrink-0" />; })()}
+                    <span className="leading-relaxed">{notice.message}</span>
                 </div>
             )}
 
@@ -323,6 +328,8 @@ export const McpServersTab = ({
                                         </button>
                                     )}
                                     <button onClick={() => onDeleteServer(server.name)}
+                                        aria-label={`Remove ${server.label || server.name}`}
+                                        title={`Remove ${server.label || server.name}`}
                                         className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-800 rounded-md transition-colors">
                                         <Trash className="h-4 w-4" />
                                     </button>

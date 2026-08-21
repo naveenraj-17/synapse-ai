@@ -151,6 +151,8 @@ export const CustomToolsTab = ({
                                 }
                                 <button
                                     onClick={() => onDeleteTool(t.name)}
+                                    aria-label={`Delete ${t.generalName || t.name}`}
+                                    title={`Delete ${t.generalName || t.name}`}
                                     className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100"
                                 >
                                     <Trash className="h-4 w-4" />

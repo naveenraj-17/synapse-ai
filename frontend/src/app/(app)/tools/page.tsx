@@ -1,13 +1,22 @@
-import { SettingsView } from '@/components/SettingsView';
+import { ToolsScreen } from '@/components/settings/ToolsScreen';
+import { Screen } from '@/components/app/Screen';
+import { navEntryFor } from '@/lib/nav';
 
 export const dynamic = 'force-dynamic';
 
 /*
- * Tools still reads its state from SettingsView — AgentsTab takes 13 props,
- * CustomToolsTab 17, McpServersTab 12, all drilled from one 1,182-line
- * component. Splitting that is pass two. The URL is already final, so that
- * change swaps this body and nothing else.
+ * A real page. It used to render <SettingsView initialTab="custom_tools" />, which
+ * meant this screen's state was held in a 1,087-line component alongside the
+ * Models tab's forty API-key fields and drilled back down as props.
+ *
+ * The <Screen> shell and the title both come from the nav entry, exactly as
+ * they did when SettingsView wrapped this — so the header is unchanged and
+ * there is still one place the words live.
  */
 export default function ToolsPage() {
-    return <SettingsView initialTab="custom_tools" />;
+    return (
+        <Screen nav={navEntryFor('custom_tools')!}>
+            <ToolsScreen />
+        </Screen>
+    );
 }

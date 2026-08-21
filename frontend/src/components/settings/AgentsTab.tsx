@@ -387,6 +387,8 @@ export const AgentsTab = ({
                                     e.stopPropagation();
                                     onDeleteAgent(a.id);
                                 }}
+                                aria-label={`Delete ${a.name}`}
+                                title={`Delete ${a.name}`}
                                 className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                                 <Trash className="h-3 w-3" />
