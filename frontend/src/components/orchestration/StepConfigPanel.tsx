@@ -31,10 +31,10 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
     const update = (patch: Partial<StepConfig>) => onUpdate({ ...step, ...patch });
     const otherSteps = allStepIds.filter((s) => s.id !== step.id);
 
-    const inputCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
-    const inputSmCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none";
-    const textareaCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none resize-y min-h-[80px]";
-    const selectCls = "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
+    const inputCls = "w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
+    const inputSmCls = "w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none";
+    const textareaCls = "w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-xs text-zinc-200 font-mono focus:border-blue-500 outline-none resize-y min-h-[80px]";
+    const selectCls = "w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 focus:border-blue-500 outline-none";
 
     return (
         <div className="w-80 bg-zinc-800 border-l border-zinc-700 overflow-y-auto flex flex-col">
@@ -95,7 +95,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {/* ===== LLM config ===== */}
                 {step.type === 'llm' && (
                     <>
-                        <div className="rounded bg-teal-950/40 border border-teal-800/40 px-3 py-2 text-[10px] text-teal-400 leading-relaxed">
+                        <div className="rounded-md bg-teal-950/40 border border-teal-800/40 px-3 py-2 text-[10px] text-teal-400 leading-relaxed">
                             <strong>Single LLM call</strong> — no agent, no tools. Great for summaries, rewrites, and lightweight reasoning between steps.
                         </div>
                         <div>
@@ -202,7 +202,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                                 <div key={branchIdx} className="flex items-center gap-2">
                                     <span className="text-[10px] text-purple-400 font-semibold w-5">B{branchIdx + 1}</span>
                                     <select
-                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                                         value={branch[0] || ''}
                                         onChange={(e) => {
                                             const newBranches = [...(step.parallel_branches || [])];
@@ -269,7 +269,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                                     <div key={idx} className="flex items-center gap-1">
                                         <span className="text-[10px] text-amber-400 w-4">{idx + 1}.</span>
                                         <select
-                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-200 outline-none"
+                                            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-0.5 text-xs text-zinc-200 outline-none"
                                             value={sid}
                                             onChange={(e) => {
                                                 const newIds = [...(step.loop_step_ids || [])];
@@ -311,11 +311,11 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {/* ===== TRANSFORM config ===== */}
                 {step.type === 'transform' && (
                     <div className="space-y-2">
-                        <div className="rounded bg-amber-950/40 border border-amber-800/40 px-3 py-2 text-[10px] text-amber-400 leading-relaxed">
+                        <div className="rounded-md bg-amber-950/40 border border-amber-800/40 px-3 py-2 text-[10px] text-amber-400 leading-relaxed">
                             <strong>Python execution</strong> — runs in Docker by default (512MB RAM, no network); switch to host mode in Settings → General to lift the sandbox. <code className="font-code">state</code> dict is injected. Assign to <code className="font-code">result</code> to write the output key.
                         </div>
                         <label className="text-xs text-zinc-400 block mb-1">Python Code</label>
-                        <div className="border border-zinc-700 rounded overflow-hidden h-[220px] focus-within:border-amber-600 transition-colors">
+                        <div className="border border-zinc-700 rounded-md overflow-hidden h-[220px] focus-within:border-amber-600 transition-colors">
                             <PythonCodeEditor
                                 value={step.transform_code || ''}
                                 onChange={(code) => update({ transform_code: code })}
@@ -332,7 +332,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {/* ===== EXTRACT JSON config ===== */}
                 {step.type === 'extract_json' && (
                     <div className="space-y-2">
-                        <div className="rounded bg-orange-950/40 border border-orange-800/40 px-3 py-2 text-[10px] text-orange-400 leading-relaxed">
+                        <div className="rounded-md bg-orange-950/40 border border-orange-800/40 px-3 py-2 text-[10px] text-orange-400 leading-relaxed">
                             <strong>Extract JSON</strong> — parses JSON from input text. Handles markdown fences (<code className="font-code">```json</code>), raw JSON, and multiple objects. Single object is stored directly; multiple objects are stored as an array.
                         </div>
                         <p className="text-[10px] text-zinc-500">Configure <em>Input Keys</em> below to specify which shared state values to scan. The extracted JSON will be stored in the <em>Output Key</em>.</p>
@@ -342,7 +342,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {/* ===== PRINT config ===== */}
                 {step.type === 'print' && (
                     <div className="space-y-2">
-                        <div className="rounded bg-lime-950/40 border border-lime-800/40 px-3 py-2 text-[10px] text-lime-400 leading-relaxed">
+                        <div className="rounded-md bg-lime-950/40 border border-lime-800/40 px-3 py-2 text-[10px] text-lime-400 leading-relaxed">
                             <strong>Print</strong> — stores your text or markdown into shared state. Use <code className="font-code">{'{state.key}'}</code> to embed values from previous steps.
                         </div>
                         <div>
@@ -430,7 +430,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                                 <label className="text-xs text-zinc-400 block mb-1">Max Turns</label>
                                 <input
                                     type="number"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-sm text-zinc-200 outline-none"
                                     value={step.max_turns ?? ''}
                                     placeholder="15"
                                     onChange={(e) => update({ max_turns: e.target.value === '' ? undefined : parseInt(e.target.value) })}
@@ -440,7 +440,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                                 <label className="text-xs text-zinc-400 block mb-1">Timeout (s)</label>
                                 <input
                                     type="number"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-sm text-zinc-200 outline-none"
                                     value={step.timeout_seconds ?? ''}
                                     placeholder="300"
                                     onChange={(e) => update({ timeout_seconds: e.target.value === '' ? undefined : parseInt(e.target.value) })}
@@ -451,7 +451,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                             <label className="text-xs text-zinc-400 block mb-1">Max Iterations (loop guard)</label>
                             <input
                                 type="number"
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-200 outline-none"
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-sm text-zinc-200 outline-none"
                                 value={step.max_iterations ?? ''}
                                 placeholder="3"
                                 onChange={(e) => update({ max_iterations: e.target.value === '' ? undefined : parseInt(e.target.value) })}
@@ -467,7 +467,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
             <div className="border-t border-zinc-700 p-3">
                 <button
                     onClick={onDelete}
-                    className="w-full py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                    className="w-full py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-md transition-colors"
                 >
                     Delete Step
                 </button>
@@ -573,7 +573,7 @@ function ToolStepConfig({ step, update, textareaCls, selectCls, availableModels 
 
     return (
         <div className="space-y-3">
-            <div className="rounded bg-purple-950/40 border border-purple-800/40 px-3 py-2 text-[10px] text-purple-400 leading-relaxed">
+            <div className="rounded-md bg-purple-950/40 border border-purple-800/40 px-3 py-2 text-[10px] text-purple-400 leading-relaxed">
                 <strong>Forced tool call</strong> — the LLM generates arguments for exactly one tool, then calls it. If the first attempt fails, the ReAct loop retries up to <em>Max Turns</em> times.
             </div>
             <div>
@@ -636,7 +636,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
             <div className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Caching</div>
 
             {responseCacheAllowed ? (
-                <div className="rounded bg-zinc-900/60 border border-zinc-700 px-3 py-2 space-y-2">
+                <div className="rounded-md bg-zinc-900/60 border border-zinc-700 px-3 py-2 space-y-2">
                     <label className="flex items-start gap-2 cursor-pointer">
                         <input
                             type="checkbox"
@@ -676,7 +676,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                                     <label className="text-[10px] text-zinc-500 block mb-0.5">TTL (seconds)</label>
                                     <input
                                         type="number"
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                                         value={step.cache_response_ttl_seconds ?? ''}
                                         placeholder="3600"
                                         onChange={(e) => update({ cache_response_ttl_seconds: e.target.value === '' ? undefined : parseInt(e.target.value) })}
@@ -690,7 +690,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                                             min={0.5}
                                             max={1}
                                             step={0.01}
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                                             value={step.cache_response_threshold ?? ''}
                                             placeholder="0.95"
                                             onChange={(e) => update({ cache_response_threshold: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
@@ -702,12 +702,12 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                     )}
                 </div>
             ) : (
-                <div className="rounded bg-zinc-900/30 border border-zinc-800 px-3 py-2 text-[10px] text-zinc-500 leading-relaxed">
+                <div className="rounded-md bg-zinc-900/30 border border-zinc-800 px-3 py-2 text-[10px] text-zinc-500 leading-relaxed">
                     Response cache is disabled for agent steps — skipping the ReAct loop would diverge shared state.
                 </div>
             )}
 
-            <div className="rounded bg-zinc-900/60 border border-zinc-700 px-3 py-2 space-y-2">
+            <div className="rounded-md bg-zinc-900/60 border border-zinc-700 px-3 py-2 space-y-2">
                 <label className="flex items-start gap-2 cursor-pointer">
                     <input
                         type="checkbox"
@@ -727,7 +727,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                         <label className="text-[10px] text-zinc-500 block mb-0.5">TTL (seconds)</label>
                         <input
                             type="number"
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                             value={step.cache_tool_ttl_seconds ?? ''}
                             placeholder="3600"
                             onChange={(e) => update({ cache_tool_ttl_seconds: e.target.value === '' ? undefined : parseInt(e.target.value) })}
@@ -742,7 +742,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
 /** Checkbox: on re-invocation, show every prior turn's inputs/tools/output instead of just the last. */
 function HistoryToggle({ step, update }: { step: StepConfig; update: (patch: Partial<StepConfig>) => void }) {
     return (
-        <div className="rounded bg-zinc-900/60 border border-zinc-700 px-3 py-2">
+        <div className="rounded-md bg-zinc-900/60 border border-zinc-700 px-3 py-2">
             <label className="flex items-start gap-2 cursor-pointer">
                 <input
                     type="checkbox"
@@ -857,7 +857,7 @@ function IfElseStepConfig({ step, update, otherSteps, inputCls, selectCls }: {
 }) {
     return (
         <div className="space-y-3">
-            <div className="rounded bg-yellow-950/40 border border-yellow-800/40 px-3 py-2 text-[10px] text-yellow-400 leading-relaxed">
+            <div className="rounded-md bg-yellow-950/40 border border-yellow-800/40 px-3 py-2 text-[10px] text-yellow-400 leading-relaxed">
                 <strong>If / Else</strong> — evaluates a Python condition against shared state. Routes to the True or False path based on the result.
             </div>
             <div>
@@ -900,7 +900,7 @@ function SwitchStepConfig({ step, update, otherSteps, inputCls, selectCls }: {
 }) {
     return (
         <div className="space-y-3">
-            <div className="rounded bg-cyan-950/40 border border-cyan-800/40 px-3 py-2 text-[10px] text-cyan-400 leading-relaxed">
+            <div className="rounded-md bg-cyan-950/40 border border-cyan-800/40 px-3 py-2 text-[10px] text-cyan-400 leading-relaxed">
                 <strong>Switch</strong> — evaluates an expression against shared state and matches the result to case values. Routes to the matching case or the default path.
             </div>
             <div>
@@ -980,9 +980,9 @@ function SwitchCaseEntry({
     const [localVal, setLocalVal] = useState(caseValue);
 
     return (
-        <div className="bg-zinc-900 rounded p-2 space-y-2">
+        <div className="bg-zinc-900 rounded-md p-2 space-y-2">
             <input
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono outline-none"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 font-mono outline-none"
                 value={localVal}
                 onChange={(e) => setLocalVal(e.target.value)}
                 onBlur={() => onRenameCase(localVal)}
@@ -990,7 +990,7 @@ function SwitchCaseEntry({
                 placeholder="Match value"
             />
             <select
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                 value={targetId ?? '__end__'}
                 onChange={(e) => onChangeTarget(e.target.value === '__end__' ? null : e.target.value)}
             >
@@ -1000,7 +1000,7 @@ function SwitchCaseEntry({
             <div className="text-right">
                 <button
                     onClick={onDelete}
-                    className="w-full py-1 text-xs font-semibold text-red-400 bg-red-900/5 border border-red-700 rounded hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                    className="w-full py-1 text-xs font-semibold text-red-400 bg-red-900/5 border border-red-700 rounded-md hover:bg-red-900/20 hover:text-red-300 transition-colors"
                     title="Delete this case"
                 >
                     <Trash2 size={12} className="inline-block mr-1" /> Delete Case
@@ -1027,10 +1027,10 @@ function RouteEntry({
     const [localDesc, setLocalDesc] = useState(description);
 
     return (
-        <div className="bg-zinc-900 rounded p-2 space-y-2">
+        <div className="bg-zinc-900 rounded-md p-2 space-y-2">
             <div className="space-y-2">
                 <input
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                     value={localLabel}
                     onChange={(e) => setLocalLabel(e.target.value)}
                     onBlur={() => onRename(localLabel)}
@@ -1038,7 +1038,7 @@ function RouteEntry({
                     placeholder="Label"
                 />
                 <select
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                     value={targetId ?? '__end__'}
                     onChange={(e) => onChangeTarget(e.target.value === '__end__' ? null : e.target.value)}
                 >
@@ -1046,7 +1046,7 @@ function RouteEntry({
                     {otherSteps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
                 <input
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-400 outline-none"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-[10px] text-zinc-400 outline-none"
                     value={localDesc}
                     onChange={(e) => setLocalDesc(e.target.value)}
                     onBlur={() => onChangeDescription(localDesc)}
@@ -1056,7 +1056,7 @@ function RouteEntry({
                 <div className="text-right">
                     <button
                         onClick={onDelete}
-                        className="w-full py-1 text-xs font-semibold text-red-400 bg-red-900/5 border border-red-700 rounded hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                        className="w-full py-1 text-xs font-semibold text-red-400 bg-red-900/5 border border-red-700 rounded-md hover:bg-red-900/20 hover:text-red-300 transition-colors"
                         title="Delete this route"
                     >
                         <Trash2 size={12} className="inline-block mr-1" /> Delete Route

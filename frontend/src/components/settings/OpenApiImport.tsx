@@ -211,7 +211,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                                     className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-zinc-900/60"
                                 >
                                     {selected[t.name] ? <CheckSquare className="h-4 w-4 text-emerald-400 shrink-0" /> : <Square className="h-4 w-4 text-zinc-600 shrink-0" />}
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
                                         t.method === 'GET' ? 'bg-sky-900/40 text-sky-300 border border-sky-800' :
                                         t.method === 'DELETE' ? 'bg-red-900/40 text-red-300 border border-red-800' :
                                         'bg-amber-900/30 text-amber-300 border border-amber-800/60'

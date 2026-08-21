@@ -52,7 +52,7 @@ function TreeNode({
     return (
         <div>
             <div
-                className={`group flex items-center gap-1.5 px-2 py-1 cursor-pointer transition-colors rounded text-xs
+                className={`group flex items-center gap-1.5 px-2 py-1 cursor-pointer transition-colors rounded-md text-xs
                     ${isSelected ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'}`}
                 style={{ paddingLeft: `${8 + depth * 16}px` }}
                 onClick={handleClick}

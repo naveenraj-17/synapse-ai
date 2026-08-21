@@ -78,22 +78,22 @@ const REMOTE_PRESETS: Preset[] = [
 
 const StatusBadge = ({ status }: { status?: string }) => {
     if (status === 'connecting') return (
-        <span className="flex items-center gap-1 text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 uppercase">
+        <span className="flex items-center gap-1 text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md border border-blue-500/30 uppercase">
             <Loader2 className="h-2.5 w-2.5 animate-spin" /> Connecting
         </span>
     );
     if (status === 'connected') return (
-        <span className="flex items-center gap-1 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 uppercase">
+        <span className="flex items-center gap-1 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-md border border-green-500/30 uppercase">
             <CheckCircle className="h-2.5 w-2.5" /> Active
         </span>
     );
     if (status === 'reauth_needed') return (
-        <span className="flex items-center gap-1 text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/30 uppercase">
+        <span className="flex items-center gap-1 text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-md border border-orange-500/30 uppercase">
             <ShieldAlert className="h-2.5 w-2.5" /> Re-Auth
         </span>
     );
     return (
-        <span className="flex items-center gap-1 text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/30 uppercase">
+        <span className="flex items-center gap-1 text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-md border border-yellow-500/30 uppercase">
             <XCircle className="h-2.5 w-2.5" /> Disconnected
         </span>
     );
@@ -101,8 +101,8 @@ const StatusBadge = ({ status }: { status?: string }) => {
 
 const TypePill = ({ type }: { type?: string }) => (
     type === 'remote'
-        ? <span className="flex items-center gap-1 text-[9px] bg-violet-500/15 text-violet-400 px-1.5 py-0.5 rounded border border-violet-500/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
-        : <span className="flex items-center gap-1 text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-700 uppercase"><Terminal className="h-2 w-2" />Local</span>
+        ? <span className="flex items-center gap-1 text-[9px] bg-violet-500/15 text-violet-400 px-1.5 py-0.5 rounded-md border border-violet-500/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
+        : <span className="flex items-center gap-1 text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-md border border-zinc-700 uppercase"><Terminal className="h-2 w-2" />Local</span>
 );
 
 const toastStyles: Record<string, string> = {
@@ -253,7 +253,7 @@ export const McpServersTab = ({
                     onClick={() => refreshServers()}
                     disabled={isRefreshing}
                     title="Refresh server statuses"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white rounded transition-colors disabled:opacity-50 shrink-0 mt-1"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white rounded-md transition-colors disabled:opacity-50 shrink-0 mt-1"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                     {isRefreshing ? 'Refreshing…' : 'Refresh'}
@@ -262,7 +262,7 @@ export const McpServersTab = ({
 
             {/* ── Inline Toast ── */}
             {mcpToast?.show && (
-                <div className={`flex items-start gap-2.5 px-4 py-3 rounded border text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${toastStyles[mcpToast.type]}`}>
+                <div className={`flex items-start gap-2.5 px-4 py-3 rounded-md border text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200 ${toastStyles[mcpToast.type]}`}>
                     {(() => { const Icon = ToastIcon[mcpToast.type]; return <Icon className="h-4 w-4 mt-0.5 shrink-0" />; })()}
                     <span className="leading-relaxed">{mcpToast.message}</span>
                 </div>
@@ -276,7 +276,7 @@ export const McpServersTab = ({
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading…
                     </div>
                 ) : mcpServers.length === 0 ? (
-                    <div className="p-8 text-center border border-dashed border-zinc-800 rounded bg-zinc-900/30">
+                    <div className="p-8 text-center border border-dashed border-zinc-800 rounded-md bg-zinc-900/30">
                         <Server className="h-8 w-8 mx-auto text-zinc-700 mb-2" />
                         <p className="text-zinc-500 text-sm">No servers added yet.</p>
                         <p className="text-zinc-700 text-xs mt-1">Pick a preset or fill the form below.</p>
@@ -284,7 +284,7 @@ export const McpServersTab = ({
                 ) : (
                     <div className="grid gap-3">
                         {mcpServers.map((server) => (
-                            <div key={server.name} className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded group">
+                            <div key={server.name} className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-md group">
                                 <div className="flex flex-col gap-1.5 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-bold text-white text-sm">{server.label || server.name}</span>
@@ -306,24 +306,24 @@ export const McpServersTab = ({
                                     )}
                                     {server.status === 'reauth_needed' && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Re-authenticate"
-                                            className="p-2 text-orange-400 hover:text-orange-300 hover:bg-zinc-800 rounded transition-colors">
+                                            className="p-2 text-orange-400 hover:text-orange-300 hover:bg-zinc-800 rounded-md transition-colors">
                                             <ShieldAlert className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     {(!server.status || server.status === 'disconnected') && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Retry connection"
-                                            className="p-2 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded transition-colors">
+                                            className="p-2 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors">
                                             <RefreshCw className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     {server.status === 'connected' && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Force reconnect (refresh stale session)"
-                                            className="p-2 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 rounded opacity-0 group-hover:opacity-100 transition-all">
+                                            className="p-2 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 rounded-md opacity-0 group-hover:opacity-100 transition-all">
                                             <RefreshCw className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     <button onClick={() => onDeleteServer(server.name)}
-                                        className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-800 rounded transition-colors">
+                                        className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-800 rounded-md transition-colors">
                                         <Trash className="h-4 w-4" />
                                     </button>
                                 </div>
@@ -363,7 +363,7 @@ export const McpServersTab = ({
                     <div className="flex flex-wrap gap-2">
                         {(serverType === 'stdio' ? STDIO_PRESETS : REMOTE_PRESETS).map(p => (
                             <button key={p.name + p.label} onClick={() => applyPreset(p)}
-                                className="px-3 py-1.5 text-[11px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white rounded transition-colors">
+                                className="px-3 py-1.5 text-[11px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white rounded-md transition-colors">
                                 {p.label}
                             </button>
                         ))}

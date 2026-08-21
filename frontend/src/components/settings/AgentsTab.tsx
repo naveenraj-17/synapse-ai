@@ -360,8 +360,8 @@ export const AgentsTab = ({
                             }}
                             className={`p-3 border cursor-pointer transition-all group relative
                             ${selectedAgentId === a.id
-                                    ? 'bg-zinc-900 border-white shadow-lg'
-                                    : 'bg-black border-zinc-800 hover:border-zinc-600'
+                                    ? 'bg-surface-2 border-accent shadow-lg'
+                                    : 'bg-surface border-border hover:border-border-strong'
                                 }`}
                         >
                             <div className="flex items-center gap-3">
@@ -419,7 +419,7 @@ export const AgentsTab = ({
                                         This is an <span className="text-purple-400 font-semibold">Orchestration Agent</span>. Its workflow, steps, and configuration are managed in the dedicated Orchestrations editor.
                                     </p>
                                 </div>
-                                <div className="px-5 py-3 border border-dashed border-purple-800/60 bg-purple-950/20 rounded text-[10px] text-purple-300 flex items-center gap-2">
+                                <div className="px-5 py-3 border border-dashed border-purple-800/60 bg-purple-950/20 rounded-md text-[10px] text-purple-300 flex items-center gap-2">
                                     <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                     Open the <strong>Orchestrations</strong> menu to edit this agent's workflow
                                 </div>
@@ -641,7 +641,7 @@ export const AgentsTab = ({
                                                         <div
                                                             onClick={() => setDraftAgent({ ...draftAgent, delegate_agent_ids: [] })}
                                                             className={`p-3 border cursor-pointer transition-all flex items-center gap-3
-                                                                ${allSelected ? 'bg-zinc-900 border-zinc-600' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                                                ${allSelected ? 'bg-surface-2 border-border-strong' : 'bg-surface border-border hover:border-border-strong'}`}
                                                         >
                                                             <div className={`w-3 h-3 border flex-shrink-0 flex items-center justify-center
                                                                 ${allSelected ? 'bg-green-500 border-green-500' : 'border-zinc-600'}`}
@@ -650,7 +650,7 @@ export const AgentsTab = ({
                                                                 <div className="text-xs font-bold text-white">All Agents</div>
                                                                 <div className="text-[9px] text-zinc-500">Allow delegation to any available agent</div>
                                                             </div>
-                                                            {allSelected && <span className="text-[9px] px-1.5 py-0.5 bg-green-900/50 text-green-400 border border-green-900 rounded">ACTIVE</span>}
+                                                            {allSelected && <span className="text-[9px] px-1.5 py-0.5 bg-green-900/50 text-green-400 border border-green-900 rounded-md">ACTIVE</span>}
                                                         </div>
 
                                                         {/* Individual agents */}
@@ -670,7 +670,7 @@ export const AgentsTab = ({
                                                                             setDraftAgent({ ...draftAgent, delegate_agent_ids: newIds });
                                                                         }}
                                                                         className={`p-3 border cursor-pointer transition-all
-                                                                            ${isSelected ? 'bg-zinc-900 border-zinc-600' : allSelected ? 'bg-zinc-900/30 border-zinc-800 opacity-60' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                                                            ${isSelected ? 'bg-surface-2 border-border-strong' : allSelected ? 'bg-surface/60 border-border opacity-60' : 'bg-surface border-border hover:border-border-strong'}`}
                                                                     >
                                                                         <div className="flex items-center gap-2">
                                                                             <div className={`w-3 h-3 border flex-shrink-0
@@ -680,7 +680,7 @@ export const AgentsTab = ({
                                                                                 <div className="text-xs font-bold text-white truncate">{a.name}</div>
                                                                                 <div className="text-[9px] text-zinc-500 truncate">{a.description}</div>
                                                                             </div>
-                                                                            <span className="text-[9px] px-1 bg-zinc-800 text-zinc-500 rounded capitalize flex-shrink-0">{a.type}</span>
+                                                                            <span className="text-[9px] px-1 bg-zinc-800 text-zinc-500 rounded-md capitalize flex-shrink-0">{a.type}</span>
                                                                         </div>
                                                                     </div>
                                                                 );
@@ -697,12 +697,12 @@ export const AgentsTab = ({
                                             /* ── Skeleton loader ── */
                                             <div className="grid grid-cols-2 gap-4">
                                                 {Array.from({ length: 8 }).map((_, i) => (
-                                                    <div key={i} className="border border-zinc-800 bg-black p-4 space-y-2 animate-pulse">
+                                                    <div key={i} className="border border-border bg-surface p-4 space-y-2 animate-pulse">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-3 h-3 rounded-sm bg-zinc-800" />
-                                                            <div className="h-2.5 bg-zinc-800 rounded w-24" />
+                                                            <div className="h-2.5 bg-zinc-800 rounded-md w-24" />
                                                         </div>
-                                                        <div className="h-2 bg-zinc-800/70 rounded w-32 ml-5" />
+                                                        <div className="h-2 bg-zinc-800/70 rounded-md w-32 ml-5" />
                                                     </div>
                                                 ))}
                                             </div>
@@ -732,10 +732,10 @@ export const AgentsTab = ({
                                                             ${isAutoGroup
                                                                         ? 'bg-zinc-900/60 border-blue-900/40'
                                                                         : allGroupEnabled
-                                                                            ? 'bg-zinc-900 border-zinc-600'
+                                                                            ? 'bg-surface-2 border-border-strong'
                                                                             : someEnabled
-                                                                                ? 'bg-zinc-900/50 border-zinc-700'
-                                                                                : 'bg-black border-zinc-800 opacity-50'
+                                                                                ? 'bg-surface-2/60 border-border-strong'
+                                                                                : 'bg-surface border-border opacity-60'
                                                                     }`}
                                                             >
                                                                 <div className={`p-4 flex items-center gap-2 transition-colors ${isAutoGroup ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-800/30'}`}
@@ -770,9 +770,9 @@ export const AgentsTab = ({
                                                                         </div>
                                                                     )}
                                                                     <span className="text-xs font-bold text-white truncate flex-1">{cap.label}</span>
-                                                                    {isAutoGroup && <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">DEFAULT</span>}
-                                                                    {!isAutoGroup && cap.toolType === 'custom' && <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 rounded">CUSTOM</span>}
-                                                                    {!isAutoGroup && cap.toolType === 'mcp' && <span className="text-[9px] px-1 bg-blue-900/50 text-blue-400 border border-blue-900 rounded">MCP</span>}
+                                                                    {isAutoGroup && <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/50 text-blue-400 border border-blue-900 rounded-md">DEFAULT</span>}
+                                                                    {!isAutoGroup && cap.toolType === 'custom' && <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 rounded-md">CUSTOM</span>}
+                                                                    {!isAutoGroup && cap.toolType === 'mcp' && <span className="text-[9px] px-1 bg-blue-900/50 text-blue-400 border border-blue-900 rounded-md">MCP</span>}
                                                                     {!isAutoGroup && hasMultipleTools && (
                                                                         <span className="text-[9px] text-zinc-500">{enabledCount}/{cap.tools.length}</span>
                                                                     )}
@@ -800,7 +800,7 @@ export const AgentsTab = ({
                                                                                 <div
                                                                                     key={tool.name}
                                                                                     onClick={() => !isToolAuto && toggleSingleTool(tool.name, cap)}
-                                                                                    className={`flex gap-2.5 py-1.5 px-2 rounded transition-colors ${isToolAuto ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-zinc-800/40'}`}
+                                                                                    className={`flex gap-2.5 py-1.5 px-2 rounded-md transition-colors ${isToolAuto ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-zinc-800/40'}`}
                                                                                 >
                                                                                     {isToolAuto ? (
                                                                                         <Lock className="w-2.5 h-2.5 text-blue-400 flex-shrink-0 mt-[3px]" />

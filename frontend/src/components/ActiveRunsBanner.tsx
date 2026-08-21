@@ -74,7 +74,7 @@ export function ActiveRunsBanner({ pollMs = 10000 }: { pollMs?: number }) {
                     <button
                         key={run.run_id}
                         onClick={() => router.push(`/orchestrations?run=${encodeURIComponent(run.run_id)}`)}
-                        className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] border transition-colors ${
+                        className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] border transition-colors ${
                             run.status === 'paused'
                                 ? 'bg-amber-950/40 border-amber-800/60 hover:bg-amber-900/40'
                                 : 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700'

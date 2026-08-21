@@ -168,7 +168,7 @@ function AgentStepResult({ msg, onCollectDataSubmit }: {
           </div>
           <button
             onClick={() => { navigator.clipboard.writeText(displayContent); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-purple-950/60 hover:bg-purple-900/60 text-purple-400 hover:text-purple-200"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-purple-950/60 hover:bg-purple-900/60 text-purple-400 hover:text-purple-200"
             title="Copy response"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -225,7 +225,7 @@ function AssistantBubble({ msg, agentName }: { msg: Message; agentName: string }
         )}
         <button
           onClick={() => { navigator.clipboard.writeText(msg.content); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-          className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-zinc-800/60 hover:bg-zinc-700/80 text-zinc-500 hover:text-zinc-200"
+          className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-zinc-800/60 hover:bg-zinc-700/80 text-zinc-500 hover:text-zinc-200"
           title="Copy response"
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -344,7 +344,7 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-full px-4 pb-36 pt-10 select-none">
+    <div className="flex flex-col items-center justify-center min-h-full px-4 pb-28 pt-6 md:pb-36 md:pt-10 select-none">
       {/* ── Welcome Examples Banner (12-day, session-dismissible) ── */}
       {showExamplesBanner && (
         <div className="w-full max-w-2xl mb-8 relative overflow-hidden rounded-sm border border-violet-700/50 bg-gradient-to-br from-violet-950 via-purple-950/95 to-indigo-950 backdrop-blur-sm shadow-lg shadow-violet-950/40">
@@ -1434,14 +1434,14 @@ export default function Home() {
                 <button
                   onClick={fetchSessions}
                   disabled={sessionsLoading}
-                  className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white transition-colors"
+                  className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-white transition-colors"
                   title="Refresh sessions"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", sessionsLoading && "animate-spin")} />
                 </button>
                 <button
                   onClick={() => setIsHistoryOpen(false)}
-                  className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white transition-colors"
+                  className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-white transition-colors"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1520,24 +1520,20 @@ export default function Home() {
 
       <div className="flex-1 flex flex-col w-full border-r border-zinc-800 relative">
         {/* Header */}
-        <header className="h-14 border-b border-zinc-800 bg-zinc-950 px-6 shrink-0 z-10">
-          <div className='w-full md:max-w-5xl mx-auto h-full flex items-center justify-between'>
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-3 w-3 shrink-0 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-              <h1 className="text-base font-bold tracking-widest uppercase text-zinc-100 flex items-center gap-2 min-w-0">
-                <span
-                  className="truncate max-w-[140px] md:max-w-[220px]"
-                  title={agentName}
-                >
-                  {agentName}
-                </span>
-                <span className="text-zinc-500 shrink-0">-</span>
-                <span className="text-zinc-400 shrink-0">Synapse AI</span>
+        <header className="h-14 shrink-0 border-b border-border bg-surface px-3 md:px-6 z-10">
+          <div className='w-full md:max-w-5xl mx-auto h-full flex items-center justify-between gap-2'>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-2 shrink-0 bg-success rounded-full animate-pulse"></div>
+              <h1
+                className="min-w-0 truncate text-sm font-semibold tracking-tight text-text"
+                title={agentName}
+              >
+                {agentName}
               </h1>
             </div>
             <div className="flex items-center">
               {/* Mode & Model Info */}
-              <div className="hidden md:flex items-center gap-4 text-xs text-zinc-400 uppercase tracking-wider border-r border-zinc-800 pr-4">
+              <div className="hidden lg:flex items-center gap-4 text-xs text-text-muted uppercase tracking-wider border-r border-border pr-4">
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400">Provider:</span>
                   <span className={cn("font-bold",
@@ -1566,7 +1562,7 @@ export default function Home() {
 
               {/* Status Indicators */}
               {/* Agents Hover Status */}
-              <div className="group relative flex items-center gap-2 cursor-pointer border-r border-zinc-800 pl-4 pr-4 hover:bg-zinc-900 transition-colors">
+              <div className="group relative hidden sm:flex items-center gap-2 cursor-pointer border-r border-border pl-4 pr-4 hover:bg-surface-2 transition-colors">
                 <span className="text-xs font-bold text-zinc-400 tracking-widest uppercase group-hover:text-zinc-200 transition-colors">AGENTS</span>
 
                 {/* Dropdown on Hover */}
@@ -1612,7 +1608,7 @@ export default function Home() {
 
               <button
                 onClick={handleNewChat}
-                className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
+                className="p-2 ml-2 hover:bg-zinc-900 rounded-md text-zinc-400 hover:text-white transition-colors"
                 title="New Chat"
               >
                 <Plus className="h-4 w-4" />
@@ -1620,7 +1616,7 @@ export default function Home() {
 
               <button
                 onClick={handleOpenHistory}
-                className="p-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
+                className="p-2 hover:bg-zinc-900 rounded-md text-zinc-400 hover:text-white transition-colors"
                 title="Chat History"
               >
                 <History className="h-4 w-4" />
@@ -1647,7 +1643,7 @@ export default function Home() {
               onDismissBanner={() => setShowExamplesBanner(false)}
             />
           ) : (
-            <div className="p-6 pb-36">
+            <div className="p-3 pb-32 md:p-6 md:pb-36">
               <div className="w-full md:max-w-5xl mx-auto space-y-6">
                 {messages.map((msg, idx) => renderMessage(msg, idx))}
 
@@ -1697,7 +1693,7 @@ export default function Home() {
         </div>
 
         {/* Input Area */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 pt-6 md:p-6 bg-gradient-to-t from-bg via-bg to-transparent">
           <div className="w-full md:max-w-5xl mx-auto">
             {/* Image Preview Strip */}
             {attachedImages.length > 0 && (
@@ -1779,7 +1775,8 @@ export default function Home() {
                     reader.readAsDataURL(file);
                   });
                 }}
-                placeholder={isLoading ? "Agent is processing..." : "Enter command... (Shift+Enter for new line)"}
+                placeholder={isLoading ? "Agent is processing…" : "Enter command…"}
+                title="Shift+Enter for a new line"
                 disabled={isLoading}
                 // The <form> above owns the focus ring for this control.
                 data-no-focus-ring

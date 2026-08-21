@@ -63,19 +63,19 @@ export const renderTextContent = (content: string) => {
                         const isInline = !className;
                         if (isInline) {
                             return (
-                                <code className="bg-zinc-800 text-emerald-400 px-1.5 py-0.5 rounded text-[13px] font-code" {...props}>
+                                <code className="bg-zinc-800 text-emerald-400 px-1.5 py-0.5 rounded-md text-[13px] font-code" {...props}>
                                     {children}
                                 </code>
                             );
                         }
                         return (
-                            <code className={cn("block bg-zinc-900 border border-zinc-800 rounded p-4 overflow-x-auto text-[13px] font-code text-zinc-200 my-3", className)} {...props}>
+                            <code className={cn("block bg-zinc-900 border border-zinc-800 rounded-md p-4 overflow-x-auto text-[13px] font-code text-zinc-200 my-3", className)} {...props}>
                                 {children}
                             </code>
                         );
                     },
                     pre: ({ children, ...props }) => (
-                        <pre className="font-code bg-zinc-900 border border-zinc-800 rounded p-0 overflow-x-auto my-3" {...props}>
+                        <pre className="font-code bg-zinc-900 border border-zinc-800 rounded-md p-0 overflow-x-auto my-3" {...props}>
                             {children}
                         </pre>
                     ),

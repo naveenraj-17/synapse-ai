@@ -1467,7 +1467,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                 <button
                                     key={type}
                                     onClick={() => addStep(type)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors capitalize"
+                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors capitalize"
                                 >
                                     <Icon size={12} />
                                     {meta.label}
@@ -1650,12 +1650,12 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => { navigator.clipboard.writeText(isJson ? formattedJson : content); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                            className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-zinc-700"
+                            className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded-md hover:bg-zinc-700"
                             title="Copy to clipboard"
                         >
                             {copied ? <Check size={15} className="text-green-400" /> : <Copy size={15} />}
                         </button>
-                        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded hover:bg-zinc-700">
+                        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded-md hover:bg-zinc-700">
                             <X size={15} />
                         </button>
                     </div>
@@ -1694,8 +1694,8 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
                                 code: ({ children, className }) => {
                                     const isBlock = className?.includes('language-');
                                     return isBlock
-                                        ? <code className={`block bg-zinc-800 rounded px-3 py-2 text-xs font-code text-zinc-200 overflow-x-auto ${className}`}>{children}</code>
-                                        : <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-code text-emerald-300">{children}</code>;
+                                        ? <code className={`block bg-zinc-800 rounded-md px-3 py-2 text-xs font-code text-zinc-200 overflow-x-auto ${className}`}>{children}</code>
+                                        : <code className="bg-zinc-800 px-1.5 py-0.5 rounded-md text-xs font-code text-emerald-300">{children}</code>;
                                 },
                                 pre: ({ children }) => <pre className="font-code bg-zinc-800/60 rounded-lg p-3 mb-3 overflow-x-auto border border-zinc-700/50">{children}</pre>,
                                 blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-3 text-zinc-400 italic">{children}</blockquote>,
@@ -1800,7 +1800,7 @@ function BottomPanel({
                 onMouseDown={onDragHandleMouseDown}
                 className="h-1.5 w-full cursor-row-resize bg-zinc-800 hover:bg-blue-500/40 transition-colors flex-shrink-0 group flex items-center justify-center"
             >
-                <div className="w-8 h-0.5 rounded bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
+                <div className="w-8 h-0.5 rounded-md bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
             </div>
             {/* Section tabs */}
             <div className="flex border-b border-zinc-800 flex-shrink-0">
@@ -1835,7 +1835,7 @@ function BottomPanel({
                 >
                     Recent Runs
                     {pastRuns.length > 0 && (
-                        <span className="ml-1.5 text-[10px] bg-zinc-700 text-zinc-400 rounded-full px-1.5 py-0.5">
+                        <span className="ml-1.5 text-[10px] bg-zinc-700 text-zinc-400 rounded-md px-1.5 py-0.5">
                             {pastRuns.length}
                         </span>
                     )}
@@ -1858,7 +1858,7 @@ function BottomPanel({
                             <label className="text-xs text-zinc-400 block mb-1">Max Total Turns</label>
                             <input
                                 type="number"
-                                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 outline-none"
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 outline-none"
                                 value={draft.max_total_turns}
                                 onChange={(e) => setDraft({ ...draft, max_total_turns: parseInt(e.target.value) || 100 })}
                             />
@@ -1867,7 +1867,7 @@ function BottomPanel({
                             <label className="text-xs text-zinc-400 block mb-1">Timeout (minutes)</label>
                             <input
                                 type="number"
-                                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 outline-none"
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 outline-none"
                                 value={draft.timeout_minutes}
                                 onChange={(e) => setDraft({ ...draft, timeout_minutes: parseInt(e.target.value) || 30 })}
                             />
@@ -1877,7 +1877,7 @@ function BottomPanel({
                             <input
                                 type="number"
                                 step="0.01"
-                                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 outline-none"
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-sm text-zinc-200 outline-none"
                                 value={draft.max_total_cost_usd ?? ''}
                                 onChange={(e) => setDraft({ ...draft, max_total_cost_usd: e.target.value ? parseFloat(e.target.value) : null })}
                                 placeholder="No limit"
@@ -1893,7 +1893,7 @@ function BottomPanel({
                             <div className="text-zinc-600 italic text-xs">No runs yet.</div>
                         ) : (
                             pastRuns.slice(0, 20).map(r => (
-                                <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded bg-zinc-800/50">
+                                <div key={r.run_id} className="flex items-center gap-2 text-[11px] py-1 px-2 rounded-md bg-zinc-800/50">
                                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                                         r.status === 'completed' ? 'bg-green-400' :
                                         r.status === 'failed'    ? 'bg-red-400' :
@@ -1910,7 +1910,7 @@ function BottomPanel({
                                     {(r.status === 'failed' || r.status === 'cancelled') && (
                                         <button
                                             onClick={() => { onRestoreRun(r); setActiveSection('run'); }}
-                                            className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded"
+                                            className="px-2 py-0.5 text-[10px] bg-orange-600 hover:bg-orange-500 text-white rounded-md"
                                         >
                                             Resume
                                         </button>
@@ -1928,7 +1928,7 @@ function BottomPanel({
                         {(runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled') && (
                             <div className="flex gap-2">
                                 <input
-                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 outline-none"
+                                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-xs text-zinc-200 outline-none"
                                     value={runInput}
                                     onChange={(e) => setRunInput(e.target.value)}
                                     placeholder="Initial input for the orchestration..."
@@ -1937,7 +1937,7 @@ function BottomPanel({
                                 {(runStatus === 'failed' || runStatus === 'cancelled') && runId && (
                                     <button
                                         onClick={onResumeRun}
-                                        className="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-500 text-white rounded whitespace-nowrap"
+                                        className="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-500 text-white rounded-md whitespace-nowrap"
                                     >
                                         Resume from failure
                                     </button>
@@ -1947,11 +1947,11 @@ function BottomPanel({
 
                         {/* Human input prompt */}
                         {humanPrompt && (
-                            <div className="bg-amber-900/20 border border-amber-700/50 rounded p-3 space-y-2">
+                            <div className="bg-amber-900/20 border border-amber-700/50 rounded-md p-3 space-y-2">
                                 {humanContext && (
                                     <div>
                                         <div
-                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
+                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t-md p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
                                             style={{ height: humanContextHeight }}
                                         >
                                             <ReactMarkdown
@@ -1959,16 +1959,16 @@ function BottomPanel({
                                                 components={{
                                                     p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
                                                     a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded">{children}</code>,
+                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded-md">{children}</code>,
                                                     strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
                                                 }}
                                             >{humanContext}</ReactMarkdown>
                                         </div>
                                         <div
                                             onMouseDown={onContextDragMouseDown}
-                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-blue-500/40 transition-colors rounded-b border border-zinc-700/50 flex items-center justify-center group"
+                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-blue-500/40 transition-colors rounded-b-md border border-zinc-700/50 flex items-center justify-center group"
                                         >
-                                            <div className="w-8 h-0.5 rounded bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
+                                            <div className="w-8 h-0.5 rounded-md bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
                                         </div>
                                     </div>
                                 )}
@@ -1984,7 +1984,7 @@ function BottomPanel({
                                 </div>
                                 <div className="flex gap-2">
                                     <input
-                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 outline-none"
+                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-xs text-zinc-200 outline-none"
                                         value={humanResponse}
                                         onChange={(e) => setHumanResponse(e.target.value)}
                                         placeholder="Your response..."
@@ -1992,7 +1992,7 @@ function BottomPanel({
                                     />
                                     <button
                                         onClick={onSubmitHuman}
-                                        className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded"
+                                        className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-md"
                                     >
                                         Submit
                                     </button>
@@ -2002,7 +2002,7 @@ function BottomPanel({
 
                         {/* Live activity: what the model is doing right now */}
                         {runStatus === 'running' && liveActivity && (
-                            <div className="flex items-center gap-2 text-[11px] text-sky-300/90 bg-sky-950/30 border border-sky-900/40 rounded px-2.5 py-1.5">
+                            <div className="flex items-center gap-2 text-[11px] text-sky-300/90 bg-sky-950/30 border border-sky-900/40 rounded-md px-2.5 py-1.5">
                                 <Loader2 size={11} className="animate-spin shrink-0" />
                                 <span className="truncate">{liveActivity}</span>
                             </div>
@@ -2023,7 +2023,7 @@ function BottomPanel({
                                                             🔧 {entry.tool_name}
                                                             {entry.step_name && <span className="text-zinc-500 text-[10px]"> · {entry.step_name}</span>}
                                                         </summary>
-                                                        <pre className="font-code bg-zinc-800/50 p-1 rounded mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
+                                                        <pre className="font-code bg-zinc-800/50 p-1 rounded-md mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
                                                             {JSON.stringify(entry.args, null, 2)}
                                                         </pre>
                                                     </details>
@@ -2085,7 +2085,7 @@ function BottomPanel({
                                                             {isReasoning ? '🧠' : '💬'} {firstLine}{entry.content.length > firstLine.length ? '…' : ''}
                                                             {entry.step_name && <span className="text-zinc-600"> · {entry.step_name}</span>}
                                                         </summary>
-                                                        <div className="mt-0.5 bg-zinc-800/40 border border-zinc-800 rounded p-2 text-[10px] text-zinc-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
+                                                        <div className="mt-0.5 bg-zinc-800/40 border border-zinc-800 rounded-md p-2 text-[10px] text-zinc-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
                                                             {entry.content}
                                                         </div>
                                                     </details>
@@ -2107,8 +2107,8 @@ function BottomPanel({
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     p: ({ children }) => <span>{children}</span>,
-                                                    code: ({ children }) => <code className="font-code bg-zinc-800 px-1 rounded text-[10px]">{children}</code>,
-                                                    pre: ({ children }) => <pre className="font-code bg-zinc-800 p-1 rounded mt-0.5 overflow-x-auto">{children}</pre>,
+                                                    code: ({ children }) => <code className="font-code bg-zinc-800 px-1 rounded-md text-[10px]">{children}</code>,
+                                                    pre: ({ children }) => <pre className="font-code bg-zinc-800 p-1 rounded-md mt-0.5 overflow-x-auto">{children}</pre>,
                                                     a: ({ href, children }) => <a href={href} className="underline opacity-70" target="_blank" rel="noreferrer">{children}</a>,
                                                 }}
                                             >{entry}</ReactMarkdown>

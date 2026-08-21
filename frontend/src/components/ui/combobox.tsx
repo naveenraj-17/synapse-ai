@@ -115,6 +115,11 @@ export function Combobox<T extends string = string>({
               <Command.Input
                 autoFocus
                 placeholder={searchPlaceholder}
+                // The popover is the focused surface — it has a border, a
+                // shadow and a highlighted item. A ring around the field inside
+                // it is a second box saying the same thing, and it is the first
+                // thing you see because the field is autofocused on open.
+                data-no-focus-ring
                 className="h-9 w-full bg-transparent text-sm text-text outline-none placeholder:text-text-faint"
               />
             </div>
@@ -145,7 +150,7 @@ export function Combobox<T extends string = string>({
                         setOpen(false);
                       }}
                       className={cn(
-                        "relative flex cursor-pointer select-none flex-col rounded px-2 py-1.5 pr-8 text-sm text-text outline-none",
+                        "relative flex cursor-pointer select-none flex-col rounded-md px-2 py-1.5 pr-8 text-sm text-text outline-none",
                         "data-[selected=true]:bg-surface-2",
                         "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-45",
                         option.value === value && "text-accent",

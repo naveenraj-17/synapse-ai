@@ -89,7 +89,7 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                 return (
                     <input
                         type="number"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
                         value={entry.default === '' || entry.default == null ? '' : Number(entry.default as number)}
                         onChange={(e) => {
                             const v = e.target.value;
@@ -101,7 +101,7 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
             case 'boolean':
                 return (
                     <select
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
                         value={entry.default === true ? 'true' : 'false'}
                         onChange={(e) => updateEntry(key, { default: e.target.value === 'true' })}
                     >
@@ -121,7 +121,7 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                 const hasError = !!jsonErrors[key];
                 return (
                     <textarea
-                        className={`w-full bg-zinc-900 border rounded px-2 py-1 text-xs text-zinc-300 outline-none font-mono resize-y min-h-[48px] ${hasError ? 'border-red-500/60' : 'border-zinc-700'}`}
+                        className={`w-full bg-zinc-900 border rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono resize-y min-h-[48px] ${hasError ? 'border-red-500/60' : 'border-zinc-700'}`}
                         value={display}
                         onChange={(e) => handleJsonChange(key, e.target.value)}
                         placeholder={entry.type === 'list' ? '[]' : '{}'}
@@ -134,7 +134,7 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                 return (
                     <input
                         type="text"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
                         value={(entry.default as string) ?? ''}
                         onChange={(e) => updateEntry(key, { default: e.target.value })}
                         placeholder="Default value"
@@ -155,17 +155,17 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                 <div className="text-xs text-zinc-600 italic">No state keys defined. Steps will still work with implicit state.</div>
             )}
             {entries.map(([key, entry]) => (
-                <div key={key} className="flex items-start gap-2 bg-zinc-800/50 rounded p-2">
+                <div key={key} className="flex items-start gap-2 bg-zinc-800/50 rounded-md p-2">
                     <div className="flex-1 space-y-1">
                         <div className="flex gap-2">
                             <input
-                                className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono outline-none"
+                                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 font-mono outline-none"
                                 value={key}
                                 onChange={(e) => updateKey(key, e.target.value)}
                                 placeholder="key_name"
                             />
                             <select
-                                className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 outline-none"
+                                className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
                                 value={entry.type}
                                 onChange={(e) => changeType(key, e.target.value)}
                             >
@@ -173,7 +173,7 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                             </select>
                         </div>
                         <input
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 outline-none"
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none"
                             value={entry.description}
                             onChange={(e) => updateEntry(key, { description: e.target.value })}
                             placeholder="Description..."

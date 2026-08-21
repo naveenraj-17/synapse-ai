@@ -167,7 +167,7 @@ export function SearchInput({
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-text-faint transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-text-faint transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           <X className="size-3.5" aria-hidden />
         </button>

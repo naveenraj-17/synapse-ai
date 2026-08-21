@@ -39,7 +39,7 @@ export function Checkbox({
       disabled={disabled}
       aria-label={label}
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
+        "flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors",
         "border-border-strong bg-surface hover:border-accent",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
         "data-[state=checked]:border-accent data-[state=checked]:bg-accent",

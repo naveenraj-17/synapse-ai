@@ -74,7 +74,7 @@ export function MenuItem({
         setTimeout(onSelect, 0);
       }}
       className={cn(
-        "flex cursor-pointer select-none items-center gap-2.5 rounded px-2 py-1.5 text-sm outline-none",
+        "flex cursor-pointer select-none items-center gap-2.5 rounded-md px-2 py-1.5 text-sm outline-none",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
         tone === "danger"
           ? "text-danger data-[highlighted]:bg-danger-subtle"

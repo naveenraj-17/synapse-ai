@@ -35,7 +35,7 @@ export function NotificationBell({ placement = 'below-right' }: {
         <div className="relative" ref={panelRef}>
             <button
                 onClick={() => setOpen(o => !o)}
-                className="relative p-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
+                className="relative p-2 hover:bg-zinc-900 rounded-md text-zinc-400 hover:text-white transition-colors"
                 title="Notifications"
             >
                 <Bell className="h-4 w-4" />

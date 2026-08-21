@@ -22,6 +22,24 @@
   --ui-font: var(--font-inter);
   --code-font: var(--font-geist-mono);
 
+  /* ── Corner radius: one knob ─────────────────────────────────────────────
+   * 0px is sharp. Set it to 6px and the entire app becomes rounded — every
+   * button, input, card, dialog, popup and badge — because the whole `rounded-*`
+   * scale below is derived from this and nothing hard-codes a corner.
+   *
+   * Sharp is the current choice. Radius is the weakest carrier of personality
+   * anyway: a product reads as itself through density, type, contrast and
+   * restraint, not its corners. What sharp does carry is *register* — precise
+   * and technical, which is what a tool with a terminal composer and a log
+   * viewer is. Rounded would not cost the personality; it would move the
+   * register toward consumer software.
+   *
+   * `rounded-full` deliberately does NOT follow this. It is reserved for things
+   * that are actually circular — status dots, avatars, count bubbles and switch
+   * tracks — which stay round in either mode.
+   * -------------------------------------------------------------------- */
+  --ui-radius: 0px;
+
   /* ── Surfaces, text, borders ─────────────────────────────────────────── */
   --bg: #09090b;            /* zinc-950 */
   --surface: #18181b;       /* zinc-900 */
@@ -80,6 +98,15 @@
      agree. 11px is the one addition: there is nothing below text-xs, and there
      are ~467 hard-coded 9/10/11px labels still to land on it. */
   --text-2xs: 11px;
+
+  /* Derived from --ui-radius, so the scale keeps its proportions at any knob
+     setting and collapses to square at 0. */
+  --radius-xs: calc(var(--ui-radius) * 0.5);
+  --radius-sm: calc(var(--ui-radius) * 0.75);
+  --radius-md: var(--ui-radius);
+  --radius-lg: calc(var(--ui-radius) * 1.5);
+  --radius-xl: calc(var(--ui-radius) * 2);
+  --radius-2xl: calc(var(--ui-radius) * 2.5);
 
   --color-bg: var(--bg);
   --color-surface: var(--surface);

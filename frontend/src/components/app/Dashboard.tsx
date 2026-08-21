@@ -181,7 +181,7 @@ export function Dashboard() {
                                         </div>
                                         <div className="h-2 w-full rounded-[4px] bg-surface-2">
                                             <div
-                                                className="h-2 rounded-r-[4px] bg-accent"
+                                                className="h-2 rounded-r-md-[4px] bg-accent"
                                                 style={{ width: `${maxCost > 0 ? Math.max(2, (m.estimated_cost / maxCost) * 100) : 0}%` }}
                                             />
                                         </div>

@@ -74,7 +74,7 @@ function ActivityGroup({ events, isLive }: ActivityGroupProps) {
                         <summary className="text-[11px] text-violet-400 cursor-pointer list-none font-mono truncate">
                             {msg.toolName?.replace(/_/g, ' ')}
                         </summary>
-                        <pre className="font-code bg-zinc-800/60 rounded p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
+                        <pre className="font-code bg-zinc-800/60 rounded-md p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
                             {JSON.stringify(msg.toolArgs, null, 2)}
                         </pre>
                     </details>
@@ -528,7 +528,7 @@ export function BuilderPanel({
                         if (msg.kind === 'banner_agent') {
                             return (
                                 <div key={idx} className="flex justify-center">
-                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800/60 border border-zinc-700/40 text-zinc-500 text-[10px]">
+                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-zinc-800/60 border border-zinc-700/40 text-zinc-500 text-[10px]">
                                         <CheckCircle2 size={10} className="text-emerald-500" />
                                         {msg.bannerText}
                                     </div>
@@ -587,12 +587,12 @@ export function BuilderPanel({
                         ) : (
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 {selectedNames.map((n) => (
-                                    <span key={n} className="text-[11px] px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-700/40">
+                                    <span key={n} className="text-[11px] px-2 py-0.5 rounded-md bg-purple-900/50 text-purple-300 border border-purple-700/40">
                                         {n}
                                     </span>
                                 ))}
                                 {canCreateAgents && (
-                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-700/40 flex items-center gap-1">
+                                    <span className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-900/50 text-emerald-400 border border-emerald-700/40 flex items-center gap-1">
                                         <Plus size={9} /> new agents
                                     </span>
                                 )}
@@ -615,7 +615,7 @@ export function BuilderPanel({
                                     : 'bg-zinc-900 border-zinc-700/60 hover:border-zinc-600 hover:bg-zinc-800/60'
                             }`}
                         >
-                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                            <div className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                                 canCreateAgents ? 'bg-emerald-600 border-emerald-600' : 'border-zinc-600'
                             }`}>
                                 {canCreateAgents && (
@@ -643,7 +643,7 @@ export function BuilderPanel({
                                                     : 'bg-zinc-900 border-zinc-700/60 hover:border-zinc-600 hover:bg-zinc-800/60'
                                             }`}
                                         >
-                                            <div className={`mt-0.5 w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                            <div className={`mt-0.5 w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                                                 selected ? 'bg-purple-600 border-purple-600' : 'border-zinc-600'
                                             }`}>
                                                 {selected && (
@@ -657,7 +657,7 @@ export function BuilderPanel({
                                                 {agent.description ? (
                                                     <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-2 leading-relaxed">{agent.description}</p>
                                                 ) : (
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border mt-0.5 inline-block ${typeColor(agent.type || 'conversational')}`}>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md border mt-0.5 inline-block ${typeColor(agent.type || 'conversational')}`}>
                                                         {agent.type || 'conversational'}
                                                     </span>
                                                 )}

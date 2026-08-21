@@ -41,7 +41,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded font-medium",
+        "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-md font-medium",
         size === "md" ? "px-2 py-0.5 text-xs" : "px-1.5 py-0.5 text-[0.6875rem]",
         TONES[tone].chip,
         className,
@@ -77,7 +77,7 @@ export function Tag({
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${typeof children === "string" ? children : "tag"}`}
-          className="rounded p-0.5 text-text-faint transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="rounded-md p-0.5 text-text-faint transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           <X className="size-3" aria-hidden />
         </button>

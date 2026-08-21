@@ -180,7 +180,7 @@ function StepNodeComponent({ data, selected }: { data: any; selected?: boolean }
                                 : rate >= 0.4 ? 'text-amber-400 bg-amber-950/40 border-amber-800/40'
                                 : 'text-zinc-400 bg-zinc-900 border-zinc-700';
                     return (
-                        <div className={`text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${color}`}>
+                        <div className={`text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${color}`}>
                             <span>cache:</span>
                             <span className="font-mono">{hits}/{total}</span>
                         </div>

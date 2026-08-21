@@ -203,7 +203,7 @@ export function VaultTextarea({ value, onChange, className, ...rest }: VaultText
         <div
             id="vault-mention-dropdown"
             style={{ bottom: dropPos.bottom, left: dropPos.left, width: Math.max(dropPos.width, 288) }}
-            className="fixed z-[9999] bg-zinc-900 border border-zinc-700 shadow-2xl rounded overflow-hidden"
+            className="fixed z-[9999] bg-zinc-900 border border-zinc-700 shadow-2xl rounded-md overflow-hidden"
         >
             {/* Header */}
             <div className="px-3 py-1.5 text-[10px] text-zinc-500 border-b border-zinc-800 font-mono flex items-center gap-1.5">
@@ -237,7 +237,7 @@ export function VaultTextarea({ value, onChange, className, ...rest }: VaultText
                                 <div className="text-xs font-medium text-zinc-200 truncate">{file.name}</div>
                                 <div className="text-[10px] text-zinc-500 truncate font-mono">{file.path}</div>
                             </div>
-                            <span className={`text-[9px] px-1 py-0.5 rounded font-mono flex-shrink-0 ${
+                            <span className={`text-[9px] px-1 py-0.5 rounded-md font-mono flex-shrink-0 ${
                                 file.ext === '.json' ? 'bg-amber-900/40 text-amber-400'
                                 : file.ext === '.txt' ? 'bg-zinc-800 text-zinc-400'
                                 : 'bg-blue-900/40 text-blue-400'

@@ -281,7 +281,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 {showPackages && (
                     <div className="flex flex-wrap gap-1.5 pt-1 border-t border-zinc-800">
                         {PACKAGES.map(pkg => (
-                            <span key={pkg} className="text-[10px] font-mono bg-zinc-900 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">
+                            <span key={pkg} className="text-[10px] font-mono bg-zinc-900 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-md">
                                 {pkg}
                             </span>
                         ))}

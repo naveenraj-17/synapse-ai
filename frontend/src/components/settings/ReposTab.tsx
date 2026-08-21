@@ -431,7 +431,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                             <button
                                                 onClick={e => handleStop(repo.id, e)}
                                                 title={isStopping ? 'Force reset stuck status' : 'Stop Indexing'}
-                                                className={`p-2 transition-colors rounded ${
+                                                className={`p-2 transition-colors rounded-md ${
                                                     isStopping
                                                         ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10'
                                                         : 'text-red-400 hover:text-red-300 hover:bg-red-500/10'
@@ -444,7 +444,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                             <button
                                                 onClick={e => handleReindex(repo.id, e)}
                                                 title="Re-Index"
-                                                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors rounded"
+                                                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors rounded-md"
                                             >
                                                 <RefreshCw className="w-4 h-4" />
                                             </button>
@@ -453,7 +453,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                             onClick={e => { e.stopPropagation(); setConfirmDeleteId(repo.id); }}
                                             disabled={isIndexing && !isStopping}
                                             title={isIndexing && !isStopping ? 'Cannot delete while indexing' : 'Delete'}
-                                            className={`p-2 transition-colors rounded ${
+                                            className={`p-2 transition-colors rounded-md ${
                                                 isIndexing && !isStopping
                                                     ? 'text-zinc-700 cursor-not-allowed'
                                                     : 'text-zinc-400 hover:text-red-500 hover:bg-red-500/10'
@@ -469,7 +469,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                 )}
 
                                 {repo.status === 'error' && repo.error_message && (
-                                    <div className="mt-3 p-3 bg-red-500/5 border border-red-500/20 rounded">
+                                    <div className="mt-3 p-3 bg-red-500/5 border border-red-500/20 rounded-md">
                                         <p className="text-xs text-red-400 font-mono break-words whitespace-pre-wrap">
                                             {repo.error_message}
                                         </p>

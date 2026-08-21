@@ -105,7 +105,7 @@ export function Select<T extends string = string>({
                 value={option.value}
                 disabled={option.disabled}
                 className={cn(
-                  "relative flex cursor-pointer select-none flex-col rounded px-2 py-1.5 pr-8 text-sm text-text outline-none",
+                  "relative flex cursor-pointer select-none flex-col rounded-md px-2 py-1.5 pr-8 text-sm text-text outline-none",
                   "data-[highlighted]:bg-surface-2 data-[state=checked]:text-accent",
                   "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
                 )}
