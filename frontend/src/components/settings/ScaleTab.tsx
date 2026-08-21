@@ -7,6 +7,8 @@ import {
     ChevronDown, ChevronRight, Search, Copy, BarChart3, BookOpen, X,
 } from 'lucide-react';
 
+import { Button, Field, Input, Label } from '@/components/ui';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -144,19 +146,19 @@ function copyToClipboard(text: string) {
 
 function StatusBadge({ status }: { status: string }) {
     const colors: Record<string, string> = {
-        online: 'text-emerald-400 bg-emerald-400/10',
-        offline: 'text-red-400 bg-red-400/10',
-        draining: 'text-amber-400 bg-amber-400/10',
-        ok: 'text-emerald-400 bg-emerald-400/10',
-        error: 'text-red-400 bg-red-400/10',
-        completed: 'text-emerald-400 bg-emerald-400/10',
-        running: 'text-blue-400 bg-blue-400/10',
-        failed: 'text-red-400 bg-red-400/10',
-        paused: 'text-amber-400 bg-amber-400/10',
-        cancelled: 'text-zinc-400 bg-zinc-800',
+        online: 'text-success bg-success/10',
+        offline: 'text-danger bg-danger/10',
+        draining: 'text-warning bg-warning/10',
+        ok: 'text-success bg-success/10',
+        error: 'text-danger bg-danger/10',
+        completed: 'text-success bg-success/10',
+        running: 'text-accent bg-accent/10',
+        failed: 'text-danger bg-danger/10',
+        paused: 'text-warning bg-warning/10',
+        cancelled: 'text-text-muted bg-surface-2',
     };
     return (
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${colors[status] || 'text-zinc-400 bg-zinc-800'}`}>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-bold uppercase tracking-wider ${colors[status] || 'text-text-muted bg-surface-2'}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current" />
             {status}
         </span>
@@ -170,27 +172,27 @@ function CollapsibleSection({
     expanded: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
     return (
-        <div className="border border-zinc-800">
+        <div className="border border-border">
             <button
                 onClick={onToggle}
-                className="w-full flex items-center justify-between p-4 hover:bg-zinc-900/50 transition-colors text-left"
+                className="w-full flex items-center justify-between p-4 hover:bg-surface/50 transition-colors text-left"
             >
                 <div className="flex items-center gap-3">
-                    <div className="p-1.5 bg-zinc-900 border border-zinc-800 shrink-0 rounded-md">
-                        <Icon className="h-3.5 w-3.5 text-zinc-400" />
+                    <div className="p-1.5 bg-surface border border-border shrink-0 rounded-md">
+                        <Icon className="h-3.5 w-3.5 text-text-muted" />
                     </div>
                     <div>
-                        <h3 className="text-xs font-bold text-zinc-100 tracking-wider uppercase">{title}</h3>
-                        <p className="text-[10px] text-zinc-500 mt-0.5">{subtitle}</p>
+                        <Label size="sm" className="text-text">{title}</Label>
+                        <p className="text-2xs text-text-faint mt-0.5">{subtitle}</p>
                     </div>
                 </div>
                 {expanded
-                    ? <ChevronDown className="h-4 w-4 text-zinc-500 shrink-0" />
-                    : <ChevronRight className="h-4 w-4 text-zinc-500 shrink-0" />
+                    ? <ChevronDown className="h-4 w-4 text-text-faint shrink-0" />
+                    : <ChevronRight className="h-4 w-4 text-text-faint shrink-0" />
                 }
             </button>
             {expanded && (
-                <div className="px-6 pb-6 pt-2 border-t border-zinc-800">
+                <div className="px-6 pb-6 pt-2 border-t border-border">
                     {children}
                 </div>
             )}
@@ -211,12 +213,12 @@ const CodeBlock = ({ code }: { code: string }) => {
     };
     return (
         <div className="relative group">
-            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed whitespace-pre-wrap break-words rounded-md">
+            <pre className="bg-bg border border-border p-3 text-xs text-text-muted overflow-x-auto font-code leading-relaxed whitespace-pre-wrap break-words rounded-md">
                 {code}
             </pre>
             <button
                 onClick={copy}
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold border border-zinc-700 rounded-md"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-surface hover:bg-surface-2 text-text-muted hover:text-text text-2xs font-bold border border-border-strong rounded-md"
             >
                 {copied ? '✓ Copied' : 'Copy'}
             </button>
@@ -227,15 +229,15 @@ const CodeBlock = ({ code }: { code: string }) => {
 const DocSection = ({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) => {
     const [open, setOpen] = useState(defaultOpen);
     return (
-        <div className="border border-zinc-800">
+        <div className="border border-border">
             <button
                 onClick={() => setOpen(o => !o)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors text-left"
+                className="w-full flex items-center justify-between px-4 py-3 bg-surface hover:bg-surface-2 transition-colors text-left"
             >
-                <span className="text-xs uppercase font-bold text-zinc-300 tracking-wider">{title}</span>
-                {open ? <ChevronDown className="w-3.5 h-3.5 text-zinc-500" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />}
+                <Label size="sm" className="text-text">{title}</Label>
+                {open ? <ChevronDown className="w-3.5 h-3.5 text-text-faint" /> : <ChevronRight className="w-3.5 h-3.5 text-text-faint" />}
             </button>
-            {open && <div className="p-4 space-y-4 border-t border-zinc-800">{children}</div>}
+            {open && <div className="p-4 space-y-4 border-t border-border">{children}</div>}
         </div>
     );
 };
@@ -253,14 +255,14 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                 className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={onClose}
             />
-            <div className={`fixed top-0 right-0 z-50 h-full w-full md:w-3/4 bg-zinc-950 border-l border-zinc-800 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className={`fixed top-0 right-0 z-50 h-full w-full md:w-3/4 bg-bg border-l border-border flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
                     <div className="flex items-center gap-3">
-                        <BookOpen className="w-4 h-4 text-zinc-400" />
-                        <h2 className="text-sm uppercase font-bold text-zinc-200 tracking-wider">Scale Deployment Guide</h2>
+                        <BookOpen className="w-4 h-4 text-text-muted" />
+                        <h2 className="text-sm uppercase font-bold text-text tracking-wider">Scale Deployment Guide</h2>
                     </div>
-                    <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+                    <button onClick={onClose} className="text-text-faint hover:text-text transition-colors">
                         <X className="w-4 h-4" />
                     </button>
                 </div>
@@ -277,63 +279,63 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                     </div>
 
                     <DocSection title="Architecture Overview" defaultOpen>
-                        <p className="text-xs text-zinc-500 leading-relaxed">
-                            In scale mode, Synapse splits into three roles. You always run exactly one <strong className="text-zinc-300">main instance</strong> (the combined image you already have). Workers and API servers are optional replicas.
+                        <p className="text-xs text-text-faint leading-relaxed">
+                            In scale mode, Synapse splits into three roles. You always run exactly one <strong className="text-text">main instance</strong> (the combined image you already have). Workers and API servers are optional replicas.
                         </p>
                         <div className="space-y-2 text-xs font-mono">
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
-                                <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai  <span className="text-zinc-500 font-normal">(your existing install)</span></p>
-                                <p className="text-zinc-500">→ Hosts the UI and settings</p>
-                                <p className="text-zinc-500">→ Manages orchestrations, agents, tools</p>
-                                <p className="text-zinc-500">→ Enqueues jobs to Redis when V2 API is called</p>
-                                <p className="text-zinc-500">→ Streams SSE events back to clients from Redis</p>
+                            <div className="border border-border p-3 bg-surface/50 rounded-md">
+                                <p className="text-text font-bold mb-1">synapseorchai/synapse-ai  <span className="text-text-faint font-normal">(your existing install)</span></p>
+                                <p className="text-text-faint">→ Hosts the UI and settings</p>
+                                <p className="text-text-faint">→ Manages orchestrations, agents, tools</p>
+                                <p className="text-text-faint">→ Enqueues jobs to Redis when V2 API is called</p>
+                                <p className="text-text-faint">→ Streams SSE events back to clients from Redis</p>
                             </div>
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
-                                <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai-worker  <span className="text-zinc-500 font-normal">(scale out ×N)</span></p>
-                                <p className="text-zinc-500">→ Pulls jobs from Redis ARQ queue</p>
-                                <p className="text-zinc-500">→ Reads definitions from Postgres</p>
-                                <p className="text-zinc-500">→ Executes orchestrations and agent chat</p>
-                                <p className="text-zinc-500">→ Publishes step events back to Redis Streams</p>
-                                <p className="text-zinc-500">→ Health endpoint on :9000/health</p>
+                            <div className="border border-border p-3 bg-surface/50 rounded-md">
+                                <p className="text-text font-bold mb-1">synapseorchai/synapse-ai-worker  <span className="text-text-faint font-normal">(scale out ×N)</span></p>
+                                <p className="text-text-faint">→ Pulls jobs from Redis ARQ queue</p>
+                                <p className="text-text-faint">→ Reads definitions from Postgres</p>
+                                <p className="text-text-faint">→ Executes orchestrations and agent chat</p>
+                                <p className="text-text-faint">→ Publishes step events back to Redis Streams</p>
+                                <p className="text-text-faint">→ Health endpoint on :9000/health</p>
                             </div>
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
-                                <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai-api-server  <span className="text-zinc-500 font-normal">(optional — scale API tier)</span></p>
-                                <p className="text-zinc-500">→ Same API as the main instance but no UI</p>
-                                <p className="text-zinc-500">→ Useful when you want to scale API replicas separately</p>
-                                <p className="text-zinc-500">→ Put behind a load balancer alongside the main instance</p>
+                            <div className="border border-border p-3 bg-surface/50 rounded-md">
+                                <p className="text-text font-bold mb-1">synapseorchai/synapse-ai-api-server  <span className="text-text-faint font-normal">(optional — scale API tier)</span></p>
+                                <p className="text-text-faint">→ Same API as the main instance but no UI</p>
+                                <p className="text-text-faint">→ Useful when you want to scale API replicas separately</p>
+                                <p className="text-text-faint">→ Put behind a load balancer alongside the main instance</p>
                             </div>
                         </div>
                     </DocSection>
 
                     <DocSection title="What You Need" defaultOpen>
                         <div className="space-y-3 text-xs">
-                            <div className="flex items-start gap-3 p-3 border border-zinc-800">
-                                <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓ Required</span>
+                            <div className="flex items-start gap-3 p-3 border border-border">
+                                <span className="text-success font-bold shrink-0 mt-0.5">✓ Required</span>
                                 <div>
-                                    <p className="text-zinc-200 font-bold">Redis</p>
-                                    <p className="text-zinc-500 mt-0.5">Job queue, cancellation signals, SSE event streams. Any Redis 6+ works — managed (Upstash, Redis Cloud, ElastiCache) or self-hosted.</p>
+                                    <p className="text-text font-bold">Redis</p>
+                                    <p className="text-text-faint mt-0.5">Job queue, cancellation signals, SSE event streams. Any Redis 6+ works — managed (Upstash, Redis Cloud, ElastiCache) or self-hosted.</p>
                                     <CodeBlock code={`# Quickest self-hosted option:\ndocker run -d -p 6379:6379 redis:7-alpine`} />
                                 </div>
                             </div>
-                            <div className="flex items-start gap-3 p-3 border border-zinc-800">
-                                <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓ Required</span>
+                            <div className="flex items-start gap-3 p-3 border border-border">
+                                <span className="text-success font-bold shrink-0 mt-0.5">✓ Required</span>
                                 <div>
-                                    <p className="text-zinc-200 font-bold">Postgres</p>
-                                    <p className="text-zinc-500 mt-0.5">Orchestrations, agents and tools live here, and workers write run state here. This instance reads and writes the same database, so there is nothing to push. Any Postgres 14+ works.</p>
+                                    <p className="text-text font-bold">Postgres</p>
+                                    <p className="text-text-faint mt-0.5">Orchestrations, agents and tools live here, and workers write run state here. This instance reads and writes the same database, so there is nothing to push. Any Postgres 14+ works.</p>
                                 </div>
                             </div>
-                            <div className="flex items-start gap-3 p-3 border border-zinc-800">
-                                <span className="text-zinc-500 font-bold shrink-0 mt-0.5">○ Optional</span>
+                            <div className="flex items-start gap-3 p-3 border border-border">
+                                <span className="text-text-faint font-bold shrink-0 mt-0.5">○ Optional</span>
                                 <div>
-                                    <p className="text-zinc-200 font-bold">S3 (or compatible)</p>
-                                    <p className="text-zinc-500 mt-0.5">When configured, vault files and execution logs are stored in S3 and shared across all workers. Without it, each worker uses local disk — fine for single-worker setups.</p>
+                                    <p className="text-text font-bold">S3 (or compatible)</p>
+                                    <p className="text-text-faint mt-0.5">When configured, vault files and execution logs are stored in S3 and shared across all workers. Without it, each worker uses local disk — fine for single-worker setups.</p>
                                 </div>
                             </div>
                         </div>
                     </DocSection>
 
                     <DocSection title="Quick Start — Docker Run" defaultOpen>
-                        <p className="text-xs text-zinc-500">The fastest way to add a worker to your existing Synapse install. Set the two required env vars and pull the image.</p>
+                        <p className="text-xs text-text-faint">The fastest way to add a worker to your existing Synapse install. Set the two required env vars and pull the image.</p>
                         <CodeBlock code={`# 1. Pull the worker image
 docker pull synapseorchai/synapse-ai-worker:latest
 
@@ -349,11 +351,11 @@ docker run -d \\
 # 3. Check it registered
 curl http://localhost:9000/health
 # {"status":"ok","worker_id":"...","active_jobs":0,"uptime":12.3}`} />
-                        <p className="text-xs text-zinc-500">Scale horizontally by running this command on multiple machines — all workers share the same Redis queue.</p>
+                        <p className="text-xs text-text-faint">Scale horizontally by running this command on multiple machines — all workers share the same Redis queue.</p>
                     </DocSection>
 
                     <DocSection title="Quick Start — Docker Compose">
-                        <p className="text-xs text-zinc-500">Add workers alongside your existing stack using the built-in scale profile.</p>
+                        <p className="text-xs text-text-faint">Add workers alongside your existing stack using the built-in scale profile.</p>
                         <CodeBlock code={`# In your .env file, add:
 SCALE_POSTGRES_URL=postgresql://user:pass@your-pg-host:5432/synapse
 
@@ -370,7 +372,7 @@ docker compose --profile scale up -d --scale worker=4`} />
                     </DocSection>
 
                     <DocSection title="Kubernetes Deployment">
-                        <p className="text-xs text-zinc-500">Pre-built manifests are in <code className="font-code text-zinc-400">infra/k8s/</code> in the repo. Apply them after creating a <code className="font-code text-zinc-400">synapse-secrets</code> Secret.</p>
+                        <p className="text-xs text-text-faint">Pre-built manifests are in <code className="font-code text-text-muted">infra/k8s/</code> in the repo. Apply them after creating a <code className="font-code text-text-muted">synapse-secrets</code> Secret.</p>
                         <CodeBlock code={`# 1. Create the secrets
 kubectl create secret generic synapse-secrets \\
   --from-literal=redis-url="redis://your-redis:6379/0" \\
@@ -387,28 +389,28 @@ kubectl apply -f infra/k8s/
 # When queue > 5 jobs, a new worker pod spins up (up to 100).
 # Requires KEDA installed in your cluster:
 kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda-2.13.0.yaml`} />
-                        <p className="text-xs text-zinc-500">The worker manifest uses <code className="font-code text-zinc-400">synapseorchai/synapse-ai-worker:latest</code> with <code className="font-code text-zinc-400">imagePullPolicy: Always</code> so new versions roll out automatically on pod restart.</p>
+                        <p className="text-xs text-text-faint">The worker manifest uses <code className="font-code text-text-muted">synapseorchai/synapse-ai-worker:latest</code> with <code className="font-code text-text-muted">imagePullPolicy: Always</code> so new versions roll out automatically on pod restart.</p>
                     </DocSection>
 
                     <DocSection title="Environment Variables Reference">
-                        <p className="text-xs text-zinc-500 mb-3">All variables supported by the worker image. Pass via <code className="font-code text-zinc-400">-e</code>, <code className="font-code text-zinc-400">--env-file</code>, or k8s Secret/ConfigMap.</p>
+                        <p className="text-xs text-text-faint mb-3">All variables supported by the worker image. Pass via <code className="font-code text-text-muted">-e</code>, <code className="font-code text-text-muted">--env-file</code>, or k8s Secret/ConfigMap.</p>
                         <div className="space-y-4">
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">Required</p>
+                                <Label className="mb-2 block">Required</Label>
                                 <div className="space-y-1 text-xs font-mono">
                                     {[
                                         ['REDIS_URL', 'redis://host:6379/0  or  redis+cluster://h1:6379,h2:6379'],
                                         ['SCALE_POSTGRES_URL', 'postgresql://user:pass@host:5432/dbname'],
                                     ].map(([k, v]) => (
-                                        <div key={k} className="flex gap-3 py-1.5 border-b border-zinc-800/50">
-                                            <span className="text-zinc-200 shrink-0 w-44">{k}</span>
-                                            <span className="text-zinc-600">{v}</span>
+                                        <div key={k} className="flex gap-3 py-1.5 border-b border-border/50">
+                                            <span className="text-text shrink-0 w-44">{k}</span>
+                                            <span className="text-text-faint">{v}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">Worker Tuning</p>
+                                <Label className="mb-2 block">Worker Tuning</Label>
                                 <div className="space-y-1 text-xs font-mono">
                                     {[
                                         ['WORKER_CONCURRENCY', '10 — max parallel jobs per worker'],
@@ -417,15 +419,15 @@ kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda
                                         ['WORKER_HEALTH_PORT', '9000 — HTTP health endpoint port'],
                                         ['NUM_QUEUE_SHARDS', '1 — increase for Redis Cluster'],
                                     ].map(([k, v]) => (
-                                        <div key={k} className="flex gap-3 py-1.5 border-b border-zinc-800/50">
-                                            <span className="text-zinc-200 shrink-0 w-44">{k}</span>
-                                            <span className="text-zinc-600">{v}</span>
+                                        <div key={k} className="flex gap-3 py-1.5 border-b border-border/50">
+                                            <span className="text-text shrink-0 w-44">{k}</span>
+                                            <span className="text-text-faint">{v}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">S3 Storage (optional)</p>
+                                <Label className="mb-2 block">S3 Storage (optional)</Label>
                                 <div className="space-y-1 text-xs font-mono">
                                     {[
                                         ['S3_BUCKET', 'my-synapse-bucket'],
@@ -434,15 +436,15 @@ kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda
                                         ['S3_SECRET_ACCESS_KEY', ''],
                                         ['S3_ENDPOINT_URL', 'https://... (MinIO / R2 / etc.)'],
                                     ].map(([k, v]) => (
-                                        <div key={k} className="flex gap-3 py-1.5 border-b border-zinc-800/50">
-                                            <span className="text-zinc-200 shrink-0 w-44">{k}</span>
-                                            <span className="text-zinc-600">{v}</span>
+                                        <div key={k} className="flex gap-3 py-1.5 border-b border-border/50">
+                                            <span className="text-text shrink-0 w-44">{k}</span>
+                                            <span className="text-text-faint">{v}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             <div>
-                                <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">Observability (optional)</p>
+                                <Label className="mb-2 block">Observability (optional)</Label>
                                 <div className="space-y-1 text-xs font-mono">
                                     {[
                                         ['OTLP_ENDPOINT', 'http://jaeger:4317'],
@@ -450,9 +452,9 @@ kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda
                                         ['K8S_MODE', '1 when running on Kubernetes'],
                                         ['PGBOUNCER_MODE', '1 when Postgres URL points to PgBouncer'],
                                     ].map(([k, v]) => (
-                                        <div key={k} className="flex gap-3 py-1.5 border-b border-zinc-800/50">
-                                            <span className="text-zinc-200 shrink-0 w-44">{k}</span>
-                                            <span className="text-zinc-600">{v}</span>
+                                        <div key={k} className="flex gap-3 py-1.5 border-b border-border/50">
+                                            <span className="text-text shrink-0 w-44">{k}</span>
+                                            <span className="text-text-faint">{v}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -470,9 +472,9 @@ kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda
                                 ['5', 'Confirm the worker appears in the Workers panel (it self-registers on startup)'],
                                 ['6', 'Trigger a V2 run via API and watch the Live Queue counter increment → decrement'],
                             ].map(([n, text]) => (
-                                <div key={n} className="flex items-start gap-3 py-2 border-b border-zinc-800/50 last:border-b-0">
-                                    <span className="w-5 h-5 rounded-full border border-zinc-700 text-zinc-500 text-[10px] font-bold flex items-center justify-center shrink-0">{n}</span>
-                                    <span className="text-zinc-400">{text}</span>
+                                <div key={n} className="flex items-start gap-3 py-2 border-b border-border/50 last:border-b-0">
+                                    <span className="w-5 h-5 rounded-full border border-border-strong text-text-faint text-2xs font-bold flex items-center justify-center shrink-0">{n}</span>
+                                    <span className="text-text-muted">{text}</span>
                                 </div>
                             ))}
                         </div>
@@ -751,23 +753,23 @@ export function ScaleTab() {
             <div>
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-zinc-500" />
-                        <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Scale Analytics</h2>
+                        <BarChart3 className="h-4 w-4 text-text-faint" />
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-text-faint">Scale Analytics</h2>
                         {analytics && !analytics.available && (
-                            <span className="text-[10px] text-zinc-600">(requires Postgres)</span>
+                            <span className="text-2xs text-text-faint">(requires Postgres)</span>
                         )}
                     </div>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => setDocsOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors rounded-md"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-2xs uppercase font-bold tracking-wider text-text-muted hover:text-text bg-surface border border-border hover:border-text-faint transition-colors rounded-md"
                         >
                             <BookOpen className="h-3 w-3" />
                             Deploy Docs
                         </button>
                         <button
                             onClick={() => { loadAnalytics(); loadRecentRuns(); loadQueueStats(); }}
-                            className="flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors uppercase tracking-wider"
+                            className="flex items-center gap-1.5 text-2xs text-text-faint hover:text-text transition-colors uppercase tracking-wider"
                         >
                             <RefreshCw className="h-3 w-3" /> Refresh
                         </button>
@@ -776,28 +778,28 @@ export function ScaleTab() {
 
                 <div className="grid grid-cols-4 gap-3 mb-3">
                     {[
-                        { label: 'Total Runs', value: analytics?.available ? analytics.total_runs : '—', color: 'text-zinc-100' },
-                        { label: 'Runs Today', value: analytics?.available ? analytics.runs_today : '—', color: 'text-zinc-100' },
-                        { label: 'Active Now', value: analytics?.available ? (analytics.status_counts?.running ?? 0) : (queueStats?.active ?? '—'), color: 'text-blue-400' },
-                        { label: 'Success Rate', value: analytics?.available ? `${analytics.success_rate}%` : '—', color: (analytics?.success_rate ?? 0) >= 90 ? 'text-emerald-400' : 'text-amber-400' },
+                        { label: 'Total Runs', value: analytics?.available ? analytics.total_runs : '—', color: 'text-text' },
+                        { label: 'Runs Today', value: analytics?.available ? analytics.runs_today : '—', color: 'text-text' },
+                        { label: 'Active Now', value: analytics?.available ? (analytics.status_counts?.running ?? 0) : (queueStats?.active ?? '—'), color: 'text-accent' },
+                        { label: 'Success Rate', value: analytics?.available ? `${analytics.success_rate}%` : '—', color: (analytics?.success_rate ?? 0) >= 90 ? 'text-success' : 'text-warning' },
                     ].map(stat => (
-                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950 rounded-md">
+                        <div key={stat.label} className="border border-border p-4 text-center bg-bg rounded-md">
                             <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
-                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">{stat.label}</p>
+                            <Label className="mt-1 block">{stat.label}</Label>
                         </div>
                     ))}
                 </div>
 
                 <div className="grid grid-cols-4 gap-3">
                     {[
-                        { label: 'Workers Online', value: analytics?.available ? analytics.workers_online : (workers.filter(w => w.status === 'online').length || '—'), color: 'text-emerald-400' },
-                        { label: 'Avg Cost / Run', value: analytics?.available ? formatCost(analytics.avg_cost_usd) : '—', color: 'text-zinc-100' },
-                        { label: 'Cost Today', value: analytics?.available ? formatCost(analytics.total_cost_usd_today) : '—', color: 'text-zinc-100' },
+                        { label: 'Workers Online', value: analytics?.available ? analytics.workers_online : (workers.filter(w => w.status === 'online').length || '—'), color: 'text-success' },
+                        { label: 'Avg Cost / Run', value: analytics?.available ? formatCost(analytics.avg_cost_usd) : '—', color: 'text-text' },
+                        { label: 'Cost Today', value: analytics?.available ? formatCost(analytics.total_cost_usd_today) : '—', color: 'text-text' },
                         { label: 'Cache Hit Rate', value: analytics?.available ? `${analytics.cache_hit_rate}%` : '—', color: 'text-accent' },
                     ].map(stat => (
-                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950 rounded-md">
+                        <div key={stat.label} className="border border-border p-4 text-center bg-bg rounded-md">
                             <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
-                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">{stat.label}</p>
+                            <Label className="mt-1 block">{stat.label}</Label>
                         </div>
                     ))}
                 </div>
@@ -810,99 +812,100 @@ export function ScaleTab() {
                 <div className="space-y-4 min-w-0">
 
                     {/* Search bar */}
-                    <div className="border border-zinc-800 p-4">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-3">Search by Run ID or Session ID</p>
+                    <div className="border border-border p-4">
+                        <Label className="mb-3 block">Search by Run ID or Session ID</Label>
                         <div className="flex gap-2">
                             <div className="relative flex-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
-                                <input
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-faint" />
+                                <Input
                                     type="text"
                                     placeholder="run_abc_1234567890 or sess_xyz..."
-                                    className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm pl-8 pr-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
+                                    className="w-full bg-surface border border-border-strong text-text text-sm pl-8 pr-3 py-2 font-mono focus:outline-none focus:border-text-faint rounded-md"
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSearch()}
                                 />
                             </div>
-                            <button
+                            <Button
+                                variant="secondary"
                                 onClick={() => handleSearch()}
-                                disabled={isSearching || !searchQuery.trim()}
-                                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2"
+                                loading={isSearching}
+                                disabled={!searchQuery.trim()}
                             >
-                                {isSearching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                                {!isSearching && <Search className="size-3.5" aria-hidden />}
                                 Search
-                            </button>
+                            </Button>
                         </div>
-                        <p className="text-[10px] text-zinc-600 mt-2">Prefix <span className="font-mono text-zinc-400">sess_</span> to search by session ID and see all runs in that session.</p>
+                        <p className="text-2xs text-text-faint mt-2">Prefix <span className="font-mono text-text-muted">sess_</span> to search by session ID and see all runs in that session.</p>
 
                         {/* Search error */}
                         {searchError && (
-                            <p className="text-xs text-red-400 mt-3 flex items-center gap-1.5">
+                            <p className="text-xs text-danger mt-3 flex items-center gap-1.5">
                                 <XCircle className="h-3 w-3" /> {searchError}
                             </p>
                         )}
 
                         {/* Run detail result */}
                         {searchRunDetail && (
-                            <div className="mt-4 border border-zinc-700 bg-zinc-950 p-4 rounded-md">
+                            <div className="mt-4 border border-border-strong bg-bg p-4 rounded-md">
                                 <div className="flex items-start justify-between gap-4 mb-3">
                                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                                         <button
                                             onClick={() => copyToClipboard(searchRunDetail.run_id)}
-                                            className="font-mono text-xs text-zinc-300 hover:text-zinc-100 flex items-center gap-1 truncate"
+                                            className="font-mono text-xs text-text-muted hover:text-text flex items-center gap-1 truncate"
                                         >
                                             {searchRunDetail.run_id}
                                             <Copy className="h-3 w-3 shrink-0" />
                                         </button>
                                         <StatusBadge status={searchRunDetail.status} />
                                     </div>
-                                    <button onClick={() => setSearchRunDetail(null)} className="text-zinc-600 hover:text-zinc-400 text-xs shrink-0">✕</button>
+                                    <button onClick={() => setSearchRunDetail(null)} className="text-text-faint hover:text-text-muted text-xs shrink-0">✕</button>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Orchestration</span>
-                                        <span className="font-mono text-zinc-300 truncate ml-2">{searchRunDetail.orchestration_id || '—'}</span>
+                                        <span className="text-text-faint">Orchestration</span>
+                                        <span className="font-mono text-text truncate ml-2">{searchRunDetail.orchestration_id || '—'}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Worker</span>
-                                        <span className="font-mono text-zinc-300 truncate ml-2">{searchRunDetail.worker_id || '—'}</span>
+                                        <span className="text-text-faint">Worker</span>
+                                        <span className="font-mono text-text truncate ml-2">{searchRunDetail.worker_id || '—'}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Duration</span>
-                                        <span className="text-zinc-300">{formatDuration(searchRunDetail.started_at, searchRunDetail.ended_at)}</span>
+                                        <span className="text-text-faint">Duration</span>
+                                        <span className="text-text">{formatDuration(searchRunDetail.started_at, searchRunDetail.ended_at)}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Cost</span>
-                                        <span className="text-zinc-300">{formatCost(searchRunDetail.total_cost_usd)}</span>
+                                        <span className="text-text-faint">Cost</span>
+                                        <span className="text-text">{formatCost(searchRunDetail.total_cost_usd)}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Tokens</span>
-                                        <span className="text-zinc-300">{searchRunDetail.total_tokens_used?.toLocaleString() ?? '—'}</span>
+                                        <span className="text-text-faint">Tokens</span>
+                                        <span className="text-text">{searchRunDetail.total_tokens_used?.toLocaleString() ?? '—'}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span className="text-zinc-500">Cache Hits</span>
-                                        <span className="text-zinc-300">{searchRunDetail.cache_hit_count ?? '—'}</span>
+                                        <span className="text-text-faint">Cache Hits</span>
+                                        <span className="text-text">{searchRunDetail.cache_hit_count ?? '—'}</span>
                                     </div>
                                     {searchRunDetail.current_step_id && (
                                         <div className="flex justify-between col-span-2">
-                                            <span className="text-zinc-500">Current Step</span>
-                                            <span className="font-mono text-zinc-300">{searchRunDetail.current_step_id}</span>
+                                            <span className="text-text-faint">Current Step</span>
+                                            <span className="font-mono text-text">{searchRunDetail.current_step_id}</span>
                                         </div>
                                     )}
                                     {searchRunDetail.waiting_for_human && (
-                                        <div className="col-span-2 flex items-start gap-2 p-2 bg-amber-900/20 border border-amber-800/40 text-amber-400 rounded-md">
+                                        <div className="col-span-2 flex items-start gap-2 p-2 bg-warning-subtle border border-warning/40 text-warning rounded-md">
                                             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                                            <span className="text-[11px]">Waiting for human input{searchRunDetail.human_prompt ? `: ${searchRunDetail.human_prompt}` : ''}</span>
+                                            <span className="text-2xs">Waiting for human input{searchRunDetail.human_prompt ? `: ${searchRunDetail.human_prompt}` : ''}</span>
                                         </div>
                                     )}
                                     {searchRunDetail.estimated_savings_usd != null && searchRunDetail.estimated_savings_usd > 0 && (
                                         <div className="flex justify-between">
-                                            <span className="text-zinc-500">Cache Savings</span>
-                                            <span className="text-emerald-400">{formatCost(searchRunDetail.estimated_savings_usd)}</span>
+                                            <span className="text-text-faint">Cache Savings</span>
+                                            <span className="text-success">{formatCost(searchRunDetail.estimated_savings_usd)}</span>
                                         </div>
                                     )}
                                 </div>
-                                <div className="mt-2 text-[10px] text-zinc-600">
+                                <div className="mt-2 text-2xs text-text-faint">
                                     Started: {searchRunDetail.started_at ? new Date(searchRunDetail.started_at).toLocaleString() : '—'}
                                     {searchRunDetail.ended_at && ` · Ended: ${new Date(searchRunDetail.ended_at).toLocaleString()}`}
                                 </div>
@@ -912,24 +915,24 @@ export function ScaleTab() {
                         {/* Session search results */}
                         {searchSessionRuns !== null && (
                             <div className="mt-4">
-                                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">
+                                <Label className="mb-2 block">
                                     {searchSessionRuns.length} run{searchSessionRuns.length !== 1 ? 's' : ''} in session
-                                </p>
+                                </Label>
                                 {searchSessionRuns.length === 0 ? (
-                                    <p className="text-xs text-zinc-500 text-center py-4">No runs found for this session.</p>
+                                    <p className="text-xs text-text-faint text-center py-4">No runs found for this session.</p>
                                 ) : (
                                     <div className="space-y-1">
                                         {searchSessionRuns.map(run => (
                                             <div
                                                 key={run.run_id}
-                                                className="flex items-center justify-between border border-zinc-800 p-2.5 hover:bg-zinc-900/50 cursor-pointer transition-colors rounded-md"
+                                                className="flex items-center justify-between border border-border p-2.5 hover:bg-surface/50 cursor-pointer transition-colors rounded-md"
                                                 onClick={() => { setSearchQuery(run.run_id); handleSearch(run.run_id); }}
                                             >
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <span className="font-mono text-[11px] text-zinc-400 truncate">{run.run_id}</span>
+                                                    <span className="font-mono text-2xs text-text-muted truncate">{run.run_id}</span>
                                                     <StatusBadge status={run.status} />
                                                 </div>
-                                                <div className="flex items-center gap-3 text-[10px] text-zinc-500 shrink-0">
+                                                <div className="flex items-center gap-3 text-2xs text-text-faint shrink-0">
                                                     <span>{formatDuration(run.started_at, run.ended_at)}</span>
                                                     <span>{formatCost(run.total_cost_usd)}</span>
                                                 </div>
@@ -942,48 +945,48 @@ export function ScaleTab() {
                     </div>
 
                     {/* Recent Runs table */}
-                    <div className="border border-zinc-800 p-4">
+                    <div className="border border-border p-4">
                         <div className="flex items-center justify-between mb-3">
-                            <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Recent Runs</p>
+                            <Label>Recent Runs</Label>
                             <button
                                 onClick={loadRecentRuns}
-                                className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                                className="flex items-center gap-1 text-2xs text-text-faint hover:text-text transition-colors"
                             >
                                 <RefreshCw className="h-3 w-3" /> Refresh
                             </button>
                         </div>
 
                         {recentRuns.length === 0 ? (
-                            <div className="text-center py-8 border border-zinc-800 border-dashed">
-                                <Activity className="h-6 w-6 text-zinc-700 mx-auto mb-2" />
-                                <p className="text-sm text-zinc-500">No runs recorded yet.</p>
-                                <p className="text-xs text-zinc-600 mt-1">Runs appear here when scale mode is active and Postgres is connected.</p>
+                            <div className="text-center py-8 border border-border border-dashed">
+                                <Activity className="h-6 w-6 text-text-faint mx-auto mb-2" />
+                                <p className="text-sm text-text-faint">No runs recorded yet.</p>
+                                <p className="text-xs text-text-faint mt-1">Runs appear here when scale mode is active and Postgres is connected.</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-xs">
                                     <thead>
-                                        <tr className="border-b border-zinc-800">
+                                        <tr className="border-b border-border">
                                             {['Run ID', 'Status', 'Orchestration', 'Started', 'Duration', 'Cost'].map(h => (
-                                                <th key={h} className="text-left text-[10px] font-bold uppercase tracking-wider text-zinc-500 pb-2 pr-4">{h}</th>
+                                                <th key={h} className="text-left text-2xs font-bold uppercase tracking-wider text-text-faint pb-2 pr-4">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                                    <tbody className="divide-y divide-border/50">
                                         {recentRuns.map(run => (
                                             <tr
                                                 key={run.run_id}
-                                                className="hover:bg-zinc-900/50 cursor-pointer transition-colors"
+                                                className="hover:bg-surface/50 cursor-pointer transition-colors"
                                                 onClick={() => { setSearchQuery(run.run_id); handleSearch(run.run_id); }}
                                             >
                                                 <td className="py-2 pr-4">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="font-mono text-zinc-300 truncate max-w-[140px]" title={run.run_id}>
+                                                        <span className="font-mono text-text truncate max-w-[140px]" title={run.run_id}>
                                                             {run.run_id.length > 20 ? `${run.run_id.slice(0, 20)}…` : run.run_id}
                                                         </span>
                                                         <button
                                                             onClick={e => { e.stopPropagation(); copyToClipboard(run.run_id); }}
-                                                            className="text-zinc-600 hover:text-zinc-400 shrink-0"
+                                                            className="text-text-faint hover:text-text-muted shrink-0"
                                                         >
                                                             <Copy className="h-3 w-3" />
                                                         </button>
@@ -991,17 +994,17 @@ export function ScaleTab() {
                                                 </td>
                                                 <td className="py-2 pr-4"><StatusBadge status={run.status} /></td>
                                                 <td className="py-2 pr-4">
-                                                    <span className="font-mono text-zinc-400 truncate max-w-[100px] block" title={run.orchestration_id}>
+                                                    <span className="font-mono text-text-muted truncate max-w-[100px] block" title={run.orchestration_id}>
                                                         {run.orchestration_id ? run.orchestration_id.slice(0, 14) : '—'}
                                                     </span>
                                                 </td>
-                                                <td className="py-2 pr-4 text-zinc-500 whitespace-nowrap">
+                                                <td className="py-2 pr-4 text-text-faint whitespace-nowrap">
                                                     {run.started_at ? new Date(run.started_at).toLocaleTimeString() : '—'}
                                                 </td>
-                                                <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                                                <td className="py-2 pr-4 text-text-muted whitespace-nowrap">
                                                     {formatDuration(run.started_at, run.ended_at)}
                                                 </td>
-                                                <td className="py-2 text-zinc-400">{formatCost(run.total_cost_usd)}</td>
+                                                <td className="py-2 text-text-muted">{formatCost(run.total_cost_usd)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -1015,50 +1018,50 @@ export function ScaleTab() {
                 <div className="space-y-4 min-w-0">
 
                     {/* Live Queue */}
-                    <div className="border border-zinc-800 p-4">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-3">Live Queue</p>
+                    <div className="border border-border p-4">
+                        <Label className="mb-3 block">Live Queue</Label>
                         <div className="grid grid-cols-2 gap-2">
                             {[
-                                { label: 'Queued', value: queueStats?.queued ?? '—', color: 'text-zinc-100' },
-                                { label: 'Active', value: queueStats?.active ?? '—', color: 'text-blue-400' },
-                                { label: 'Failed', value: queueStats?.failed ?? '—', color: 'text-red-400' },
-                                { label: 'DLQ', value: queueStats?.dlq_count ?? '—', color: 'text-amber-400' },
+                                { label: 'Queued', value: queueStats?.queued ?? '—', color: 'text-text' },
+                                { label: 'Active', value: queueStats?.active ?? '—', color: 'text-accent' },
+                                { label: 'Failed', value: queueStats?.failed ?? '—', color: 'text-danger' },
+                                { label: 'DLQ', value: queueStats?.dlq_count ?? '—', color: 'text-warning' },
                             ].map(stat => (
-                                <div key={stat.label} className="border border-zinc-800 p-3 text-center bg-zinc-950 rounded-md">
+                                <div key={stat.label} className="border border-border p-3 text-center bg-bg rounded-md">
                                     <p className={`text-xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
-                                    <p className="text-[10px] uppercase tracking-wider text-zinc-600 mt-0.5">{stat.label}</p>
+                                    <Label className="mt-0.5 block">{stat.label}</Label>
                                 </div>
                             ))}
                         </div>
                         {queueStats && !queueStats.available && (
-                            <p className="text-[10px] text-zinc-600 mt-2 text-center">Redis not connected</p>
+                            <p className="text-2xs text-text-faint mt-2 text-center">Redis not connected</p>
                         )}
                     </div>
 
                     {/* Workers mini */}
-                    <div className="border border-zinc-800 p-4">
+                    <div className="border border-border p-4">
                         <div className="flex items-center justify-between mb-3">
-                            <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Workers</p>
-                            <button onClick={loadWorkers} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                            <Label>Workers</Label>
+                            <button onClick={loadWorkers} className="text-text-faint hover:text-text-muted transition-colors">
                                 <RefreshCw className="h-3 w-3" />
                             </button>
                         </div>
                         {workers.length === 0 ? (
-                            <p className="text-xs text-zinc-600 text-center py-3">No workers registered</p>
+                            <p className="text-xs text-text-faint text-center py-3">No workers registered</p>
                         ) : (
                             <div className="space-y-2">
                                 {workers.map(w => (
-                                    <div key={w.worker_id} className="flex items-center justify-between gap-2 border border-zinc-800 p-2">
+                                    <div key={w.worker_id} className="flex items-center justify-between gap-2 border border-border p-2">
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 <StatusBadge status={w.status} />
-                                                <span className="text-[10px] font-mono text-zinc-500 truncate">{w.hostname || w.worker_id.slice(0, 16)}</span>
+                                                <span className="text-2xs font-mono text-text-faint truncate">{w.hostname || w.worker_id.slice(0, 16)}</span>
                                             </div>
-                                            <p className="text-[10px] text-zinc-600 mt-0.5">{w.active_jobs}/{w.max_jobs} jobs</p>
+                                            <p className="text-2xs text-text-faint mt-0.5">{w.active_jobs}/{w.max_jobs} jobs</p>
                                         </div>
                                         <button
                                             onClick={() => checkWorkerHealth(w)}
-                                            className="text-[10px] text-zinc-500 hover:text-zinc-300 border border-zinc-700 px-2 py-1 shrink-0 transition-colors"
+                                            className="text-2xs text-text-faint hover:text-text border border-border-strong px-2 py-1 shrink-0 transition-colors"
                                         >
                                             <Activity className="h-3 w-3" />
                                         </button>
@@ -1068,38 +1071,38 @@ export function ScaleTab() {
                         )}
                         <button
                             onClick={() => toggleSection('workers')}
-                            className="mt-3 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors w-full text-center"
+                            className="mt-3 text-2xs text-text-faint hover:text-text-muted transition-colors w-full text-center"
                         >
                             Manage workers ↓
                         </button>
                     </div>
 
                     {/* DLQ mini */}
-                    <div className="border border-zinc-800 p-4">
+                    <div className="border border-border p-4">
                         <div className="flex items-center justify-between mb-3">
-                            <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Failed Jobs (DLQ)</p>
-                            <button onClick={loadDlq} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                            <Label>Failed Jobs (DLQ)</Label>
+                            <button onClick={loadDlq} className="text-text-faint hover:text-text-muted transition-colors">
                                 {dlqLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                             </button>
                         </div>
                         {dlqEntries.length === 0 ? (
-                            <div className="flex items-center gap-2 text-xs text-zinc-600 justify-center py-3">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" /> No failed jobs
+                            <div className="flex items-center gap-2 text-xs text-text-faint justify-center py-3">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-success" /> No failed jobs
                             </div>
                         ) : (
                             <div className="space-y-2">
                                 {dlqEntries.slice(0, 3).map(entry => (
-                                    <div key={entry.id} className="border border-zinc-800 p-2">
+                                    <div key={entry.id} className="border border-border p-2">
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
-                                                <p className="font-mono text-[10px] text-zinc-400 truncate">{entry.run_id || entry.id}</p>
-                                                <p className="text-[10px] text-red-400 truncate mt-0.5">{entry.error_message}</p>
-                                                <p className="text-[10px] text-zinc-600">{entry.attempt_count} attempts</p>
+                                                <p className="font-mono text-2xs text-text-muted truncate">{entry.run_id || entry.id}</p>
+                                                <p className="text-2xs text-danger truncate mt-0.5">{entry.error_message}</p>
+                                                <p className="text-2xs text-text-faint">{entry.attempt_count} attempts</p>
                                             </div>
                                             <button
                                                 onClick={() => retryDlq(entry.id)}
                                                 disabled={retryingDlq === entry.id}
-                                                className="text-[10px] border border-zinc-700 px-2 py-1 text-zinc-500 hover:text-zinc-300 disabled:opacity-40 shrink-0 transition-colors"
+                                                className="text-2xs border border-border-strong px-2 py-1 text-text-faint hover:text-text disabled:opacity-40 shrink-0 transition-colors"
                                             >
                                                 {retryingDlq === entry.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                             </button>
@@ -1107,7 +1110,7 @@ export function ScaleTab() {
                                     </div>
                                 ))}
                                 {dlqEntries.length > 3 && (
-                                    <p className="text-[10px] text-zinc-600 text-center">+{dlqEntries.length - 3} more — expand Queue section below</p>
+                                    <p className="text-2xs text-text-faint text-center">+{dlqEntries.length - 3} more — expand Queue section below</p>
                                 )}
                             </div>
                         )}
@@ -1123,47 +1126,48 @@ export function ScaleTab() {
             >
                 <div className="space-y-4 mt-4">
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Redis URL</label>
-                        <div className="flex gap-2">
-                            <input type="text" placeholder="redis://localhost:6379/0"
-                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('redis_url')} />
-                            <button onClick={testRedis} disabled={redisTesting || !config.redis_url}
-                                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2">
-                                {redisTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : null} Test
-                            </button>
+                        <div className="flex items-end gap-2">
+                            <Field label="Redis URL" className="flex-1">
+                                <Input type="text" placeholder="redis://localhost:6379/0"
+                                    className="font-mono"
+                                    {...field('redis_url')} />
+                            </Field>
+                            <Button variant="secondary" onClick={testRedis}
+                                loading={redisTesting} disabled={!config.redis_url}>
+                                Test
+                            </Button>
                         </div>
                         {redisStatus && (
-                            <p className={`text-xs mt-1.5 flex items-center gap-1.5 ${redisStatus.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <p className={`text-xs mt-1.5 flex items-center gap-1.5 ${redisStatus.ok ? 'text-success' : 'text-danger'}`}>
                                 {redisStatus.ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                                 {redisStatus.msg}
                             </p>
                         )}
-                        <p className="text-[10px] text-zinc-600 mt-1.5">For Redis Cluster: <span className="font-mono">redis+cluster://host1:6379,host2:6379</span></p>
+                        <p className="text-2xs text-text-faint mt-1.5">For Redis Cluster: <span className="font-mono">redis+cluster://host1:6379,host2:6379</span></p>
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-t border-zinc-800">
+                    <div className="flex items-center justify-between py-3 border-t border-border">
                         <div>
-                            <p className="text-sm text-zinc-300 font-medium">Enable Scale Mode</p>
-                            <p className="text-xs text-zinc-500 mt-0.5">Route V2 API calls through Redis ARQ workers instead of in-process execution.</p>
+                            <p className="text-sm text-text font-medium">Enable Scale Mode</p>
+                            <p className="text-xs text-text-faint mt-0.5">Route V2 API calls through Redis ARQ workers instead of in-process execution.</p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" className="sr-only peer" {...toggle('scale_mode_enabled')} />
-                            <div className="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-zinc-100 transition-colors" />
-                            <div className="absolute left-1 top-1 bg-white peer-checked:bg-zinc-950 w-4 h-4 rounded-full transition-all peer-checked:translate-x-5" />
+                            <div className="w-11 h-6 bg-surface-2 rounded-full peer peer-checked:bg-accent transition-colors" />
+                            <div className="absolute left-1 top-1 bg-text peer-checked:bg-accent-fg w-4 h-4 rounded-full transition-all peer-checked:translate-x-5" />
                         </label>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-2">
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Queue Shards</label>
-                            <input type="number" min="1" max="64" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('num_queue_shards')} />
-                            <p className="text-[10px] text-zinc-600 mt-1">Use &gt;1 for Redis Cluster shard-aware routing.</p>
+                                                        <Field label="Queue Shards" hint="Use &gt;1 for Redis Cluster shard-aware routing.">
+                                <Input type="number" min="1" max="64" {...field('num_queue_shards')} />
+                            </Field>
                         </div>
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Worker Concurrency</label>
-                            <input type="number" min="1" max="100" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('worker_concurrency')} />
-                            <p className="text-[10px] text-zinc-600 mt-1">Max parallel jobs per worker process.</p>
+                                                        <Field label="Worker Concurrency" hint="Max parallel jobs per worker process.">
+                                <Input type="number" min="1" max="100" {...field('worker_concurrency')} />
+                            </Field>
                         </div>
                     </div>
                 </div>
@@ -1175,34 +1179,35 @@ export function ScaleTab() {
             >
                 <div className="space-y-4 mt-4">
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Postgres URL (Scale)</label>
-                        <div className="flex gap-2">
-                            <input type="text" placeholder="postgresql://user:pass@host:5432/synapse"
-                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('scale_postgres_url')} />
-                            <button onClick={testPostgres} disabled={pgTesting || !config.scale_postgres_url}
-                                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2">
-                                {pgTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : null} Test
-                            </button>
+                        <div className="flex items-end gap-2">
+                            <Field label="Postgres URL (Scale)" className="flex-1">
+                                <Input type="text" placeholder="postgresql://user:pass@host:5432/synapse"
+                                    className="font-mono"
+                                    {...field('scale_postgres_url')} />
+                            </Field>
+                            <Button variant="secondary" onClick={testPostgres}
+                                loading={pgTesting} disabled={!config.scale_postgres_url}>
+                                Test
+                            </Button>
                         </div>
                         {pgStatus && (
-                            <p className={`text-xs mt-1.5 flex items-center gap-1.5 ${pgStatus.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <p className={`text-xs mt-1.5 flex items-center gap-1.5 ${pgStatus.ok ? 'text-success' : 'text-danger'}`}>
                                 {pgStatus.ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                                 {pgStatus.msg}
                             </p>
                         )}
-                        <p className="text-[10px] text-zinc-600 mt-1.5">Separate from the embed-code Postgres. PgBouncer: enable the toggle below and point to PgBouncer port.</p>
+                        <p className="text-2xs text-text-faint mt-1.5">Separate from the embed-code Postgres. PgBouncer: enable the toggle below and point to PgBouncer port.</p>
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-t border-zinc-800">
+                    <div className="flex items-center justify-between py-3 border-t border-border">
                         <div>
-                            <p className="text-sm text-zinc-300 font-medium">PgBouncer Mode</p>
-                            <p className="text-xs text-zinc-500 mt-0.5">Use NullPool (required when Postgres URL points to PgBouncer in transaction mode).</p>
+                            <p className="text-sm text-text font-medium">PgBouncer Mode</p>
+                            <p className="text-xs text-text-faint mt-0.5">Use NullPool (required when Postgres URL points to PgBouncer in transaction mode).</p>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" className="sr-only peer" {...toggle('pgbouncer_mode')} />
-                            <div className="w-11 h-6 bg-zinc-700 rounded-full peer peer-checked:bg-zinc-100 transition-colors" />
-                            <div className="absolute left-1 top-1 bg-white peer-checked:bg-zinc-950 w-4 h-4 rounded-full transition-all peer-checked:translate-x-5" />
+                            <div className="w-11 h-6 bg-surface-2 rounded-full peer peer-checked:bg-accent transition-colors" />
+                            <div className="absolute left-1 top-1 bg-text peer-checked:bg-accent-fg w-4 h-4 rounded-full transition-all peer-checked:translate-x-5" />
                         </label>
                     </div>
 
@@ -1216,61 +1221,54 @@ export function ScaleTab() {
                 <div className="space-y-4 mt-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">S3 Bucket</label>
-                            <input type="text" placeholder="my-synapse-bucket"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('s3_bucket')} />
+                                                        <Field label="S3 Bucket">
+                                <Input type="text" placeholder="my-synapse-bucket" className="font-mono" {...field('s3_bucket')} />
+                            </Field>
                         </div>
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Region</label>
-                            <input type="text" placeholder="us-east-1"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('s3_region')} />
+                                                        <Field label="Region">
+                                <Input type="text" placeholder="us-east-1" className="font-mono" {...field('s3_region')} />
+                            </Field>
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Key Prefix</label>
-                        <input type="text" placeholder="synapse"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                            {...field('s3_prefix')} />
-                        <p className="text-[10px] text-zinc-600 mt-1">All objects are stored under this prefix.</p>
+                                                <Field label="Key Prefix" hint="All objects are stored under this prefix.">
+                            <Input type="text" placeholder="synapse" className="font-mono" {...field('s3_prefix')} />
+                        </Field>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Access Key ID</label>
-                            <input type="text" placeholder="AKIA... (optional)"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('s3_access_key_id')} />
+                                                        <Field label="Access Key ID">
+                                <Input type="text" placeholder="AKIA... (optional)" className="font-mono" {...field('s3_access_key_id')} />
+                            </Field>
                         </div>
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Secret Access Key</label>
-                            <input type="password" placeholder="••••••••"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                                {...field('s3_secret_access_key')} />
+                                                        <Field label="Secret Access Key">
+                                <Input type="password" placeholder="••••••••" className="font-mono" {...field('s3_secret_access_key')} />
+                            </Field>
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">
-                            Endpoint URL <span className="text-zinc-600 font-normal normal-case">(optional — for MinIO, Cloudflare R2, etc.)</span>
-                        </label>
-                        <input type="text" placeholder="https://account.r2.cloudflarestorage.com"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                            {...field('s3_endpoint_url')} />
+                        <Field label="Endpoint URL" hint="Optional — for MinIO, Cloudflare R2, and other S3-compatible stores.">
+                            <Input type="text" placeholder="https://account.r2.cloudflarestorage.com"
+                                className="font-mono"
+                                {...field('s3_endpoint_url')} />
+                        </Field>
                     </div>
                     <div className="flex items-center gap-3 pt-1">
-                        <button onClick={testS3} disabled={s3Testing || !config.s3_bucket}
-                            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2">
-                            {s3Testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Cloud className="h-3 w-3" />}
+                        <Button variant="secondary" onClick={testS3}
+                            loading={s3Testing} disabled={!config.s3_bucket}>
+                            {!s3Testing && <Cloud className="size-3.5" aria-hidden />}
                             Test S3 Connection
-                        </button>
+                        </Button>
                         {s3Status && (
-                            <p className={`text-xs flex items-center gap-1.5 ${s3Status.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <p className={`text-xs flex items-center gap-1.5 ${s3Status.ok ? 'text-success' : 'text-danger'}`}>
                                 {s3Status.ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                                 {s3Status.msg}
                             </p>
                         )}
                     </div>
-                    <p className="text-[10px] text-zinc-600">Leave Access Key / Secret blank to use IAM role or environment credentials.</p>
+                    <p className="text-2xs text-text-faint">Leave Access Key / Secret blank to use IAM role or environment credentials.</p>
                 </div>
             </CollapsibleSection>
 
@@ -1280,33 +1278,33 @@ export function ScaleTab() {
             >
                 <div className="mt-4">
                     {workers.length === 0 ? (
-                        <div className="text-center py-8 border border-zinc-800 border-dashed">
-                            <Server className="h-8 w-8 text-zinc-700 mx-auto mb-3" />
-                            <p className="text-sm text-zinc-500">No workers registered.</p>
-                            <p className="text-xs text-zinc-600 mt-1">Deploy <span className="font-mono text-zinc-400">Dockerfile.worker</span> and register its health endpoint below.</p>
+                        <div className="text-center py-8 border border-border border-dashed">
+                            <Server className="h-8 w-8 text-text-faint mx-auto mb-3" />
+                            <p className="text-sm text-text-faint">No workers registered.</p>
+                            <p className="text-xs text-text-faint mt-1">Deploy <span className="font-mono text-text-muted">Dockerfile.worker</span> and register its health endpoint below.</p>
                         </div>
                     ) : (
                         <div className="space-y-2 mb-4">
                             {workers.map(w => {
                                 const health = workerHealthResults[w.worker_id];
                                 return (
-                                    <div key={w.worker_id} className="border border-zinc-800 p-4">
+                                    <div key={w.worker_id} className="border border-border p-4">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="text-xs font-mono text-zinc-300">{w.worker_id}</span>
+                                                    <span className="text-xs font-mono text-text">{w.worker_id}</span>
                                                     <StatusBadge status={w.status} />
-                                                    <span className="text-[10px] text-zinc-500">{w.active_jobs}/{w.max_jobs} jobs</span>
+                                                    <span className="text-2xs text-text-faint">{w.active_jobs}/{w.max_jobs} jobs</span>
                                                 </div>
-                                                <p className="text-xs text-zinc-500 mt-1 font-mono">{w.address}</p>
+                                                <p className="text-xs text-text-faint mt-1 font-mono">{w.address}</p>
                                                 {w.mcp_disabled?.length > 0 && (
-                                                    <p className="text-[10px] text-amber-500 mt-1">MCP disabled: {w.mcp_disabled.join(', ')}</p>
+                                                    <p className="text-2xs text-warning mt-1">MCP disabled: {w.mcp_disabled.join(', ')}</p>
                                                 )}
                                                 {w.last_heartbeat && (
-                                                    <p className="text-[10px] text-zinc-600 mt-0.5">Last heartbeat: {new Date(w.last_heartbeat).toLocaleTimeString()}</p>
+                                                    <p className="text-2xs text-text-faint mt-0.5">Last heartbeat: {new Date(w.last_heartbeat).toLocaleTimeString()}</p>
                                                 )}
                                                 {health && (
-                                                    <p className={`text-[10px] mt-1 ${health.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                    <p className={`text-2xs mt-1 ${health.status === 'ok' ? 'text-success' : 'text-danger'}`}>
                                                         Health: {health.status} {health.latency_ms != null ? `(${health.latency_ms}ms)` : ''}
                                                         {health.data?.mcp_disabled?.length > 0 ? ` — MCP disabled: ${health.data.mcp_disabled.join(', ')}` : ''}
                                                     </p>
@@ -1314,10 +1312,10 @@ export function ScaleTab() {
                                             </div>
                                             <div className="flex gap-2 shrink-0">
                                                 <button onClick={() => checkWorkerHealth(w)}
-                                                    className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border border-zinc-700 text-zinc-400 hover:text-zinc-100 hover:border-zinc-500 transition-colors flex items-center gap-1">
+                                                    className="px-3 py-1.5 text-2xs font-bold uppercase tracking-wider border border-border-strong text-text-muted hover:text-text hover:border-text-faint transition-colors flex items-center gap-1">
                                                     <Activity className="h-3 w-3" /> Health
                                                 </button>
-                                                <button onClick={() => removeWorker(w.worker_id)} className="p-1.5 text-zinc-600 hover:text-red-400 transition-colors">
+                                                <button onClick={() => removeWorker(w.worker_id)} className="p-1.5 text-text-faint hover:text-danger transition-colors">
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </button>
                                             </div>
@@ -1328,9 +1326,9 @@ export function ScaleTab() {
                         </div>
                     )}
 
-                    <div className="flex gap-2 mt-4 pt-4 border-t border-zinc-800">
-                        <input type="text" placeholder="http://10.0.0.5:9000"
-                            className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                        <Input type="text" placeholder="http://10.0.0.5:9000"
+                            className="flex-1 font-mono"
                             value={newWorkerAddress} onChange={e => setNewWorkerAddress(e.target.value)} />
                         <button disabled={!newWorkerAddress}
                             onClick={() => {
@@ -1340,10 +1338,10 @@ export function ScaleTab() {
                                     body: JSON.stringify({ address: newWorkerAddress }),
                                 }).then(() => { setNewWorkerAddress(''); loadWorkers(); });
                             }}
-                            className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-700 text-zinc-300 hover:text-zinc-100 hover:border-zinc-500 disabled:opacity-40 transition-colors">
+                            className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-border-strong text-text-muted hover:text-text hover:border-text-faint disabled:opacity-40 transition-colors">
                             <Plus className="h-3 w-3" /> Register
                         </button>
-                        <button onClick={loadWorkers} className="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                        <button onClick={loadWorkers} className="p-2 text-text-faint hover:text-text transition-colors">
                             <RefreshCw className="h-4 w-4" />
                         </button>
                     </div>
@@ -1356,29 +1354,25 @@ export function ScaleTab() {
             >
                 <div className="space-y-4 mt-4">
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">OTLP Endpoint</label>
-                        <input type="text" placeholder="http://jaeger:4317"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                            {...field('otlp_endpoint')} />
-                        <p className="text-[10px] text-zinc-600 mt-1">Leave empty to disable tracing. When set, every run gets a distributed trace propagated through API server → Redis → Worker → Postgres.</p>
+                                                <Field label="OTLP Endpoint" hint="Leave empty to disable tracing. When set, every run gets a distributed trace propagated through API server → Redis → Worker → Postgres.">
+                            <Input type="text" placeholder="http://jaeger:4317" className="font-mono" {...field('otlp_endpoint')} />
+                        </Field>
                     </div>
                     <div>
-                        <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Metrics Token</label>
-                        <input type="password" placeholder="Bearer token for /metrics endpoint"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
-                            {...field('metrics_token')} />
-                        <p className="text-[10px] text-zinc-600 mt-1">Prometheus scrapes <span className="font-mono text-zinc-400">GET /metrics</span> with this as a Bearer token.</p>
+                                                <Field label="Metrics Token" hint={<>Prometheus scrapes <span className="font-mono text-text-muted">GET /metrics</span> with this as a Bearer token.</>}>
+                            <Input type="password" placeholder="Bearer token for /metrics endpoint" className="font-mono" {...field('metrics_token')} />
+                        </Field>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Max Global Queue Depth</label>
-                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('max_global_queue_depth')} />
-                            <p className="text-[10px] text-zinc-600 mt-1">Returns 503 when exceeded (backpressure).</p>
+                                                        <Field label="Max Global Queue Depth" hint="Returns 503 when exceeded (backpressure).">
+                                <Input type="number" {...field('max_global_queue_depth')} />
+                            </Field>
                         </div>
                         <div>
-                            <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Rate Limit (req/s per tenant)</label>
-                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('rate_limit_per_tenant_rps')} />
-                            <p className="text-[10px] text-zinc-600 mt-1">Returns 429 when exceeded.</p>
+                                                        <Field label="Rate Limit (req/s per tenant)" hint="Returns 429 when exceeded.">
+                                <Input type="number" {...field('rate_limit_per_tenant_rps')} />
+                            </Field>
                         </div>
                     </div>
                 </div>
@@ -1387,11 +1381,11 @@ export function ScaleTab() {
             {/* Save Button */}
             <div className="flex items-center gap-4 pt-2">
                 <button onClick={handleSave} disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold uppercase tracking-wider bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-40 transition-colors">
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold uppercase tracking-wider bg-accent text-accent-fg hover:bg-accent-hover disabled:opacity-40 transition-colors rounded-md">
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     Save Scale Config
                 </button>
-                {saveMsg && <p className="text-xs text-zinc-400">{saveMsg}</p>}
+                {saveMsg && <p className="text-xs text-text-muted">{saveMsg}</p>}
             </div>
         </div>
     );

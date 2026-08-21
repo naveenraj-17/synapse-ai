@@ -76,7 +76,14 @@ export function Field({
   className,
 }: {
   label: string;
-  hint?: string;
+  /*
+   * ReactNode, not string: hints routinely name a thing the user has to type
+   * back — an env var, an endpoint, a header — and those want <span
+   * className="font-mono"> around them. A string-only hint pushed those call
+   * sites into rendering their own <p> outside the field, which is exactly how
+   * a hint ends up unreachable from aria-describedby.
+   */
+  hint?: React.ReactNode;
   /** Replaces the hint while set, and marks the control invalid. */
   error?: string;
   required?: boolean;
