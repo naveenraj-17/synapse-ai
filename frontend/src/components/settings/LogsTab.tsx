@@ -159,11 +159,6 @@ export const LogsTab = () => {
     return (
         <div className="flex flex-col h-full overflow-hidden font-mono">
 
-            <div className="px-6 py-4 border-b border-zinc-800 shrink-0 pr-14">
-                <h1 className="text-2xl font-bold text-zinc-100">Logs</h1>
-                <p className="text-zinc-500 text-xs mt-0.5">View All logs of Agent and Orchestration</p>
-            </div>
-
             {/* Sub-tabs + controls */}
             <div className="flex items-center gap-2 px-6 py-3 border-b border-white/10 shrink-0">
                 <button

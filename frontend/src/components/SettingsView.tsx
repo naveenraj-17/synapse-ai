@@ -3,7 +3,6 @@
 /* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, X, Shield, Trash, Cpu, Cloud, Database, LayoutGrid, Bot, Wrench, Server, FolderGit2, Workflow, ScrollText, MessageSquare, Clock, ArrowLeftRight, Vault, LifeBuoy, Key } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { useDispatch, useSelector } from 'react-redux';
@@ -11,6 +10,8 @@ import { RootState, AppDispatch } from '@/store';
 import { fetchAllSettingsData, removeAgent, removeMcpServer, removeCustomTool, updateCustomTool, addCustomTool, addMcpServer, updateMcpServerStatus } from '@/store/settingsSlice';
 
 import type { Tab } from './settings/types';
+import { Screen } from './app/Screen';
+import { navEntryFor } from '@/lib/nav';
 import { GeneralTab } from './settings/GeneralTab';
 import { PersonalDetailsTab } from './settings/PersonalDetailsTab';
 import { MemoryTab } from './settings/MemoryTab';
@@ -24,23 +25,18 @@ import { ConfirmationModal } from './settings/ConfirmationModal';
 import { ToastNotification } from './settings/ToastNotification';
 import { ReposTab } from './settings/ReposTab';
 import { DBsTab } from './settings/DBsTab';
-import { OrchestrationTab } from './settings/OrchestrationTab';
-import { LogsTab } from './settings/LogsTab';
 import { MessagingTab } from './settings/MessagingTab';
-import { UsageTab } from './settings/UsageTab';
-import { SchedulesTab } from './settings/SchedulesTab';
 import { ImportExportTab } from './settings/ImportExportTab';
-import { VaultTab } from './settings/VaultTab';
 import { SupportTab } from './settings/SupportTab';
 import { APIKeysTab } from './settings/APIKeysTab';
 import { ScaleTab } from './settings/ScaleTab';
 
 
-export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRunId }: { initialTab?: string; initialSubTab?: string; initialRunId?: string }) => {
+export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initialTab?: string; initialSubTab?: string }) => {
     const dispatch = useDispatch<AppDispatch>();
     const { agents, mcpServers, customTools, models: rModels, initialized, loading: loadingAgents } = useSelector((state: RootState) => state.settings);
 
-    const [activeTab, setActiveTab] = useState<Tab>(initialTab as Tab);
+    const activeTab = initialTab as Tab;
     const [agentName, setAgentName] = useState('');
     const [selectedModel, setSelectedModel] = useState('');
     const [embeddingModel, setEmbeddingModel] = useState('');
@@ -139,8 +135,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
 
     const [availableCapabilities, setAvailableCapabilities] = useState<any[]>([]);
     const [loadingCapabilities, setLoadingCapabilities] = useState(true);
-    const [messagingEnabled, setMessagingEnabled] = useState(false);
-    const [codingEnabled, setCodingEnabled] = useState(false);
     const [embedCode, setEmbedCode] = useState(false);
 
     // Login settings
@@ -154,7 +148,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
         if (event.data.success) {
             const name = event.data.name as string;
             dispatch(updateMcpServerStatus({ name, status: 'connected' }));
-            setMcpToast({ show: true, message: `✓ ${name} connected via OAuth!`, type: 'success' });
+            setMcpToast({ show: true, message: `${name} connected via OAuth`, type: 'success' });
             setPendingMcpServerName(null);
             setTimeout(() => setMcpToast(null), 5000);
         } else {
@@ -425,14 +419,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
         }
     };
 
-    // Close on escape
-    useEffect(() => {
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') router.push('/');
-        };
-        document.addEventListener('keydown', handleEsc);
-        return () => document.removeEventListener('keydown', handleEsc);
-    }, [router]);
     // Fetch data on open
     useEffect(() => {
         // Sync models local state with Redux to avoid breaking existing dropdown refs mapping
@@ -485,8 +471,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
                 setAllowDbWrite(data.allow_db_write || false);
                 setEmbedCode(data.embed_code || false);
                 setBashAllowedDirs(data.bash_allowed_dirs || []);
-                setMessagingEnabled(data.messaging_enabled || false);
-                setCodingEnabled(data.coding_agent_enabled || false);
                 setLoginEnabled(data.login_enabled || false);
                 setLoginUsername(data.login_username || '');
                 if (data.bedrock_api_key) {
@@ -638,14 +622,14 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
                 if (data.status === 'oauth_pending') {
                     setLastMcpConnected(false);
                     setPendingMcpServerName(draftMcpServer.name);
-                    setMcpToast({ show: true, message: '🔑 OAuth required — opening browser. Return here once authorised.', type: 'warning' });
+                    setMcpToast({ show: true, message: 'OAuth required — opening browser. Return here once authorised.', type: 'warning' });
                     if (data.auth_url) window.open(data.auth_url, '_blank');
                 } else if (data.connected) {
                     setLastMcpConnected(true);
-                    setMcpToast({ show: true, message: '✓ Server connected and saved!', type: 'success' });
+                    setMcpToast({ show: true, message: 'Server connected and saved', type: 'success' });
                 } else {
                     setLastMcpConnected(false);
-                    setMcpToast({ show: true, message: '⚠ Config saved. Use Retry to reconnect.', type: 'warning' });
+                    setMcpToast({ show: true, message: 'Config saved. Use Retry to reconnect.', type: 'warning' });
                 }
                 setTimeout(() => setMcpToast(null), 7000);
             } else {
@@ -668,7 +652,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
             const data = await res.json();
             if (data.connected) {
                 dispatch(updateMcpServerStatus({ name, status: 'connected' }));
-                setMcpToast({ show: true, message: `✓ ${name} reconnected!`, type: 'success' });
+                setMcpToast({ show: true, message: `${name} reconnected`, type: 'success' });
             } else if (data.needs_oauth && data.auth_url) {
                 // OAuth server needs fresh authentication — open popup and start polling
                 setPendingMcpServerName(name);
@@ -859,311 +843,232 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
         ? localModels
         : (mode === 'bedrock' ? cloudModels.filter(m => m.startsWith('bedrock')) : cloudModels.filter(m => !m.startsWith('bedrock')));
 
-    const tabs = [
-        { id: 'general', label: 'General', icon: LayoutGrid },
-        { id: 'personal_details', label: 'Personal Details', icon: Shield },
-        { id: 'orchestrations', label: 'Orchestrations', icon: Workflow },
-        { id: 'agents', label: 'Build Agents', icon: Bot },
-        { id: 'mcp_servers', label: 'MCP Servers', icon: Server },
-        { id: 'custom_tools', label: 'Tool Builder', icon: Wrench },
-        ...(codingEnabled ? [{ id: 'repos', label: 'Repos', icon: FolderGit2 }] : []),
-        ...(codingEnabled ? [{ id: 'db_configs', label: 'DB Configs', icon: Database }] : []),
-        { id: 'models', label: 'Models', icon: Cpu },
-        ...(messagingEnabled ? [{ id: 'messaging', label: 'Messaging', icon: MessageSquare }] : []),
-        { id: 'workspace', label: 'Integrations', icon: Cloud },
-        { id: 'schedules', label: 'Schedules', icon: Clock },
-        { id: 'memory', label: 'Memory', icon: Trash },
-        { id: 'logs', label: 'Logs', icon: ScrollText },
-        { id: 'import_export', label: 'Import / Export', icon: ArrowLeftRight },
-        { id: 'vault', label: 'Vault', icon: Vault },
-        { id: 'api_keys', label: 'API Keys', icon: Key },
-        { id: 'scale', label: 'Scale', icon: Server },
-        { id: 'support', label: 'Support & Docs', icon: LifeBuoy },
-    ];
+    // Title and blurb come from the nav module, which is also what drives the
+    // rail and the settings sub-nav. This replaces
+    //   `Manage your agent's {activeTab} configuration.`
+    // which rendered for twenty different screens, "api_keys" included.
+    const nav = navEntryFor(activeTab) ?? navEntryFor('general')!;
 
     return (
+        <>
+            <Screen nav={nav}>
+                {/* MESSAGING TAB */}
+                {activeTab === 'messaging' && <MessagingTab />}
 
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-transparent">
-            {/* Orchestrations tab: full-bleed layout, no scroll wrapper */}
-            {activeTab === 'orchestrations' && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <OrchestrationTab initialRunId={initialRunId} />
-                </div>
-            )}
+                {/* IMPORT / EXPORT TAB */}
+                {activeTab === 'import_export' && (
+                    <ImportExportTab
+                        defaultView={initialSubTab === 'examples' ? 'examples' : undefined}
+                        onImportSuccess={() => dispatch(fetchAllSettingsData())}
+                        // Used to call setActiveTab, which swapped the content
+                        // without changing the URL.
+                        onNavigate={(tab) => router.push(navEntryFor(tab)?.href ?? `/settings/${tab}`)}
+                    />
+                )}
 
-            {/* Logs tab: full-bleed two-pane layout */}
-            {activeTab === 'logs' && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <LogsTab />
-                </div>
-            )}
+                {/* GENERAL TAB */}
+                {activeTab === 'general' && (
+                    <GeneralTab
+                        agentName={agentName}
+                        setAgentName={setAgentName}
+                        vaultEnabled={vaultEnabled}
+                        setVaultEnabled={setVaultEnabled}
+                        vaultThreshold={vaultThreshold}
+                        setVaultThreshold={setVaultThreshold}
+                        autoCompactEnabled={autoCompactEnabled}
+                        setAutoCompactEnabled={setAutoCompactEnabled}
+                        autoCompactThreshold={autoCompactThreshold}
+                        setAutoCompactThreshold={setAutoCompactThreshold}
+                        allowDbWrite={allowDbWrite}
+                        setAllowDbWrite={setAllowDbWrite}
+                        embedCode={embedCode}
+                        setEmbedCode={setEmbedCode}
+                        bashAllowedDirs={bashAllowedDirs}
+                        setBashAllowedDirs={setBashAllowedDirs}
+                        transformRuntime={transformRuntime}
+                        setTransformRuntime={setTransformRuntime}
+                        loginEnabled={loginEnabled}
+                        setLoginEnabled={setLoginEnabled}
+                        loginUsername={loginUsername}
+                        setLoginUsername={setLoginUsername}
+                        onSaveLogin={handleSaveLogin}
+                        isLoginSaving={isLoginSaving}
+                        onSave={handleSaveSection}
+                        isSaving={isSaving}
+                    />
+                )}
 
-            {/* Messaging tab */}
-            {activeTab === 'messaging' && (
-                <div className="flex-1 overflow-y-auto p-6 md:p-12">
-                    <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2 text-zinc-50">Messaging</h1>
-                            <p className="text-zinc-500 text-sm">Connect your agents to Telegram, Discord, Slack, Teams, or WhatsApp.</p>
-                        </div>
-                        <MessagingTab />
-                    </div>
-                </div>
-            )}
+                {/* PERSONAL DETAILS TAB */}
+                {activeTab === 'personal_details' && (
+                    <PersonalDetailsTab
+                        pdFirstName={pdFirstName} setPdFirstName={setPdFirstName}
+                        pdLastName={pdLastName} setPdLastName={setPdLastName}
+                        pdEmail={pdEmail} setPdEmail={setPdEmail}
+                        pdPhone={pdPhone} setPdPhone={setPdPhone}
+                        pdAddress1={pdAddress1} setPdAddress1={setPdAddress1}
+                        pdAddress2={pdAddress2} setPdAddress2={setPdAddress2}
+                        pdCity={pdCity} setPdCity={setPdCity}
+                        pdState={pdState} setPdState={setPdState}
+                        pdZipcode={pdZipcode} setPdZipcode={setPdZipcode}
+                        onSave={handleSavePersonalDetails}
+                    />
+                )}
 
-            {/* Usage tab: full-bleed analytics dashboard */}
-            {activeTab === 'usage' && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <UsageTab />
-                </div>
-            )}
-
-            {/* Schedules tab: full-bleed layout */}
-            {activeTab === 'schedules' && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <SchedulesTab />
-                </div>
-            )}
-
-            {/* Import/Export tab: scrollable layout */}
-            {activeTab === 'import_export' && (
-                <div className="flex-1 overflow-y-auto p-6 md:p-12">
-                    <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        <div className="mb-8">
-                            <h1 className="text-3xl font-bold mb-2 text-zinc-50">Import / Export</h1>
-                            <p className="text-zinc-500 text-sm">Export your orchestrations, agents, MCP servers, and tools as a portable bundle, or import one from another Synapse instance.</p>
-                        </div>
-                        <ImportExportTab defaultView={initialSubTab === 'examples' ? 'examples' : undefined} onImportSuccess={() => dispatch(fetchAllSettingsData())} onNavigate={(tab) => setActiveTab(tab as Tab)} />
-                    </div>
-                </div>
-            )}
-
-            {/* Vault tab: full-bleed file explorer */}
-            {activeTab === 'vault' && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className="flex-shrink-0 px-6 py-4 border-b border-zinc-800">
-                        <h1 className="text-xl font-bold text-zinc-50 flex items-center gap-2">
-                            <Vault className="h-5 w-5 text-zinc-400" /> Vault
-                        </h1>
-                        <p className="text-zinc-500 text-xs mt-1">Manage knowledge files, skills, and other files (.md, .json, .txt) that agents can reference in their prompts using @[path] syntax.</p>
-                    </div>
-                    <VaultTab />
-                </div>
-            )}
-
-            <div className={`flex-1 overflow-y-auto p-6 md:p-12 ${activeTab === 'orchestrations' || activeTab === 'logs' || activeTab === 'messaging' || activeTab === 'usage' || activeTab === 'schedules' || activeTab === 'import_export' || activeTab === 'vault' ? 'hidden' : ''}`}>
-                <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
-
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold mb-2 text-zinc-50">{tabs.find(t => t.id === activeTab)?.label}</h1>
-                        <p className="text-zinc-500 text-sm">Manage your agent's {activeTab} configuration.</p>
-                    </div>
-
-                    {/* GENERAL TAB */}
-                    {activeTab === 'general' && (
-                        <GeneralTab
-                            agentName={agentName}
-                            setAgentName={setAgentName}
-                            vaultEnabled={vaultEnabled}
-                            setVaultEnabled={setVaultEnabled}
-                            vaultThreshold={vaultThreshold}
-                            setVaultThreshold={setVaultThreshold}
-                            autoCompactEnabled={autoCompactEnabled}
-                            setAutoCompactEnabled={setAutoCompactEnabled}
-                            autoCompactThreshold={autoCompactThreshold}
-                            setAutoCompactThreshold={setAutoCompactThreshold}
-                            allowDbWrite={allowDbWrite}
-                            setAllowDbWrite={setAllowDbWrite}
-                            embedCode={embedCode}
-                            setEmbedCode={setEmbedCode}
-                            bashAllowedDirs={bashAllowedDirs}
-                            setBashAllowedDirs={setBashAllowedDirs}
-                            transformRuntime={transformRuntime}
-                            setTransformRuntime={setTransformRuntime}
-                            loginEnabled={loginEnabled}
-                            setLoginEnabled={setLoginEnabled}
-                            loginUsername={loginUsername}
-                            setLoginUsername={setLoginUsername}
-                            onSaveLogin={handleSaveLogin}
-                            isLoginSaving={isLoginSaving}
-                            onSave={handleSaveSection}
-                            isSaving={isSaving}
-                        />
-                    )}
-
-                    {/* PERSONAL DETAILS TAB */}
-                    {activeTab === 'personal_details' && (
-                        <PersonalDetailsTab
-                            pdFirstName={pdFirstName} setPdFirstName={setPdFirstName}
-                            pdLastName={pdLastName} setPdLastName={setPdLastName}
-                            pdEmail={pdEmail} setPdEmail={setPdEmail}
-                            pdPhone={pdPhone} setPdPhone={setPdPhone}
-                            pdAddress1={pdAddress1} setPdAddress1={setPdAddress1}
-                            pdAddress2={pdAddress2} setPdAddress2={setPdAddress2}
-                            pdCity={pdCity} setPdCity={setPdCity}
-                            pdState={pdState} setPdState={setPdState}
-                            pdZipcode={pdZipcode} setPdZipcode={setPdZipcode}
-                            onSave={handleSavePersonalDetails}
-                        />
-                    )}
-
-                    {/* AGENTS TAB */}
-                    {activeTab === 'agents' && (
-                        <AgentsTab
-                            agents={agents.filter((a: any) => !a.id.startsWith('agent_native_builder'))}
-                            selectedAgentId={selectedAgentId}
-                            setSelectedAgentId={setSelectedAgentId}
-                            draftAgent={draftAgent}
-                            setDraftAgent={setDraftAgent}
-                            availableCapabilities={availableCapabilities}
-                            loadingCapabilities={loadingCapabilities}
-                            customTools={customTools}
-                            onDeleteAgent={handleDeleteAgent}
-                            providers={providers}
-                            defaultModel={selectedModel}
-                            loadingAgents={loadingAgents}
-                        />
-                    )}
+                {/* AGENTS TAB */}
+                {activeTab === 'agents' && (
+                    <AgentsTab
+                        agents={agents.filter((a: any) => !a.id.startsWith('agent_native_builder'))}
+                        selectedAgentId={selectedAgentId}
+                        setSelectedAgentId={setSelectedAgentId}
+                        draftAgent={draftAgent}
+                        setDraftAgent={setDraftAgent}
+                        availableCapabilities={availableCapabilities}
+                        loadingCapabilities={loadingCapabilities}
+                        customTools={customTools}
+                        onDeleteAgent={handleDeleteAgent}
+                        providers={providers}
+                        defaultModel={selectedModel}
+                        loadingAgents={loadingAgents}
+                    />
+                )}
 
 
 
-                    {/* CUSTOM TOOLS TAB */}
-                    {activeTab === 'custom_tools' && (
-                        <CustomToolsTab
-                            customTools={customTools}
-                            draftTool={draftTool}
-                            setDraftTool={setDraftTool}
-                            toolBuilderMode={toolBuilderMode}
-                            setToolBuilderMode={setToolBuilderMode}
-                            headerRows={headerRows}
-                            setHeaderRows={setHeaderRows}
-                            n8nWorkflows={n8nWorkflows}
-                            n8nWorkflowsLoading={n8nWorkflowsLoading}
-                            n8nWorkflowId={n8nWorkflowId}
-                            setN8nWorkflowId={setN8nWorkflowId}
-                            getN8nBaseUrl={getN8nBaseUrl}
-                            onSaveTool={handleSaveTool}
-                            onDeleteTool={handleDeleteTool}
-                            onImported={handleImportedTools}
-                            n8nIntegrated={!!(n8nApiKey && n8nApiKey.trim())}
-                        />
-                    )}
+                {/* CUSTOM TOOLS TAB */}
+                {activeTab === 'custom_tools' && (
+                    <CustomToolsTab
+                        customTools={customTools}
+                        draftTool={draftTool}
+                        setDraftTool={setDraftTool}
+                        toolBuilderMode={toolBuilderMode}
+                        setToolBuilderMode={setToolBuilderMode}
+                        headerRows={headerRows}
+                        setHeaderRows={setHeaderRows}
+                        n8nWorkflows={n8nWorkflows}
+                        n8nWorkflowsLoading={n8nWorkflowsLoading}
+                        n8nWorkflowId={n8nWorkflowId}
+                        setN8nWorkflowId={setN8nWorkflowId}
+                        getN8nBaseUrl={getN8nBaseUrl}
+                        onSaveTool={handleSaveTool}
+                        onDeleteTool={handleDeleteTool}
+                        onImported={handleImportedTools}
+                        n8nIntegrated={!!(n8nApiKey && n8nApiKey.trim())}
+                    />
+                )}
 
-                    {/* DATA LAB TAB */}
-                    {activeTab === 'datalab' && (
-                        <DataLabTab
-                            dlTopic={dlTopic} setDlTopic={setDlTopic}
-                            dlCount={dlCount} setDlCount={setDlCount}
-                            dlProvider={dlProvider} setDlProvider={setDlProvider}
-                            dlSystemPrompt={dlSystemPrompt} setDlSystemPrompt={setDlSystemPrompt}
-                            dlEdgeCases={dlEdgeCases} setDlEdgeCases={setDlEdgeCases}
-                            dlStatus={dlStatus}
-                            dlDatasets={dlDatasets}
-                            onGenerate={handleGenerateData}
-                        />
-                    )}
+                {/* DATA LAB TAB */}
+                {activeTab === 'datalab' && (
+                    <DataLabTab
+                        dlTopic={dlTopic} setDlTopic={setDlTopic}
+                        dlCount={dlCount} setDlCount={setDlCount}
+                        dlProvider={dlProvider} setDlProvider={setDlProvider}
+                        dlSystemPrompt={dlSystemPrompt} setDlSystemPrompt={setDlSystemPrompt}
+                        dlEdgeCases={dlEdgeCases} setDlEdgeCases={setDlEdgeCases}
+                        dlStatus={dlStatus}
+                        dlDatasets={dlDatasets}
+                        onGenerate={handleGenerateData}
+                    />
+                )}
 
-                    {/* MODELS TAB */}
-                    {activeTab === 'models' && (
-                        <ModelsTab
-                            providers={providers}
-                            mode={mode} setMode={setMode}
-                            selectedModel={selectedModel} setSelectedModel={setSelectedModel}
-                            embeddingModel={embeddingModel} setEmbeddingModel={setEmbeddingModel}
-                            localModels={localModels} cloudModels={cloudModels}
-                            filteredModels={filteredModels}
-                            loadingModels={loadingModels}
-                            openaiKey={openaiKey} setOpenaiKey={setOpenaiKey}
-                            anthropicKey={anthropicKey} setAnthropicKey={setAnthropicKey}
-                            geminiKey={geminiKey} setGeminiKey={setGeminiKey}
-                            grokKey={grokKey} setGrokKey={setGrokKey}
-                            deepseekKey={deepseekKey} setDeepseekKey={setDeepseekKey}
-                            bedrockApiKey={bedrockApiKey} setBedrockApiKey={setBedrockApiKey}
-                            awsRegion={awsRegion} setAwsRegion={setAwsRegion}
-                            bedrockInferenceProfile={bedrockInferenceProfile}
-                            setBedrockInferenceProfile={setBedrockInferenceProfile}
-                            bedrockInferenceProfiles={bedrockInferenceProfiles}
-                            loadingInferenceProfiles={loadingInferenceProfiles}
-                            inferenceProfilesError={inferenceProfilesError}
-                            onExpandBedrock={refreshBedrockInferenceProfiles}
-                            onSave={handleSaveSection}
-                            isSaving={isSaving}
-                            openaiCompatibleKey={openaiCompatibleKey} setOpenaiCompatibleKey={setOpenaiCompatibleKey}
-                            openaiCompatibleBaseUrl={openaiCompatibleBaseUrl} setOpenaiCompatibleBaseUrl={setOpenaiCompatibleBaseUrl}
-                            openaiCompatibleModels={openaiCompatibleModels} setOpenaiCompatibleModels={setOpenaiCompatibleModels}
-                            openaiCompatibleEmbedModels={openaiCompatibleEmbedModels} setOpenaiCompatibleEmbedModels={setOpenaiCompatibleEmbedModels}
-                            localCompatibleBaseUrl={localCompatibleBaseUrl} setLocalCompatibleBaseUrl={setLocalCompatibleBaseUrl}
-                            localCompatibleKey={localCompatibleKey} setLocalCompatibleKey={setLocalCompatibleKey}
-                            localCompatibleModels={localCompatibleModels} setLocalCompatibleModels={setLocalCompatibleModels}
-                            localCompatibleEmbedModels={localCompatibleEmbedModels} setLocalCompatibleEmbedModels={setLocalCompatibleEmbedModels}
-                            huggingfaceToken={huggingfaceToken} setHuggingfaceToken={setHuggingfaceToken}
-                            huggingfaceModels={huggingfaceModels} setHuggingfaceModels={setHuggingfaceModels}
-                            anthropicCliModels={anthropicCliModels} setAnthropicCliModels={setAnthropicCliModels}
-                            geminiCliModels={geminiCliModels} setGeminiCliModels={setGeminiCliModels}
-                            codexCliModels={codexCliModels} setCodexCliModels={setCodexCliModels}
-                            githubCopilotCliModels={githubCopilotCliModels} setGithubCopilotCliModels={setGithubCopilotCliModels}
-                        />
-                    )}
+                {/* MODELS TAB */}
+                {activeTab === 'models' && (
+                    <ModelsTab
+                        providers={providers}
+                        mode={mode} setMode={setMode}
+                        selectedModel={selectedModel} setSelectedModel={setSelectedModel}
+                        embeddingModel={embeddingModel} setEmbeddingModel={setEmbeddingModel}
+                        localModels={localModels} cloudModels={cloudModels}
+                        filteredModels={filteredModels}
+                        loadingModels={loadingModels}
+                        openaiKey={openaiKey} setOpenaiKey={setOpenaiKey}
+                        anthropicKey={anthropicKey} setAnthropicKey={setAnthropicKey}
+                        geminiKey={geminiKey} setGeminiKey={setGeminiKey}
+                        grokKey={grokKey} setGrokKey={setGrokKey}
+                        deepseekKey={deepseekKey} setDeepseekKey={setDeepseekKey}
+                        bedrockApiKey={bedrockApiKey} setBedrockApiKey={setBedrockApiKey}
+                        awsRegion={awsRegion} setAwsRegion={setAwsRegion}
+                        bedrockInferenceProfile={bedrockInferenceProfile}
+                        setBedrockInferenceProfile={setBedrockInferenceProfile}
+                        bedrockInferenceProfiles={bedrockInferenceProfiles}
+                        loadingInferenceProfiles={loadingInferenceProfiles}
+                        inferenceProfilesError={inferenceProfilesError}
+                        onExpandBedrock={refreshBedrockInferenceProfiles}
+                        onSave={handleSaveSection}
+                        isSaving={isSaving}
+                        openaiCompatibleKey={openaiCompatibleKey} setOpenaiCompatibleKey={setOpenaiCompatibleKey}
+                        openaiCompatibleBaseUrl={openaiCompatibleBaseUrl} setOpenaiCompatibleBaseUrl={setOpenaiCompatibleBaseUrl}
+                        openaiCompatibleModels={openaiCompatibleModels} setOpenaiCompatibleModels={setOpenaiCompatibleModels}
+                        openaiCompatibleEmbedModels={openaiCompatibleEmbedModels} setOpenaiCompatibleEmbedModels={setOpenaiCompatibleEmbedModels}
+                        localCompatibleBaseUrl={localCompatibleBaseUrl} setLocalCompatibleBaseUrl={setLocalCompatibleBaseUrl}
+                        localCompatibleKey={localCompatibleKey} setLocalCompatibleKey={setLocalCompatibleKey}
+                        localCompatibleModels={localCompatibleModels} setLocalCompatibleModels={setLocalCompatibleModels}
+                        localCompatibleEmbedModels={localCompatibleEmbedModels} setLocalCompatibleEmbedModels={setLocalCompatibleEmbedModels}
+                        huggingfaceToken={huggingfaceToken} setHuggingfaceToken={setHuggingfaceToken}
+                        huggingfaceModels={huggingfaceModels} setHuggingfaceModels={setHuggingfaceModels}
+                        anthropicCliModels={anthropicCliModels} setAnthropicCliModels={setAnthropicCliModels}
+                        geminiCliModels={geminiCliModels} setGeminiCliModels={setGeminiCliModels}
+                        codexCliModels={codexCliModels} setCodexCliModels={setCodexCliModels}
+                        githubCopilotCliModels={githubCopilotCliModels} setGithubCopilotCliModels={setGithubCopilotCliModels}
+                    />
+                )}
 
-                    {/* INTEGRATIONS TAB */}
-                    {activeTab === 'workspace' && (
-                        <IntegrationsTab
-                            n8nUrl={n8nUrl} setN8nUrl={setN8nUrl}
-                            n8nApiKey={n8nApiKey} setN8nApiKey={setN8nApiKey}
-                            onSave={handleSaveSection}
-                        />
-                    )}
+                {/* INTEGRATIONS TAB */}
+                {activeTab === 'workspace' && (
+                    <IntegrationsTab
+                        n8nUrl={n8nUrl} setN8nUrl={setN8nUrl}
+                        n8nApiKey={n8nApiKey} setN8nApiKey={setN8nApiKey}
+                        onSave={handleSaveSection}
+                    />
+                )}
 
-                    {/* MCP SERVERS TAB */}
-                    {activeTab === 'mcp_servers' && (
-                        <McpServersTab
-                            mcpServers={mcpServers}
-                            loadingMcp={loadingMcp}
-                            isConnecting={isConnectingMcp}
-                            lastConnected={lastMcpConnected}
-                            mcpToast={mcpToast}
-                            setMcpToast={setMcpToast}
-                            pendingServerName={pendingMcpServerName}
-                            onPendingResolved={() => setPendingMcpServerName(null)}
-                            draftMcpServer={draftMcpServer}
-                            setDraftMcpServer={setDraftMcpServer}
-                            onAddServer={handleAddMcpServer}
-                            onDeleteServer={handleDeleteMcpServer}
-                            onReconnectServer={handleReconnectMcpServer}
-                        />
-                    )}
+                {/* MCP SERVERS TAB */}
+                {activeTab === 'mcp_servers' && (
+                    <McpServersTab
+                        mcpServers={mcpServers}
+                        loadingMcp={loadingMcp}
+                        isConnecting={isConnectingMcp}
+                        lastConnected={lastMcpConnected}
+                        mcpToast={mcpToast}
+                        setMcpToast={setMcpToast}
+                        pendingServerName={pendingMcpServerName}
+                        onPendingResolved={() => setPendingMcpServerName(null)}
+                        draftMcpServer={draftMcpServer}
+                        setDraftMcpServer={setDraftMcpServer}
+                        onAddServer={handleAddMcpServer}
+                        onDeleteServer={handleDeleteMcpServer}
+                        onReconnectServer={handleReconnectMcpServer}
+                    />
+                )}
 
-                    {/* MEMORY TAB */}
-                    {activeTab === 'memory' && (
-                        <MemoryTab />
-                    )}
+                {/* MEMORY TAB */}
+                {activeTab === 'memory' && (
+                    <MemoryTab />
+                )}
 
-                    {/* REPOS TAB */}
-                    {activeTab === 'repos' && (
-                        <ReposTab embeddingModel={embeddingModel} embedCode={embedCode} />
-                    )}
+                {/* REPOS TAB */}
+                {activeTab === 'repos' && (
+                    <ReposTab embeddingModel={embeddingModel} embedCode={embedCode} />
+                )}
 
-                    {/* DB CONFIGS TAB */}
-                    {activeTab === 'db_configs' && (
-                        <DBsTab />
-                    )}
+                {/* DB CONFIGS TAB */}
+                {activeTab === 'db_configs' && (
+                    <DBsTab />
+                )}
 
-                    {/* API KEYS TAB */}
-                    {activeTab === 'api_keys' && (
-                        <APIKeysTab />
-                    )}
+                {/* API KEYS TAB */}
+                {activeTab === 'api_keys' && (
+                    <APIKeysTab />
+                )}
 
-                    {/* SCALE TAB */}
-                    {activeTab === 'scale' && (
-                        <ScaleTab />
-                    )}
+                {/* SCALE TAB */}
+                {activeTab === 'scale' && (
+                    <ScaleTab />
+                )}
 
-                    {/* SUPPORT TAB */}
-                    {activeTab === 'support' && (
-                        <SupportTab />
-                    )}
-                </div>
-            </div>
+
+                {/* SUPPORT TAB */}
+                {activeTab === 'support' && <SupportTab />}
+            </Screen>
 
             {/* Toast Notification */}
             {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
@@ -1177,6 +1082,6 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab, initialRun
                 onClose={() => setConfirmAction(null)}
             />
 
-        </div>
+        </>
     );
 };

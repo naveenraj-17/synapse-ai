@@ -12,7 +12,7 @@ type ActiveRun = {
 
 // Slim strip at the top of the main chat: orchestrations currently running or
 // waiting for input, clickable through to their live run view
-// (/settings/orchestrations?run=<id>, which replays the event journal and
+// (/orchestrations?run=<id>, which replays the event journal and
 // tails it). Renders nothing when there is nothing active.
 export function ActiveRunsBanner({ pollMs = 10000 }: { pollMs?: number }) {
     const router = useRouter();
@@ -73,7 +73,7 @@ export function ActiveRunsBanner({ pollMs = 10000 }: { pollMs?: number }) {
                 {runs.map(run => (
                     <button
                         key={run.run_id}
-                        onClick={() => router.push(`/settings/orchestrations?run=${encodeURIComponent(run.run_id)}`)}
+                        onClick={() => router.push(`/orchestrations?run=${encodeURIComponent(run.run_id)}`)}
                         className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] border transition-colors ${
                             run.status === 'paused'
                                 ? 'bg-amber-950/40 border-amber-800/60 hover:bg-amber-900/40'

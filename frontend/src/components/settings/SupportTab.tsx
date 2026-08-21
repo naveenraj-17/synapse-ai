@@ -48,11 +48,11 @@ export const SupportTab = () => {
                     <p>There are two main ways to extend your agents' capabilities:</p>
                     <div className="bg-zinc-950 p-3 border border-zinc-800">
                         <strong className="text-zinc-300 block mb-1">1. Tool Builder (Custom Python / HTTP)</strong>
-                        <p className="text-sm">Write a Python script or configure an HTTP request (like n8n) in the <Link href="/settings/custom_tools" className="text-blue-400 hover:underline">Tool Builder tab</Link>.</p>
+                        <p className="text-sm">Write a Python script or configure an HTTP request (like n8n) in the <Link href="/tools" className="text-blue-400 hover:underline">Tools</Link>.</p>
                     </div>
                     <div className="bg-zinc-950 p-3 border border-zinc-800">
                         <strong className="text-zinc-300 block mb-1">2. MCP Servers</strong>
-                        <p className="text-sm">Connect external tools via the Model Context Protocol in the <Link href="/settings/mcp_servers" className="text-blue-400 hover:underline">MCP Servers tab</Link>. Provide the connection command/URL, and the server's tools will be auto-registered.</p>
+                        <p className="text-sm">Connect external tools via the Model Context Protocol in the <Link href="/mcp-servers" className="text-blue-400 hover:underline">MCP Servers</Link>. Provide the connection command/URL, and the server's tools will be auto-registered.</p>
                     </div>
                     <div className="flex gap-3">
                         <a href="https://docs.synapseorch.com/custom-tools/overview" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline">
@@ -71,8 +71,8 @@ export const SupportTab = () => {
                 <div className="space-y-2 text-zinc-400">
                     <p>An Orchestration is a multi-agent workflow defined as a Directed Acyclic Graph (DAG).</p>
                     <ol className="list-decimal pl-5 space-y-1 text-sm">
-                        <li>First, define specialized agents in the <Link href="/settings/agents" className="text-blue-400 hover:underline">Build Agents tab</Link>.</li>
-                        <li>Then, go to the <Link href="/settings/orchestrations" className="text-blue-400 hover:underline">Orchestrations tab</Link>.</li>
+                        <li>First, define specialized agents in the <Link href="/agents" className="text-blue-400 hover:underline">Agents</Link>.</li>
+                        <li>Then, go to the <Link href="/orchestrations" className="text-blue-400 hover:underline">Orchestrations</Link>.</li>
                         <li>Connect your agents into a sequence or complex flow, defining how tasks and data move between them.</li>
                     </ol>
                     <div className="flex gap-3 mt-1">
@@ -91,7 +91,7 @@ export const SupportTab = () => {
             answer: (
                 <div className="space-y-2 text-zinc-400">
                     <p>
-                        The <Link href="/settings/vault" className="text-blue-400 hover:underline">Vault</Link> stores persistent files, knowledge bases, and skills.
+                        The <Link href="/vault" className="text-blue-400 hover:underline">Vault</Link> stores persistent files, knowledge bases, and skills.
                     </p>
                     <p className="text-sm bg-zinc-950 p-2 border border-zinc-800">
                         <strong>Pro Tip:</strong> Agents can reference vault files directly in their prompts using the <code className="text-zinc-300 bg-zinc-900 px-1 py-0.5">@[path]</code> syntax. This gives them immediate access to essential context.
@@ -107,7 +107,7 @@ export const SupportTab = () => {
             answer: (
                 <div className="space-y-2 text-zinc-400 text-sm">
                     <p>
-                        Monitor system activity, agent executions, and tool calls in the <Link href="/settings/logs" className="text-blue-400 hover:underline">Logs tab</Link>.
+                        Monitor system activity, agent executions, and tool calls in the <Link href="/runs" className="text-blue-400 hover:underline">Runs &amp; Logs</Link>.
                     </p>
                     <p>
                         This is crucial for debugging complex orchestrations, tracking token usage, and ensuring everything is running smoothly.
@@ -218,7 +218,7 @@ export const SupportTab = () => {
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Add Tools & Servers (Optional)
-                                <Link href="/settings/mcp_servers" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/mcp-servers" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>
@@ -233,7 +233,7 @@ export const SupportTab = () => {
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Build Agents
-                                <Link href="/settings/agents" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/agents" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>
@@ -248,7 +248,7 @@ export const SupportTab = () => {
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Create Orchestrations
-                                <Link href="/settings/orchestrations" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/orchestrations" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>

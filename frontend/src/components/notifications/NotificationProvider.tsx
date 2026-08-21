@@ -69,8 +69,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }, []);
 
     const openRun = useCallback((runId: string | null) => {
-        if (runId) router.push(`/settings/orchestrations?run=${encodeURIComponent(runId)}`);
-        else router.push('/settings/orchestrations');
+        if (runId) router.push(`/orchestrations?run=${encodeURIComponent(runId)}`);
+        else router.push('/orchestrations');
     }, [router]);
 
     const handleNotification = useCallback((item: RunNotification, live: boolean) => {

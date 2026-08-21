@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Settings, Terminal, Sun, Moon, Plus, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles, Copy, Check, Brain} from 'lucide-react';
+import { Send, Bot, User, Terminal, Plus, Server, ChevronDown, ChevronRight, Zap, GitBranch, CheckCircle2, AlertCircle, History, RefreshCw, Clock, Trash2, X, Paperclip, ImageIcon, Cpu, Wrench, Network, CalendarClock, Sparkles, Copy, Check, Brain} from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
 import { CollectDataForm } from '@/components/CollectDataForm';
 import { ActiveRunsBanner } from '@/components/ActiveRunsBanner';
-import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { useRegisterNavGuard } from '@/components/app/NavGuard';
 
 import { renderTextContent, cn } from '@/lib/utils';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -333,16 +333,18 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPaused]);
 
+  // These used to point at /settings/* — the chat page telling you to open
+  // Settings in order to use the product.
   const PILLS = [
-    { label: '🤖 Build an agent', path: '/settings/agents' },
-    { label: '🔧 Add a tool', path: '/settings/custom_tools' },
-    { label: '🔗 Orchestrate agents', path: '/settings/orchestrations' },
-    { label: '🌐 Connect MCP', path: '/settings/mcp_servers' },
-    { label: '⏰ Schedule a task', path: '/settings/schedules' },
+    { label: 'Build an agent', path: '/agents', icon: Bot },
+    { label: 'Add a tool', path: '/tools', icon: Wrench },
+    { label: 'Orchestrate agents', path: '/orchestrations', icon: Network },
+    { label: 'Connect MCP', path: '/mcp-servers', icon: Server },
+    { label: 'Schedule a task', path: '/schedules', icon: CalendarClock },
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-56px)] px-4 pb-36 pt-10 select-none">
+    <div className="flex flex-col items-center justify-center min-h-full px-4 pb-36 pt-10 select-none">
       {/* ── Welcome Examples Banner (12-day, session-dismissible) ── */}
       {showExamplesBanner && (
         <div className="w-full max-w-2xl mb-8 relative overflow-hidden rounded-sm border border-violet-700/50 bg-gradient-to-br from-violet-950 via-purple-950/95 to-indigo-950 backdrop-blur-sm shadow-lg shadow-violet-950/40">
@@ -447,12 +449,13 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
 
       {/* Quick action pills — navigate to settings */}
       <div className="flex flex-wrap gap-2 justify-center max-w-lg">
-        {PILLS.map(({ label, path }) => (
+        {PILLS.map(({ label, path, icon: Icon }) => (
           <button
             key={label}
             onClick={() => onNavigate(path)}
-            className="px-3 py-1.5 text-[12px] font-mono border border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:text-zinc-100 hover:border-zinc-600 hover:bg-zinc-800/80 rounded-sm transition-all cursor-pointer"
+            className="flex items-center gap-1.5 rounded-ui border border-border-subtle bg-surface-1/70 px-3 py-1.5 text-ui text-content-secondary transition-all hover:border-border-strong hover:bg-surface-2/80 hover:text-content-primary cursor-pointer"
           >
+            <Icon className="h-3.5 w-3.5" />
             {label}
           </button>
         ))}
@@ -480,7 +483,6 @@ export default function Home() {
   const [agentName, setAgentName] = useState('Loading...');
   const router = useRouter();
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [streamingActivity, setStreamingActivity] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   // First line of the model's latest reasoning/progress message — shown next
@@ -535,11 +537,20 @@ export default function Home() {
     }
   }, [sessionId, currentAgentId]);
 
-  // Restore persisted theme AFTER hydration (avoids SSR className mismatch)
-  useEffect(() => {
-    const saved = localStorage.getItem('synapseTheme') as 'dark' | 'light' | null;
-    if (saved) setTheme(saved);
-  }, []);
+  // The Settings gear owned this confirm until the gear moved to the rail.
+  // The rail calls this before navigating, so an in-flight run still gets a
+  // warning instead of being aborted silently.
+  useRegisterNavGuard(() => {
+    if (!isLoading) return true;
+    const ok = window.confirm('An agent is still processing. Navigating away will cancel it. Continue?');
+    if (!ok) return false;
+    sseAbortRef.current?.abort();
+    sseAbortRef.current = null;
+    setIsLoading(false);
+    setStreamingActivity(null);
+    setIsThinking(false);
+    return true;
+  });
 
   // Abort any in-flight SSE stream on unmount (e.g. navigating away after confirm)
   useEffect(() => {
@@ -1401,7 +1412,7 @@ export default function Home() {
   };
 
   return (
-    <main className={cn("flex h-screen bg-black text-white font-mono overflow-hidden", theme === 'light' ? 'light-mode' : '')}>
+    <div className="flex h-full min-h-0 overflow-hidden font-mono">
 
       {/* ── History Drawer ────────────────────────────────────────────────── */}
       {isHistoryOpen && (
@@ -1507,7 +1518,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col w-full border-x border-zinc-800 shadow-2xl relative">
+      <div className="flex-1 flex flex-col w-full border-r border-zinc-800 relative">
         {/* Header */}
         <header className="h-14 border-b border-zinc-800 bg-zinc-950 px-6 shrink-0 z-10">
           <div className='w-full md:max-w-5xl mx-auto h-full flex items-center justify-between'>
@@ -1615,37 +1626,6 @@ export default function Home() {
                 <History className="h-4 w-4" />
               </button>
 
-              <NotificationBell />
-
-              <button
-                onClick={() => setTheme(prev => {
-                  const next = prev === 'dark' ? 'light' : 'dark';
-                  localStorage.setItem('synapseTheme', next);
-                  return next;
-                })}
-                className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
-                title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              >
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
-
-              <button
-                onClick={() => {
-                  if (isLoading) {
-                    const ok = window.confirm('An agent is still processing. Navigating away will cancel it. Continue?');
-                    if (!ok) return;
-                    sseAbortRef.current?.abort();
-                    sseAbortRef.current = null;
-                    setIsLoading(false);
-                    setStreamingActivity(null);
-                    setIsThinking(false);
-                  }
-                  router.push('/settings/general');
-                }}
-                className="p-2 ml-2 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white transition-colors"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
             </div>
           </div>
 
@@ -1852,6 +1832,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

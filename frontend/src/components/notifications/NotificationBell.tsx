@@ -5,7 +5,13 @@ import { useNotifications } from './NotificationProvider';
 
 // Header bell: unseen-count badge, dropdown of recent run notifications
 // (click-through to the run view) and the browser-notification opt-in.
-export function NotificationBell() {
+export function NotificationBell({ placement = 'below-right' }: {
+    /**
+     * 'below-right' anchors under the button (chat header). 'above-left' opens
+     * upward from the left edge, for the rail foot at the bottom of the screen.
+     */
+    placement?: 'below-right' | 'above-left';
+} = {}) {
     const {
         notifications, unseenCount, markAllSeen, openRun,
         browserNotificationsEnabled, setBrowserNotificationsEnabled,
@@ -41,7 +47,7 @@ export function NotificationBell() {
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-1 w-80 rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl z-[999] overflow-hidden">
+                <div className={`absolute w-80 rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl z-[999] overflow-hidden ${placement === 'above-left' ? 'bottom-full left-0 mb-1' : 'right-0 top-full mt-1'}`}>
                     <div className="px-3 py-2 border-b border-zinc-800 text-xs font-semibold text-zinc-300 uppercase tracking-wider">
                         Notifications
                     </div>

@@ -362,12 +362,8 @@ export const SchedulesTab = () => {
                 </div>
             )}
 
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-zinc-800 shrink-0 pr-14 flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-zinc-100">Schedules</h1>
-                    <p className="text-zinc-500 text-xs mt-0.5">Automate agent and orchestration runs on a recurring schedule</p>
-                </div>
+            {/* Actions. The title and blurb are the <Screen> frame's. */}
+            <div className="px-6 py-3 border-b border-zinc-800 shrink-0 flex items-center justify-end">
                 <div className="flex items-center gap-2">
                     <button
                         onClick={fetchAll}

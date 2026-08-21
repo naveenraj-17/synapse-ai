@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { URL } from "url";
 import path from "path";
 import fs from "fs";
+import { MOVED_TABS } from "./src/lib/moved-routes";
 
 // ---------------------------------------------------------------------------
 // Load the project-root .env before reading any env vars.
@@ -69,6 +70,21 @@ const nextConfig: NextConfig = {
     // Expose backend port to client-side code (e.g., for UI instructions)
     NEXT_PUBLIC_BACKEND_PORT: BACKEND_PORT,
     NEXT_PUBLIC_FRONTEND_PORT: _frontendPort,
+  },
+  async redirects() {
+    // Screens that left /settings/* for the rail. These URLs are in browser
+    // history and were in the app's own buttons; a bookmark that 404s is a bug
+    // report. Permanent, and the query string rides along — which is what keeps
+    // /settings/orchestrations?run=<id> landing on the right run.
+    return [
+      // Bare /settings used to 404 — there was never a page at that level.
+      { source: "/settings", destination: "/settings/general", permanent: false },
+      ...Object.entries(MOVED_TABS).map(([tab, destination]) => ({
+        source: `/settings/${tab}`,
+        destination,
+        permanent: true,
+      })),
+    ];
   },
   async rewrites() {
     return {

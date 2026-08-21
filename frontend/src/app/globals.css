@@ -8,14 +8,76 @@
   --sb-track: #09090b;
   --sb-thumb: #27272a;
   --sb-thumb-hover: #3f3f46;
+
+  /* ─── THE TWO LEVERS ────────────────────────────────────────────────────
+   * Both are deliberately one line each, so the question gets answered by
+   * looking at the running app instead of by argument.
+   *
+   *   --ui-font   flip to var(--font-inter) and the whole app becomes sans.
+   *               `font-mono` is aliased to this below, so all 238 existing
+   *               call sites follow the lever too — not just the new chrome.
+   *               `font-code` opts out and stays monospace regardless.
+   *   --accent    flip to the D27 cyan (hue 186) and every accented surface
+   *               in the new chrome follows.
+   * ------------------------------------------------------------------- */
+  --ui-font: var(--font-geist-mono);
+  --code-font: var(--font-geist-mono);
+  --accent: #f4f4f5;          /* zinc-100 — today's value, no hue change */
+  --accent-contrast: #09090b;
+
+  /* ─── TYPE SCALE ────────────────────────────────────────────────────────
+   * Dense/quiet target (Figma/Linear register), tuned for MONO metrics:
+   * mono glyphs run ~0.6em against Inter's ~0.5em, so these sit a step
+   * below where a sans scale would. New names only — Tailwind's own
+   * text-xs/sm/base are left alone so no existing screen shifts.
+   * 11px is the floor. There are 469 uses of 9/10/11px to retire in pass two.
+   * ------------------------------------------------------------------- */
+  --step-2xs: 11px;
+  --step-ui: 13px;
+  --step-title: 20px;
+
+  /* ─── SEMANTIC SURFACES ─────────────────────────────────────────────────
+   * Today's zinc ramp verbatim — this pass changes no hue. The point is to
+   * have somewhere for pass two to aim the 2,677 raw zinc-* utilities.
+   * ------------------------------------------------------------------- */
+  --surface-0: #09090b;       /* zinc-950 — page ground */
+  --surface-1: #18181b;       /* zinc-900 — raised panel */
+  --surface-2: #27272a;       /* zinc-800 — active row, input */
+  --border-subtle: #27272a;   /* zinc-800 */
+  --border-strong: #3f3f46;   /* zinc-700 */
+  --content-primary: #fafafa;   /* zinc-50 */
+  --content-secondary: #a1a1aa; /* zinc-400 */
+  --content-muted: #71717a;     /* zinc-500 */
+  --ring: #71717a;            /* zinc-500 — visible on both grounds */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--ui-font);
+  --font-ui: var(--ui-font);
+  --font-code: var(--code-font);
   --font-inter: var(--font-inter), 'Inter', system-ui, sans-serif;
+
+  --text-2xs: var(--step-2xs);
+  --text-ui: var(--step-ui);
+  --text-title: var(--step-title);
+
+  --radius-ui: 6px;
+  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-e2: 0 4px 12px rgb(0 0 0 / 0.35);
+
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-content-primary: var(--content-primary);
+  --color-content-secondary: var(--content-secondary);
+  --color-content-muted: var(--content-muted);
 }
 
 .light-mode {
@@ -109,6 +171,22 @@
   /* --- CORE COLORS INVERSION --- */
   --color-black: #ffffff;
   --color-white: #09090b;
+
+  /* --- SEMANTIC TOKEN INVERSION ---
+   * These mirror the zinc inversion above. Without them light mode would
+   * invert every zinc-* utility and leave the new tokens on dark values. */
+  --accent: #18181b;
+  --accent-contrast: #fafafa;
+
+  --surface-0: #ffffff;
+  --surface-1: #fafafa;
+  --surface-2: #f4f4f5;
+  --border-subtle: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --content-primary: #09090b;
+  --content-secondary: #52525b;
+  --content-muted: #71717a;
+  --ring: #71717a;
 
   /* --- SCROLLBAR LIGHT --- */
   --sb-track: #fafafa;
@@ -208,4 +286,27 @@ button:disabled {
 
 .tip-card-animate {
   animation: tip-fade-in 0.4s ease forwards;
+}
+
+/* ─── FOCUS ─────────────────────────────────────────────────────────────────
+ * There are 148 `focus:outline-none` in this codebase and zero `focus-visible`
+ * or `focus:ring`: keyboard focus is currently invisible app-wide. Restoring it
+ * once here beats 148 edits.
+ *
+ * `focus:outline-none` fires on :focus, which also matches while :focus-visible
+ * is active, and as a class selector it outspecifies a bare `:focus-visible`.
+ * This rule sits OUTSIDE any @layer, and unlayered CSS beats layered CSS in the
+ * cascade regardless of specificity — the same mechanism .light-mode already
+ * relies on to override Tailwind's colour utilities.
+ * -------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Pointer clicks should not paint a ring; :focus-visible already handles that
+   in modern engines, but Radix-style buttons that programmatically .focus()
+   can trip it. Keep the escape hatch explicit rather than implicit. */
+[data-no-focus-ring]:focus-visible {
+  outline: none;
 }
