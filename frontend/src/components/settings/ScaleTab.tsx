@@ -1042,7 +1042,7 @@ export function ScaleTab() {
                     <div className="border border-border p-4">
                         <div className="flex items-center justify-between mb-3">
                             <Label>Workers</Label>
-                            <button onClick={loadWorkers} className="text-text-faint hover:text-text-muted transition-colors">
+                            <button onClick={loadWorkers} aria-label="Refresh workers" title="Refresh workers" className="text-text-faint hover:text-text-muted transition-colors">
                                 <RefreshCw className="h-3 w-3" />
                             </button>
                         </div>
@@ -1341,7 +1341,7 @@ export function ScaleTab() {
                             className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider border border-border-strong text-text-muted hover:text-text hover:border-text-faint disabled:opacity-40 transition-colors">
                             <Plus className="h-3 w-3" /> Register
                         </button>
-                        <button onClick={loadWorkers} className="p-2 text-text-faint hover:text-text transition-colors">
+                        <button onClick={loadWorkers} aria-label="Refresh workers" title="Refresh workers" className="p-2 text-text-faint hover:text-text transition-colors">
                             <RefreshCw className="h-4 w-4" />
                         </button>
                     </div>

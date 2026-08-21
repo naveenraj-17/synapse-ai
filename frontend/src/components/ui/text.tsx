@@ -114,22 +114,35 @@ export function Text({
  * 11px with wide tracking is a smear, and the uppercase already does the
  * work of separating this from body text.
  *
- * NOT for form fields. A label that names a control belongs to `Field`, which
- * associates the two and threads `aria-describedby` at the hint. This is for
- * the standalone eyebrow over a group that is not a single control.
+ * For an ordinary stacked field, reach for `Field` instead — it wraps the
+ * control, which associates the two without an id, and threads
+ * `aria-describedby` at the hint.
+ *
+ * `htmlFor` is the escape hatch for the case `Field` cannot serve: a control
+ * that shares its row with another control. The API-key rows pair an input with
+ * a show/hide button, and wrapping those in one `<label>` would put a `<button>`
+ * inside a label — the label then has two labelable descendants and the
+ * association depends on document order. Naming the control by id says exactly
+ * which one is meant. Without `htmlFor` this stays a `<span>`, so it is still
+ * safe to drop inline in a flex row.
  */
 export function Label({
   children,
   size = "xs",
+  htmlFor,
   className,
 }: {
   children: React.ReactNode;
   /** `xs` is the 11px form used inside dense panels; `sm` the 12px section eyebrow. */
   size?: "xs" | "sm";
+  /** Names the control this labels. Switches the element to a real `<label>`. */
+  htmlFor?: string;
   className?: string;
 }) {
+  const Tag = htmlFor ? "label" : "span";
   return (
-    <span
+    <Tag
+      htmlFor={htmlFor}
       className={cn(
         "font-medium uppercase tracking-wider text-text-faint",
         size === "sm" ? "text-xs" : "text-2xs",
@@ -137,7 +150,7 @@ export function Label({
       )}
     >
       {children}
-    </span>
+    </Tag>
   );
 }
 

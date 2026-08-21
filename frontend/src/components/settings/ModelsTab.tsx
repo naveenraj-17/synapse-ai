@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2, Terminal, Eye, EyeOff } from 'lucide-react';
-import { Combobox, Select, type ComboboxOption } from '@/components/ui';
+import { Combobox, Input, Label, Select, Textarea, type ComboboxOption } from '@/components/ui';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -305,7 +305,7 @@ export const ModelsTab = ({
         <div className="space-y-8">
             {/* Provider Cards */}
             <div className="space-y-4">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Providers</label>
+                <Label size="sm" className="block">Providers</Label>
                 <div className="space-y-3">
                     {Object.entries(PROVIDER_META).map(([key, meta]) => {
                         const providerData = providers[key] || { available: false, models: [] };
@@ -315,8 +315,8 @@ export const ModelsTab = ({
 
                         return (
                             <div key={key} className={`border transition-all duration-200 ${providerData.available
-                                ? 'border-zinc-700 bg-zinc-900/50'
-                                : 'border-zinc-800/50 bg-zinc-950'
+                                ? 'border-border-strong bg-surface/50'
+                                : 'border-border/50 bg-bg'
                                 } rounded-md`}>
                                 {/* Card Header */}
                                 <button
@@ -325,16 +325,16 @@ export const ModelsTab = ({
                                         setExpandedProvider(next);
                                         if (next === 'bedrock') onExpandBedrock?.();
                                     }}
-                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-900/30 transition-colors"
+                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-surface/30 transition-colors"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`h-2 w-2 rounded-full ${providerData.available ? 'bg-green-500 shadow-[0_0_6px_#22c55e]' : 'bg-zinc-600'}`} />
+                                        <div className={`h-2 w-2 rounded-full ${providerData.available ? 'bg-success shadow-[0_0_6px_var(--success)]' : 'bg-text-faint'}`} />
                                         <Icon className={`h-4 w-4 ${!providerData.available ? 'opacity-40 grayscale' : ''}`} style={{ color: providerData.available ? meta.color : '#71717a' }} />
                                         <div>
-                                            <span className={`text-sm font-bold ${providerData.available ? 'text-white' : 'text-zinc-500'}`}>
+                                            <span className={`text-sm font-bold ${providerData.available ? 'text-text' : 'text-text-faint'}`}>
                                                 {meta.label}
                                             </span>
-                                            <span className="text-[10px] text-zinc-500 ml-2">
+                                            <span className="text-2xs text-text-faint ml-2">
                                                 {providerData.available
                                                     ? `${modelCount} model${modelCount !== 1 ? 's' : ''}`
                                                     : key === 'ollama' ? 'Not running' : key.endsWith('_cli') ? 'Not installed' : 'No key configured'
@@ -344,45 +344,47 @@ export const ModelsTab = ({
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {providerData.available
-                                            ? <Check className="h-4 w-4 text-green-500" />
-                                            : <XIcon className="h-3 w-3 text-zinc-600" />
+                                            ? <Check className="h-4 w-4 text-success" />
+                                            : <XIcon className="h-3 w-3 text-text-faint" />
                                         }
-                                        {isExpanded ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
+                                        {isExpanded ? <ChevronUp className="h-4 w-4 text-text-faint" /> : <ChevronDown className="h-4 w-4 text-text-faint" />}
                                     </div>
                                 </button>
 
                                 {/* Expanded Content */}
                                 {isExpanded && (
-                                    <div className="px-4 pb-4 space-y-3 border-t border-zinc-800/50 pt-3">
-                                        <p className="text-[10px] text-zinc-500">{meta.description}</p>
+                                    <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
+                                        <p className="text-2xs text-text-faint">{meta.description}</p>
 
                                         {/* API Key input (not for Ollama, Bedrock, or CLI — they have their own blocks) */}
                                         {key !== 'ollama' && key !== 'bedrock' && key !== 'openai_compatible' && key !== 'local_compatible' && key !== 'huggingface' && !key.endsWith('_cli') && (
                                             <div className="space-y-1.5">
-                                                <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
+                                                <Label htmlFor={`api-key-${key}`} className="block">API Key</Label>
                                                 <div className="relative">
-                                                    <input
+                                                    <Input
+                                                        id={`api-key-${key}`}
                                                         type={visibleKeys[key] ? 'text' : 'password'}
                                                         value={getKeyValue(key)}
                                                         onChange={e => setKeyValue(key, e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md"
+                                                        className="pr-8"
                                                         placeholder={meta.keyPlaceholder}
                                                     />
                                                     <button type="button" onClick={() => toggleKeyVisible(key)}
-                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                                                        aria-label={visibleKeys[key] ? 'Hide API key' : 'Show API key'}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors">
                                                         {visibleKeys[key] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                     </button>
                                                 </div>
                                                 {/* Key instructions */}
                                                 {meta.keyNote && (
-                                                    <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
+                                                    <p className="text-2xs text-text-faint">{meta.keyNote}</p>
                                                 )}
                                                 {meta.keyLink && (
                                                     <a
                                                         href={meta.keyLink.url}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                        className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors"
                                                     >
                                                         <ExternalLink className="h-2.5 w-2.5" />
                                                         {meta.keyLink.label}
@@ -395,24 +397,24 @@ export const ModelsTab = ({
                                         {key === 'bedrock' && (
                                             <div className="space-y-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
+                                                    <Label htmlFor="bedrockapikey" className="block">Bedrock API Key</Label>
                                                     <div className="relative">
-                                                        <input type={visibleKeys['bedrock'] ? 'text' : 'password'} value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="ABSK... or bedrock-api-key..." />
+                                                        <Input id="bedrockapikey" type={visibleKeys['bedrock'] ? 'text' : 'password'} value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
+                                                            className="pr-8" placeholder="ABSK... or bedrock-api-key..." />
                                                         <button type="button" onClick={() => toggleKeyVisible('bedrock')}
-                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors">
                                                             {visibleKeys['bedrock'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                         </button>
                                                     </div>
                                                     {meta.keyNote && (
-                                                        <p className="text-[10px] text-zinc-600">{meta.keyNote}</p>
+                                                        <p className="text-2xs text-text-faint">{meta.keyNote}</p>
                                                     )}
                                                     {meta.keyLink && (
                                                         <a
                                                             href={meta.keyLink.url}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                            className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors"
                                                         >
                                                             <ExternalLink className="h-2.5 w-2.5" />
                                                             {meta.keyLink.label}
@@ -420,12 +422,12 @@ export const ModelsTab = ({
                                                     )}
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">AWS Region</label>
-                                                    <input type="text" value={awsRegion} onChange={e => setAwsRegion(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="us-east-1" />
+                                                    <Label htmlFor="awsregion" className="block">AWS Region</Label>
+                                                    <Input id="awsregion" type="text" value={awsRegion} onChange={e => setAwsRegion(e.target.value)}
+                                                         placeholder="us-east-1" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Inference Profile (Optional)</label>
+                                                    <Label className="block">Inference Profile (Optional)</Label>
                                                     <Select
                                                         value={bedrockInferenceProfile || '__ondemand__'}
                                                         onChange={(v) => setBedrockInferenceProfile(v === '__ondemand__' ? '' : v)}
@@ -445,13 +447,13 @@ export const ModelsTab = ({
                                                     />
                                                 </div>
                                                 {inferenceProfilesError && (
-                                                    <div className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/20 text-[10px] text-red-400 rounded-md">
+                                                    <div className="flex items-start gap-2 p-2.5 bg-danger/5 border border-danger/20 text-2xs text-danger rounded-md">
                                                         <Info className="w-3 h-3 mt-0.5 shrink-0" />
                                                         <span className="break-all">{inferenceProfilesError}</span>
                                                     </div>
                                                 )}
                                                 {!inferenceProfilesError && providerData.available && !bedrockInferenceProfile && (
-                                                    <div className="flex items-start gap-2 p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-400 rounded-md">
+                                                    <div className="flex items-start gap-2 p-2.5 bg-warning/5 border border-warning/20 text-2xs text-warning rounded-md">
                                                         <Info className="w-3 h-3 mt-0.5 shrink-0" />
                                                         <span>No inference profile selected. Please select an inference profile above to use AWS Bedrock.</span>
                                                     </div>
@@ -463,33 +465,33 @@ export const ModelsTab = ({
                                         {key === 'openai_compatible' && (
                                             <div className="space-y-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
+                                                    <Label htmlFor="openaicompatiblekey" className="block">API Key</Label>
                                                     <div className="relative">
-                                                        <input type={visibleKeys['openai_compatible'] ? 'text' : 'password'} value={openaiCompatibleKey} onChange={e => setOpenaiCompatibleKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="sk-..." />
+                                                        <Input id="openaicompatiblekey" type={visibleKeys['openai_compatible'] ? 'text' : 'password'} value={openaiCompatibleKey} onChange={e => setOpenaiCompatibleKey(e.target.value)}
+                                                            className="pr-8" placeholder="sk-..." />
                                                         <button type="button" onClick={() => toggleKeyVisible('openai_compatible')}
-                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors">
                                                             {visibleKeys['openai_compatible'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
-                                                    <input type="text" value={openaiCompatibleBaseUrl} onChange={e => setOpenaiCompatibleBaseUrl(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="https://openrouter.ai/api" />
-                                                    <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
+                                                    <Label htmlFor="openaicompatiblebaseurl" className="block">Base URL</Label>
+                                                    <Input id="openaicompatiblebaseurl" type="text" value={openaiCompatibleBaseUrl} onChange={e => setOpenaiCompatibleBaseUrl(e.target.value)}
+                                                         placeholder="https://openrouter.ai/api" />
+                                                    <p className="text-2xs text-text-faint">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
-                                                    <input type="text" value={openaiCompatibleModels} onChange={e => setOpenaiCompatibleModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. meta-llama/llama-3-70b-instruct, google/gemma-2-27b-it" />
-                                                    <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
+                                                    <Label htmlFor="openaicompatiblemodels" className="block">Model Names (comma-separated)</Label>
+                                                    <Input id="openaicompatiblemodels" type="text" value={openaiCompatibleModels} onChange={e => setOpenaiCompatibleModels(e.target.value)}
+                                                         placeholder="e.g. meta-llama/llama-3-70b-instruct, google/gemma-2-27b-it" />
+                                                    <p className="text-2xs text-text-faint">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
-                                                    <input type="text" value={openaiCompatibleEmbedModels} onChange={e => setOpenaiCompatibleEmbedModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. hf:nomic-ai/nomic-embed-text-v1.5" />
-                                                    <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
+                                                    <Label htmlFor="openaicompatibleembedmodels" className="block">Embedding Model Names (comma-separated)</Label>
+                                                    <Input id="openaicompatibleembedmodels" type="text" value={openaiCompatibleEmbedModels} onChange={e => setOpenaiCompatibleEmbedModels(e.target.value)}
+                                                         placeholder="e.g. hf:nomic-ai/nomic-embed-text-v1.5" />
+                                                    <p className="text-2xs text-text-faint">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
                                                 </div>
                                             </div>
                                         )}
@@ -498,33 +500,33 @@ export const ModelsTab = ({
                                         {key === 'local_compatible' && (
                                             <div className="space-y-3">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">API Key (optional)</label>
+                                                    <Label htmlFor="localcompatiblekey" className="block">API Key (optional)</Label>
                                                     <div className="relative">
-                                                        <input type={visibleKeys['local_compatible'] ? 'text' : 'password'} value={localCompatibleKey} onChange={e => setLocalCompatibleKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="Leave blank if not required" />
+                                                        <Input id="localcompatiblekey" type={visibleKeys['local_compatible'] ? 'text' : 'password'} value={localCompatibleKey} onChange={e => setLocalCompatibleKey(e.target.value)}
+                                                            className="pr-8" placeholder="Leave blank if not required" />
                                                         <button type="button" onClick={() => toggleKeyVisible('local_compatible')}
-                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors">
                                                             {visibleKeys['local_compatible'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
-                                                    <input type="text" value={localCompatibleBaseUrl} onChange={e => setLocalCompatibleBaseUrl(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="http://localhost:8000" />
-                                                    <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
+                                                    <Label htmlFor="localcompatiblebaseurl" className="block">Base URL</Label>
+                                                    <Input id="localcompatiblebaseurl" type="text" value={localCompatibleBaseUrl} onChange={e => setLocalCompatibleBaseUrl(e.target.value)}
+                                                         placeholder="http://localhost:8000" />
+                                                    <p className="text-2xs text-text-faint">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
-                                                    <input type="text" value={localCompatibleModels} onChange={e => setLocalCompatibleModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. llama-3-70b, mistral-7b" />
-                                                    <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
+                                                    <Label htmlFor="localcompatiblemodels" className="block">Model Names (comma-separated)</Label>
+                                                    <Input id="localcompatiblemodels" type="text" value={localCompatibleModels} onChange={e => setLocalCompatibleModels(e.target.value)}
+                                                         placeholder="e.g. llama-3-70b, mistral-7b" />
+                                                    <p className="text-2xs text-text-faint">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
-                                                    <input type="text" value={localCompatibleEmbedModels} onChange={e => setLocalCompatibleEmbedModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. bge-m3" />
-                                                    <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
+                                                    <Label htmlFor="localcompatibleembedmodels" className="block">Embedding Model Names (comma-separated)</Label>
+                                                    <Input id="localcompatibleembedmodels" type="text" value={localCompatibleEmbedModels} onChange={e => setLocalCompatibleEmbedModels(e.target.value)}
+                                                         placeholder="e.g. bge-m3" />
+                                                    <p className="text-2xs text-text-faint">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
                                                 </div>
                                             </div>
                                         )}
@@ -532,28 +534,28 @@ export const ModelsTab = ({
                                         {/* HuggingFace fields */}
                                         {key === 'huggingface' && (
                                             <div className="space-y-3">
-                                                <div className="p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-300 leading-relaxed rounded-md">
+                                                <div className="p-2.5 bg-warning/5 border border-warning/20 text-2xs text-warning leading-relaxed rounded-md">
                                                     <strong>Requires torch + transformers on the host.</strong> Models load in the backend process and stay in memory. Expect 16-40 GB VRAM for 7B-class models. Without a GPU, inference runs on CPU and will be slow.
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Access Token (optional)</label>
+                                                    <Label htmlFor="huggingfacetoken" className="block">Access Token (optional)</Label>
                                                     <div className="relative">
-                                                        <input type={visibleKeys['huggingface'] ? 'text' : 'password'} value={huggingfaceToken} onChange={e => setHuggingfaceToken(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="hf_... (required for gated models like Llama, Gemma)" />
+                                                        <Input id="huggingfacetoken" type={visibleKeys['huggingface'] ? 'text' : 'password'} value={huggingfaceToken} onChange={e => setHuggingfaceToken(e.target.value)}
+                                                            className="pr-8" placeholder="hf_... (required for gated models like Llama, Gemma)" />
                                                         <button type="button" onClick={() => toggleKeyVisible('huggingface')}
-                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors">
                                                             {visibleKeys['huggingface'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                                         </button>
                                                     </div>
-                                                    <p className="text-[10px] text-zinc-600">Only needed for gated models. Public models load without a token.</p>
+                                                    <p className="text-2xs text-text-faint">Only needed for gated models. Public models load without a token.</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Model IDs (one per line or comma-separated)</label>
-                                                    <textarea value={huggingfaceModels} onChange={e => setHuggingfaceModels(e.target.value)} rows={4}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
+                                                    <Label htmlFor="huggingfacemodels" className="block">Model IDs (one per line or comma-separated)</Label>
+                                                    <Textarea id="huggingfacemodels" value={huggingfaceModels} onChange={e => setHuggingfaceModels(e.target.value)} rows={4}
+                                                        className="font-mono"
                                                         placeholder={"Qwen/Qwen2.5-7B-Instruct\nmeta-llama/Llama-3.1-8B-Instruct\nmistralai/Mistral-7B-Instruct-v0.3"}
                                                     />
-                                                    <p className="text-[10px] text-zinc-600">Each ID becomes a selectable <code className="font-code text-zinc-400">hf.&lt;org&gt;/&lt;model&gt;</code> model. First call to a model pays a 20-60s load cost, then stays warm in memory.</p>
+                                                    <p className="text-2xs text-text-faint">Each ID becomes a selectable <code className="font-code text-text-muted">hf.&lt;org&gt;/&lt;model&gt;</code> model. First call to a model pays a 20-60s load cost, then stays warm in memory.</p>
                                                 </div>
                                             </div>
                                         )}
@@ -561,7 +563,7 @@ export const ModelsTab = ({
                                         {/* Ollama info */}
                                         {key === 'ollama' && (
                                             <div className="space-y-1.5">
-                                                <div className="text-[10px] text-zinc-500">
+                                                <div className="text-2xs text-text-faint">
                                                     {providerData.available
                                                         ? `Detected ${modelCount} local model${modelCount !== 1 ? 's' : ''}: ${providerData.models.slice(0, 5).join(', ')}${modelCount > 5 ? '...' : ''}`
                                                         : 'Ollama is not running. Start it to use local models.'
@@ -571,7 +573,7 @@ export const ModelsTab = ({
                                                     href="https://ollama.com/download"
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                                                    className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors"
                                                 >
                                                     <ExternalLink className="h-2.5 w-2.5" />
                                                     Download Ollama →
@@ -582,33 +584,33 @@ export const ModelsTab = ({
                                         {/* CLI Sessions info */}
                                         {key.endsWith('_cli') && (
                                             <div className="space-y-2">
-                                                <div className="text-[10px] text-zinc-500">
+                                                <div className="text-2xs text-text-faint">
                                                     {providerData.available
                                                         ? `Detected ${modelCount} CLI session${modelCount !== 1 ? 's' : ''}: ${providerData.models.join(', ')}`
                                                         : `No CLI binary found in PATH for ${meta.label}.`
                                                     }
                                                 </div>
-                                                <div className="p-2.5 bg-accent border border-accent/20 text-[10px] text-accent leading-relaxed rounded-md">
+                                                <div className="p-2.5 bg-accent/5 border border-accent/20 text-2xs text-accent leading-relaxed rounded-md">
                                                     <strong>No API key needed</strong> — uses your existing CLI session. Run the CLI manually first to authenticate.
                                                 </div>
                                                 <div className="flex flex-col gap-1">
                                                     {key === 'anthropic_cli' && (
-                                                        <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                        <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors">
                                                             <ExternalLink className="h-2.5 w-2.5" /> Install Claude CLI →
                                                         </a>
                                                     )}
                                                     {key === 'gemini_cli' && (
-                                                        <a href="https://ai.google.dev/gemini-api/docs/gemini-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                        <a href="https://ai.google.dev/gemini-api/docs/gemini-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors">
                                                             <ExternalLink className="h-2.5 w-2.5" /> Install Gemini CLI →
                                                         </a>
                                                     )}
                                                     {key === 'codex_cli' && (
-                                                        <a href="https://github.com/openai/codex" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                        <a href="https://github.com/openai/codex" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors">
                                                             <ExternalLink className="h-2.5 w-2.5" /> Install OpenAI Codex CLI →
                                                         </a>
                                                     )}
                                                     {key === 'github_copilot_cli' && (
-                                                        <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                                        <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-2xs text-accent hover:text-accent-hover transition-colors">
                                                             <ExternalLink className="h-2.5 w-2.5" /> Install GitHub Copilot CLI →
                                                         </a>
                                                     )}
@@ -624,10 +626,10 @@ export const ModelsTab = ({
                                                     if (!cfg) return null;
                                                     return (
                                                         <div className="space-y-1">
-                                                            <label className="text-[10px] uppercase font-bold text-zinc-500">Custom Model Names (comma-separated)</label>
-                                                            <input type="text" value={cfg.value} onChange={e => cfg.set(e.target.value)}
-                                                                className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder={cfg.placeholder} />
-                                                            <p className="text-[10px] text-zinc-600">Each name is passed to the CLI's <code className="font-code text-zinc-400">-m</code> flag and becomes a selectable <code className="font-code text-zinc-400">{cfg.prefix}.&lt;name&gt;</code> model. Use this when the CLI's default model isn't available to your account.</p>
+                                                            <Label htmlFor="cfg-value" className="block">Custom Model Names (comma-separated)</Label>
+                                                            <Input id="cfg-value" type="text" value={cfg.value} onChange={e => cfg.set(e.target.value)}
+                                                                 placeholder={cfg.placeholder} />
+                                                            <p className="text-2xs text-text-faint">Each name is passed to the CLI's <code className="font-code text-text-muted">-m</code> flag and becomes a selectable <code className="font-code text-text-muted">{cfg.prefix}.&lt;name&gt;</code> model. Use this when the CLI's default model isn't available to your account.</p>
                                                         </div>
                                                     );
                                                 })()}
@@ -637,10 +639,10 @@ export const ModelsTab = ({
                                         {/* Available models list */}
                                         {providerData.available && providerData.models.length > 0 && key !== 'ollama' && (
                                             <div className="space-y-1">
-                                                <label className="text-[10px] uppercase font-bold text-zinc-600">Available Models</label>
+                                                <Label className="block">Available Models</Label>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {providerData.models.map(m => (
-                                                        <span key={m} className="text-[10px] px-2 py-0.5 bg-zinc-800 text-zinc-400 border border-zinc-700/50 rounded-sm">{m}</span>
+                                                        <span key={m} className="text-2xs px-2 py-0.5 bg-surface-2 text-text-muted border border-border-strong/50 rounded-sm">{m}</span>
                                                     ))}
                                                 </div>
                                             </div>
@@ -655,8 +657,8 @@ export const ModelsTab = ({
 
             {/* Default Model Selector */}
             <div className="space-y-2">
-                <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Default Model</label>
-                <p className="text-[10px] text-zinc-600 -mt-1">Used for system prompt generation and agents without a specific model assigned.</p>
+                <Label size="sm" className="block">Default Model</Label>
+                <p className="text-2xs text-text-faint -mt-1">Used for system prompt generation and agents without a specific model assigned.</p>
                 <Combobox
                     value={selectedModel || undefined}
                     onChange={setSelectedModel}
@@ -669,8 +671,8 @@ export const ModelsTab = ({
             {/* Default Embedding Model Selector */}
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Embedding Model</label>
-                    <p className="text-[10px] text-zinc-600 -mt-1">Used for code indexing and repository search. Requires compatible providers like Gemini, OpenAI, or Ollama.</p>
+                    <Label size="sm" className="block">Embedding Model</Label>
+                    <p className="text-2xs text-text-faint -mt-1">Used for code indexing and repository search. Requires compatible providers like Gemini, OpenAI, or Ollama.</p>
                     <Combobox
                         value={embeddingModel || undefined}
                         onChange={setEmbeddingModel}
@@ -682,8 +684,8 @@ export const ModelsTab = ({
                 </div>
                 
                 {/* Warning Message */}
-                <div className="p-3 bg-amber-900/20 border border-amber-900/50 rounded-sm">
-                    <p className="text-[10px] text-amber-500 leading-relaxed uppercase font-bold tracking-tight">
+                <div className="p-3 bg-warning-subtle border border-warning/50 rounded-sm">
+                    <p className="text-2xs text-warning leading-relaxed uppercase font-bold tracking-tight">
                         ⚠ Warning: Changing the global embedding model will affect new repository indexals. 
                         Existing repositories will NOT be automatically migrated. Use individual repo settings to re-index manually if needed.
                     </p>
@@ -694,7 +696,7 @@ export const ModelsTab = ({
                 <button
                     onClick={onSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
                 >
                     {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isSaving ? 'Saving…' : 'Save Changes'}
