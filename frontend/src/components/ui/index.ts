@@ -42,6 +42,7 @@ export {
 } from "./table";
 export {
   Heading,
+  Label,
   Mono,
   Muted,
   PageHeader,
@@ -58,5 +59,5 @@ export { MenuItem, MenuLabel, MenuSeparator, RowMenu } from "./menu";
 export { Select, type SelectOption } from "./select";
 export { Combobox, type ComboboxOption } from "./combobox";
 export { StatusBadge, normaliseStatus, type RunStatus } from "./status";
-export { Toast, useToast } from "./toast";
+export { Toast, useToast, type ToastTone } from "./toast";
 export { Hint, TooltipProvider } from "./tooltip";

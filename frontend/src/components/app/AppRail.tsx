@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun } from 'lucide-react';
 
-import { IconButton } from '@/components/ui';
+import { IconButton, Label } from '@/components/ui';
 import { PRIMARY_NAV, type NavEntry } from '@/lib/nav';
 import { useNotifications } from '@/components/notifications/NotificationProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -139,12 +139,12 @@ export function AppRail({
                 {PRIMARY_NAV.map(({ group, items }, groupIndex) => (
                     <div key={group ?? 'root'} className="mb-4 last:mb-0">
                         {group && (
-                            <div className={cn(
-                                'px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-text-faint',
+                            <Label className={cn(
+                                'block px-2.5 pb-1.5 pt-1',
                                 collapsed ? 'hidden' : 'hidden md:block',
                             )}>
                                 {group}
-                            </div>
+                            </Label>
                         )}
                         {/* Collapsed, the labels are hidden, so a rule is what
                             keeps the groups from reading as one long list.

@@ -32,6 +32,7 @@ import {
   ErrorNote,
   Field,
   Heading,
+  Label,
   Hint,
   IconButton,
   Input,
@@ -61,6 +62,7 @@ import {
   Textarea,
   TextLink,
   Toast,
+  type ToastTone,
   TooltipProvider,
   type BadgeTone,
   type ButtonVariant,
@@ -89,7 +91,10 @@ export function KitchenSink() {
   const [density, setDensity] = React.useState<Density>("comfortable");
   const [modal, setModal] = React.useState(false);
   const [confirm, setConfirm] = React.useState(false);
-  const [toast, setToast] = React.useState("");
+  const [toast, setToast] = React.useState<{ message: string; tone: ToastTone }>({
+    message: "",
+    tone: "success",
+  });
 
   // `?theme=light` opens straight into the other palette, which is what makes
   // it reviewable in a screenshot rather than only by clicking. Read in an
@@ -245,7 +250,24 @@ export function KitchenSink() {
               <Button variant="danger" onClick={() => setConfirm(true)}>
                 Delete something
               </Button>
-              <Button onClick={() => setToast("Saved.")}>Toast</Button>
+              {(["success", "warning", "danger"] as const).map((tone) => (
+                <Button
+                  key={tone}
+                  variant={tone === "danger" ? "danger" : "secondary"}
+                  onClick={() =>
+                    setToast({
+                      message: {
+                        success: "Saved.",
+                        warning: "Config saved. Use Retry to reconnect.",
+                        danger: "Could not reach the server.",
+                      }[tone],
+                      tone,
+                    })
+                  }
+                >
+                  Toast: {tone}
+                </Button>
+              ))}
             </div>
           </CardFooter>
         </Card>
@@ -282,6 +304,13 @@ export function KitchenSink() {
               <p>
                 <Mono>run_01j9x2c8ab</Mono> <Muted>· ids and keys are monospaced</Muted>
               </p>
+              <div className="space-y-1 border-t border-border pt-3">
+                <Label size="sm">Section eyebrow · sm</Label>
+                <Label>Dense panel label · xs</Label>
+                <Muted>
+                  Both sizes are 1 element. Not for naming a control — that is `Field`.
+                </Muted>
+              </div>
             </div>
           </CardBody>
         </Card>
@@ -405,7 +434,11 @@ export function KitchenSink() {
           description="This cannot be undone."
         />
 
-        <Toast message={toast} onDismiss={() => setToast("")} />
+        <Toast
+          message={toast.message}
+          tone={toast.tone}
+          onDismiss={() => setToast((t) => ({ ...t, message: "" }))}
+        />
       </div>
     </TooltipProvider>
   );

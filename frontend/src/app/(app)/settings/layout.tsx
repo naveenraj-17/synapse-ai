@@ -17,6 +17,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
+import { Label } from '@/components/ui';
 import { SETTINGS_NAV, visibleItems, type NavFlag } from '@/lib/nav';
 import { usePersisted } from '@/components/app/usePersisted';
 import { cn } from '@/lib/utils';
@@ -81,9 +82,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                                 {collapsed ? (
                                     <div className="mx-2 mb-2 border-t border-border first:hidden" />
                                 ) : (
-                                    <div className="px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-text-faint">
+                                    <Label className="block px-2.5 pb-1.5 pt-1">
                                         {group}
-                                    </div>
+                                    </Label>
                                 )}
                                 <div className="space-y-0.5">
                                     {shown.map(item => {

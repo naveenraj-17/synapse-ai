@@ -98,6 +98,49 @@ export function Text({
   );
 }
 
+/**
+ * The small uppercase line that labels a group.
+ *
+ * The single most-repeated string in the app: ~98 hand-written
+ * `uppercase tracking-*` labels, most of them some permutation of
+ * `text-[10px] uppercase font-bold text-zinc-500 tracking-wider` — written in
+ * six different orders, at three different sizes, with two different weights,
+ * because there was nothing to import.
+ *
+ * The shape here is not invented. `AppRail` and the settings sub-nav had both
+ * already converged on `text-2xs font-medium uppercase tracking-wider
+ * text-text-faint` independently, which is a good sign it is the right one.
+ * `font-medium` rather than the `font-bold` most call sites carry: bold at
+ * 11px with wide tracking is a smear, and the uppercase already does the
+ * work of separating this from body text.
+ *
+ * NOT for form fields. A label that names a control belongs to `Field`, which
+ * associates the two and threads `aria-describedby` at the hint. This is for
+ * the standalone eyebrow over a group that is not a single control.
+ */
+export function Label({
+  children,
+  size = "xs",
+  className,
+}: {
+  children: React.ReactNode;
+  /** `xs` is the 11px form used inside dense panels; `sm` the 12px section eyebrow. */
+  size?: "xs" | "sm";
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "font-medium uppercase tracking-wider text-text-faint",
+        size === "sm" ? "text-xs" : "text-2xs",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** The small grey line under something — a hint, a timestamp, an id. */
 export function Muted({
   children,
