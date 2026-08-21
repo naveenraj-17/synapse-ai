@@ -1637,7 +1637,7 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-scrim/70 backdrop-blur-sm" />
             {/* Panel */}
             <div className="relative z-10 w-full max-w-3xl max-h-[80vh] flex flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
                 {/* Header */}

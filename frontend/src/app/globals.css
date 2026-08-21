@@ -132,6 +132,22 @@
   --color-warning-subtle: var(--warning-subtle);
   --color-success: var(--success);
   --color-success-subtle: var(--success-subtle);
+  /*
+   * The scrim, and why it is not `bg-black`.
+   *
+   * A `bg-black/60` overlay compiles to color-mix over `--color-black`, and the
+   * compatibility layer below sets `--color-black: #ffffff` so that the ~2.5k
+   * raw utilities invert with everything else. That is right for `text-black`
+   * and catastrophic for an overlay: every scrim in the app — the kit's own
+   * Modal included — turned into a white wash in light mode, which reads as a
+   * rendering fault rather than a dimmed background.
+   *
+   * A scrim is one of the few things that is genuinely the same colour in both
+   * themes: its job is to darken whatever is behind it. This token is declared
+   * here and deliberately NOT redefined under .light-mode.
+   */
+  --color-scrim: #000000;
+
   --color-surface-header: var(--surface-header);
   --color-row-hover: var(--row-hover);
 }

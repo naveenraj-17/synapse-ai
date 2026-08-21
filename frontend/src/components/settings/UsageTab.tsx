@@ -967,7 +967,7 @@ export function UsageTab() {
     return (
         <div className="flex-1 overflow-y-auto bg-black text-white font-mono modern-scrollbar">
             {/* Header */}
-            <div className="sticky top-0 z-10 border-b border-border bg-black/90 backdrop-blur-sm px-6 md:px-10 py-4">
+            <div className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm px-6 md:px-10 py-4">
                 <div className="max-w-6xl mx-auto flex items-center justify-end gap-4">
                     <div className="flex items-center gap-2">
                         <button onClick={load} disabled={loading}

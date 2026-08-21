@@ -304,11 +304,11 @@ export function GeneralTab({
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
                         <p><strong>PostgreSQL not found.</strong> Install it to enable code indexing.</p>
                         <ul className="space-y-0.5 text-amber-300/80">
-                            <li><strong>Ubuntu/Debian:</strong> <code className="font-code bg-black/30 px-1">sudo apt install postgresql postgresql-contrib</code></li>
-                            <li><strong>macOS:</strong> <code className="font-code bg-black/30 px-1">brew install postgresql</code></li>
+                            <li><strong>Ubuntu/Debian:</strong> <code className="font-code bg-surface-2 px-1">sudo apt install postgresql postgresql-contrib</code></li>
+                            <li><strong>macOS:</strong> <code className="font-code bg-surface-2 px-1">brew install postgresql</code></li>
                             <li><strong>Windows:</strong> Download from <span className="underline">postgresql.org/download/windows</span></li>
                         </ul>
-                        <p className="text-amber-300/60">After installing, also install pgvector: <code className="font-code bg-black/30 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) or <code className="font-code bg-black/30 px-1">brew install pgvector</code> (macOS).</p>
+                        <p className="text-amber-300/60">After installing, also install pgvector: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) or <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS).</p>
                         <button
                             onClick={runEmbedCheck}
                             className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"
@@ -364,8 +364,8 @@ export function GeneralTab({
                     <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
                         <p><strong>pgvector extension not installed.</strong> PostgreSQL is running but the vector extension is missing.</p>
                         <p>Connect to your database and run:</p>
-                        <code className="block bg-black/40 px-2 py-1.5 font-code text-white/80">CREATE EXTENSION vector;</code>
-                        <p className="text-amber-300/60">Or install the OS package first: <code className="font-code bg-black/30 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) / <code className="font-code bg-black/30 px-1">brew install pgvector</code> (macOS), then run the SQL above.</p>
+                        <code className="block bg-surface-2 px-2 py-1.5 font-code text-text">CREATE EXTENSION vector;</code>
+                        <p className="text-amber-300/60">Or install the OS package first: <code className="font-code bg-surface-2 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) / <code className="font-code bg-surface-2 px-1">brew install pgvector</code> (macOS), then run the SQL above.</p>
                         <button
                             onClick={runEmbedCheck}
                             className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"

@@ -43,7 +43,7 @@ export function Modal({
   return (
     <RDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <RDialog.Portal>
-        <RDialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]" />
+        <RDialog.Overlay className="fixed inset-0 z-50 bg-scrim/60 backdrop-blur-[2px]" />
         <RDialog.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col",
