@@ -94,7 +94,7 @@ export const SupportTab = () => {
                         The <Link href="/vault" className="text-blue-400 hover:underline">Vault</Link> stores persistent files, knowledge bases, and skills.
                     </p>
                     <p className="text-sm bg-zinc-950 p-2 border border-zinc-800">
-                        <strong>Pro Tip:</strong> Agents can reference vault files directly in their prompts using the <code className="text-zinc-300 bg-zinc-900 px-1 py-0.5">@[path]</code> syntax. This gives them immediate access to essential context.
+                        <strong>Pro Tip:</strong> Agents can reference vault files directly in their prompts using the <code className="font-code text-zinc-300 bg-zinc-900 px-1 py-0.5">@[path]</code> syntax. This gives them immediate access to essential context.
                     </p>
                     <a href="https://docs.synapseorch.com/vault" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline">
                         Vault docs <ExternalLink className="h-3 w-3" />

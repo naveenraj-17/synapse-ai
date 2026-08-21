@@ -294,7 +294,7 @@ export const McpServersTab = ({
                                         <TypePill type={server.server_type} />
                                         <StatusBadge status={server.status} />
                                     </div>
-                                    <code className="text-[10px] text-zinc-500 font-mono truncate">
+                                    <code className="text-[10px] text-zinc-500 font-code truncate">
                                         {server.server_type === 'remote'
                                             ? server.url
                                             : `${server.command} ${(server.args || []).join(' ')}`}

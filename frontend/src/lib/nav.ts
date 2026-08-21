@@ -12,7 +12,7 @@
  * component would fail — and the symptom is a 200 with a 404 body.
  */
 import {
-    ArrowLeftRight, Bot, Clock, Cloud, Cpu, Database, DollarSign, Eraser,
+    ArrowLeftRight, Bot, Clock, Cloud, Cpu, Database, DollarSign, Eraser, LayoutDashboard,
     FolderGit2, Gauge, Key, LayoutGrid, LifeBuoy, MessageSquare, MessagesSquare,
     ScrollText, Server, Shield, Vault, Workflow, Wrench,
     type LucideIcon,
@@ -39,6 +39,15 @@ export type NavGroup = { group: string | null; items: NavEntry[] };
 
 /** The rail. Nine work destinations; Settings is rendered separately at the foot. */
 export const PRIMARY_NAV: NavGroup[] = [
+    {
+        group: null,
+        items: [
+            {
+                id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard,
+                blurb: 'Where the workspace stands right now.',
+            },
+        ],
+    },
     {
         group: 'Build',
         items: [
@@ -180,6 +189,11 @@ const ALL_ENTRIES: NavEntry[] = [...PRIMARY_NAV, ...SETTINGS_NAV].flatMap(g => g
 /** Look an entry up by its tab id (`api_keys`) or by its href (`/settings/api_keys`). */
 export function navEntryFor(idOrHref: string): NavEntry | undefined {
     return ALL_ENTRIES.find(e => e.id === idOrHref || e.href === idOrHref);
+}
+
+/** True for tabs that live under the Settings section (so they get a close control). */
+export function isSettingsEntry(id: string): boolean {
+    return SETTINGS_NAV.some(g => g.items.some(i => i.id === id));
 }
 
 /** Drop entries whose flag is off. `flags` is the /api/settings payload subset. */

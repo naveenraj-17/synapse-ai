@@ -1,34 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, JetBrains_Mono, IBM_Plex_Sans } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 // @ts-ignore: CSS module declarations are not present in this repo setup
 import "./globals.css";
 import { StoreProvider } from "./StoreProvider";
 import { NotificationProvider } from "@/components/notifications/NotificationProvider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/*
+ * Two families, and only two.
+ *
+ * Inter is the UI font — every label, heading, button and nav item. Geist Mono
+ * is for content that is genuinely code: log output, API keys, run ids, JSON.
+ * Geist Sans, JetBrains Mono and IBM Plex Sans used to be downloaded here too;
+ * two were referenced by nothing at all and the third only by six chat bubbles,
+ * which is what made two near-identical sans faces sit side by side.
+ */
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-});
-
-const ibmPlexSans = IBM_Plex_Sans({
-  variable: "--font-ibm-plex-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -42,10 +35,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${jetbrainsMono.variable} ${ibmPlexSans.variable} antialiased`}
-      >
+    <html lang="en" className={`${inter.variable} ${geistMono.variable}`}>
+      <body className="antialiased">
         <StoreProvider>
           <NotificationProvider>
             {children}

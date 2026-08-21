@@ -13,14 +13,14 @@
    * Both are deliberately one line each, so the question gets answered by
    * looking at the running app instead of by argument.
    *
-   *   --ui-font   flip to var(--font-inter) and the whole app becomes sans.
-   *               `font-mono` is aliased to this below, so all 238 existing
-   *               call sites follow the lever too — not just the new chrome.
-   *               `font-code` opts out and stays monospace regardless.
+   *   --ui-font   the UI font. `font-mono` and `font-sans` are both aliased
+   *               to it below, so the 238 indiscriminate `font-mono` call
+   *               sites follow it instead of fighting it. Content that is
+   *               genuinely code uses `font-code`, which never follows.
    *   --accent    flip to the D27 cyan (hue 186) and every accented surface
    *               in the new chrome follows.
    * ------------------------------------------------------------------- */
-  --ui-font: var(--font-geist-mono);
+  --ui-font: var(--font-inter);
   --code-font: var(--font-geist-mono);
   --accent: #f4f4f5;          /* zinc-100 — today's value, no hue change */
   --accent-contrast: #09090b;
@@ -54,7 +54,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--ui-font);
   --font-mono: var(--ui-font);
   --font-ui: var(--ui-font);
   --font-code: var(--code-font);
@@ -87,8 +87,8 @@
   /* --- ZINC PALETTE INVERSION --- */
   --color-zinc-950: #fafafa;
   --color-zinc-900: #f4f4f5;
-  --color-zinc-800: #e4e4e7;
-  --color-zinc-700: #d4d4d8;
+  --color-zinc-800: #d4d4d8;   /* dividers: was #e4e4e7, ~1.15:1 on white */
+  --color-zinc-700: #b9b9c0;   /* input borders: was #d4d4d8 */
   --color-zinc-600: #a1a1aa;
   --color-zinc-500: #71717a;
   --color-zinc-400: #52525b;
@@ -181,8 +181,8 @@
   --surface-0: #ffffff;
   --surface-1: #fafafa;
   --surface-2: #f4f4f5;
-  --border-subtle: #e4e4e7;
-  --border-strong: #d4d4d8;
+  --border-subtle: #d4d4d8;
+  --border-strong: #b9b9c0;
   --content-primary: #09090b;
   --content-secondary: #52525b;
   --content-muted: #71717a;
@@ -304,9 +304,16 @@ button:disabled {
   outline-offset: 2px;
 }
 
-/* Pointer clicks should not paint a ring; :focus-visible already handles that
-   in modern engines, but Radix-style buttons that programmatically .focus()
-   can trip it. Keep the escape hatch explicit rather than implicit. */
+/* Text fields already move their own border on focus. An offset ring around a
+   full-width field draws a SECOND rectangle outside the first, which reads as a
+   bar rather than as focus. Tuck it inside instead, so the field gets one crisp
+   edge — and gets one even where the component defines no focus style at all. */
+:is(input, textarea, select):focus-visible {
+  outline-width: 1px;
+  outline-offset: -1px;
+}
+
+/* Escape hatch for controls that paint their own focus state. */
 [data-no-focus-ring]:focus-visible {
   outline: none;
 }

@@ -73,7 +73,7 @@ function ActivityGroup({ events, isLive }: ActivityGroupProps) {
                         <summary className="text-[11px] text-violet-400 cursor-pointer list-none font-mono truncate">
                             {msg.toolName?.replace(/_/g, ' ')}
                         </summary>
-                        <pre className="bg-zinc-800/60 rounded p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
+                        <pre className="font-code bg-zinc-800/60 rounded p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
                             {JSON.stringify(msg.toolArgs, null, 2)}
                         </pre>
                     </details>

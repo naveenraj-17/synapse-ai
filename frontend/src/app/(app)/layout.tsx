@@ -10,49 +10,31 @@
  * shell used to read `synapseTheme` separately; now it is read once, and always
  * AFTER hydration — reading localStorage during render mismatches the SSR HTML.
  */
-import { useCallback, useSyncExternalStore } from 'react';
+import { useEffect } from 'react';
 
 import { AppRail } from '@/components/app/AppRail';
 import { NavGuardProvider } from '@/components/app/NavGuard';
-import { cn } from '@/lib/utils';
-
-const THEME_KEY = 'synapseTheme';
-const THEME_EVENT = 'synapse-theme';
-
-function subscribe(onChange: () => void) {
-    window.addEventListener(THEME_EVENT, onChange);
-    window.addEventListener('storage', onChange);   // and across tabs, for free
-    return () => {
-        window.removeEventListener(THEME_EVENT, onChange);
-        window.removeEventListener('storage', onChange);
-    };
-}
+import { usePersisted } from '@/components/app/usePersisted';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-    // localStorage is an external store, so read it as one. The server snapshot
-    // is 'dark', which is what the SSR HTML renders — no mismatch, and no
-    // setState inside an effect to trigger a cascading render.
-    const theme = useSyncExternalStore(
-        subscribe,
-        () => (localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'),
-        () => 'dark' as const,
-    );
+    const [theme, setTheme] = usePersisted<'dark' | 'light'>(
+        'synapseTheme', raw => (raw === 'light' ? 'light' : 'dark'), 'dark');
 
-    const toggleTheme = useCallback(() => {
-        const next = localStorage.getItem(THEME_KEY) === 'light' ? 'dark' : 'light';
-        localStorage.setItem(THEME_KEY, next);
-        window.dispatchEvent(new Event(THEME_EVENT));
-    }, []);
+    // The class goes on <html>, not on the shell div. `body` resolves
+    // `--background` against itself, so a .light-mode starting below body left
+    // the page ground dark behind a light app — visible on overscroll and
+    // behind the app-wide toast host, which renders outside this shell.
+    // Writing to the DOM is what an effect is actually for.
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.toggle('light-mode', theme === 'light');
+        return () => root.classList.remove('light-mode');
+    }, [theme]);
 
     return (
         <NavGuardProvider>
-            <div
-                className={cn(
-                    'flex h-screen overflow-hidden bg-surface-0 font-ui text-content-primary',
-                    theme === 'light' && 'light-mode',
-                )}
-            >
-                <AppRail theme={theme} onToggleTheme={toggleTheme} />
+            <div className="flex h-screen overflow-hidden bg-surface-0 font-ui text-content-primary">
+                <AppRail theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
                 {/* The only <main> in the app. Pages render a plain flex column
                     inside it — a nested <main> gives two landmarks and two
                     scrollbars. */}

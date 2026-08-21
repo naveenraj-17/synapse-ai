@@ -23,7 +23,7 @@ const CodeBlock = ({ code }: { code: string }) => {
     };
     return (
         <div className="relative group">
-            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-mono leading-relaxed">
+            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed">
                 {code}
             </pre>
             <button
@@ -57,7 +57,7 @@ const EndpointRow = ({ method, path, desc, badge }: { method: string; path: stri
     return (
         <div className="flex items-start gap-3 py-1.5 border-b border-zinc-800/50 last:border-b-0">
             <span className={`text-[10px] font-bold uppercase w-9 shrink-0 pt-0.5 ${color}`}>{method}</span>
-            <code className="text-xs font-mono text-zinc-300 shrink-0">{path}</code>
+            <code className="text-xs font-code text-zinc-300 shrink-0">{path}</code>
             <span className="text-xs text-zinc-600 flex-1">{desc}</span>
             {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-violet-900/40 text-violet-400 border border-violet-800/50 shrink-0">{badge}</span>}
         </div>
@@ -138,7 +138,7 @@ const V1Docs = ({ BASE }: { BASE: string }) => (
 
         <Section title="Example — Multi-Turn Agent Conversation">
             <p className="text-xs text-zinc-600">
-                The <code className="text-zinc-400">session_id</code> from each response links messages into the same conversation thread.
+                The <code className="font-code text-zinc-400">session_id</code> from each response links messages into the same conversation thread.
             </p>
             <CodeBlock code={`import requests
 
@@ -162,7 +162,7 @@ print(r2.json()["response"])`} />
 
         <Section title="Example — Orchestration Run & Human Resume">
             <p className="text-xs text-zinc-600">
-                When an orchestration reaches a <strong className="text-zinc-400">Human Step</strong>, it pauses and returns <code className="text-zinc-400">status: paused</code> with a <code className="text-zinc-400">run_id</code>. Submit the human input to resume it.
+                When an orchestration reaches a <strong className="text-zinc-400">Human Step</strong>, it pauses and returns <code className="font-code text-zinc-400">status: paused</code> with a <code className="font-code text-zinc-400">run_id</code>. Submit the human input to resume it.
             </p>
             <CodeBlock code={`import requests
 
@@ -205,7 +205,7 @@ const V2Docs = ({ BASE }: { BASE: string }) => (
         <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300">
             <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
             <span>
-                V2 requires <strong className="text-violet-200">Scale mode</strong> enabled in Settings → Scale. All jobs are enqueued to Redis ARQ workers — the API returns immediately with a <code className="text-violet-300">run_id</code> and a <code className="text-violet-300">202 Accepted</code>.
+                V2 requires <strong className="text-violet-200">Scale mode</strong> enabled in Settings → Scale. All jobs are enqueued to Redis ARQ workers — the API returns immediately with a <code className="font-code text-violet-300">run_id</code> and a <code className="font-code text-violet-300">202 Accepted</code>.
             </span>
         </div>
 
@@ -238,7 +238,7 @@ const V2Docs = ({ BASE }: { BASE: string }) => (
 
         <Section title="Enqueue an Orchestration" defaultOpen>
             <p className="text-xs text-zinc-600">
-                Returns <code className="text-zinc-400">202 Accepted</code> immediately. The <code className="text-zinc-400">run_id</code> is your handle for streaming events and polling status.
+                Returns <code className="font-code text-zinc-400">202 Accepted</code> immediately. The <code className="font-code text-zinc-400">run_id</code> is your handle for streaming events and polling status.
             </p>
             <CodeBlock code={`curl -s -X POST ${BASE}/orchestrations/ORCH_ID/run \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -272,7 +272,7 @@ const V2Docs = ({ BASE }: { BASE: string }) => (
 
         <Section title="Stream Run Events (SSE)" defaultOpen>
             <p className="text-xs text-zinc-600">
-                Subscribe to real-time step events. The stream stays open until <code className="text-zinc-400">{`{"type":"done"}`}</code> (run complete). If the run hits a Human Step it emits <code className="text-zinc-400">{`{"type":"paused"}`}</code> — the stream <strong className="text-zinc-400">stays open</strong> and resumes automatically after human input is submitted. Pass <code className="text-zinc-400">Last-Event-ID</code> to replay missed events on reconnect.
+                Subscribe to real-time step events. The stream stays open until <code className="font-code text-zinc-400">{`{"type":"done"}`}</code> (run complete). If the run hits a Human Step it emits <code className="font-code text-zinc-400">{`{"type":"paused"}`}</code> — the stream <strong className="text-zinc-400">stays open</strong> and resumes automatically after human input is submitted. Pass <code className="font-code text-zinc-400">Last-Event-ID</code> to replay missed events on reconnect.
             </p>
             <CodeBlock code={`# Connect to the stream
 curl -N "${BASE}/orchestrations/runs/RUN_ID/stream" \\
@@ -370,8 +370,8 @@ curl -s "${BASE}/orchestrations/runs/RUN_ID/events?start=1780499750218-0&end=+" 
             <div className="space-y-1">
                 <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Query params</label>
                 <div className="text-xs font-mono space-y-1 text-zinc-500">
-                    <div><span className="text-zinc-300">start</span> <span className="ml-2 text-zinc-700">Redis Stream ID — return events from this ID onwards (default <code className="text-zinc-500">-</code> = beginning)</span></div>
-                    <div><span className="text-zinc-300">end</span>   <span className="ml-2 text-zinc-700">Redis Stream ID — return events up to this ID (default <code className="text-zinc-500">+</code> = latest)</span></div>
+                    <div><span className="text-zinc-300">start</span> <span className="ml-2 text-zinc-700">Redis Stream ID — return events from this ID onwards (default <code className="font-code text-zinc-500">-</code> = beginning)</span></div>
+                    <div><span className="text-zinc-300">end</span>   <span className="ml-2 text-zinc-700">Redis Stream ID — return events up to this ID (default <code className="font-code text-zinc-500">+</code> = latest)</span></div>
                 </div>
             </div>
         </Section>
@@ -409,7 +409,7 @@ curl -s "${BASE}/orchestrations/runs/RUN_ID/events?start=1780499750218-0&end=+" 
 
         <Section title="Resume After Human Step">
             <p className="text-xs text-zinc-600">
-                When a run reaches a Human Step it pauses and emits <code className="text-zinc-400">{`{"type":"human_input_required"}`}</code> on the stream. Submit the response to resume.
+                When a run reaches a Human Step it pauses and emits <code className="font-code text-zinc-400">{`{"type":"human_input_required"}`}</code> on the stream. Submit the response to resume.
             </p>
             <CodeBlock code={`curl -s -X POST "${BASE}/orchestrations/runs/RUN_ID/resume" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -666,7 +666,7 @@ const DocsDrawer = ({ open, onClose, port }: { open: boolean; onClose: () => voi
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        <code className="text-[10px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-1 font-mono">Base: {BASE}</code>
+                        <code className="text-[10px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-1 font-code">Base: {BASE}</code>
                         <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
                             <X className="w-4 h-4" />
                         </button>
@@ -802,7 +802,7 @@ export const APIKeysTab = () => {
                     </button>
                 </div>
                 <p className="text-xs text-zinc-600">
-                    API keys authenticate calls to <code className="bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v1/*</code> (synchronous) and <code className="bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v2/*</code> (distributed, scale mode).
+                    API keys authenticate calls to <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v1/*</code> (synchronous) and <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v2/*</code> (distributed, scale mode).
                 </p>
                 <div className="flex gap-2">
                     <input
@@ -837,7 +837,7 @@ export const APIKeysTab = () => {
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-medium text-zinc-200">{k.name}</span>
-                                        <code className="text-xs bg-zinc-950 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 font-mono">
+                                        <code className="text-xs bg-zinc-950 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 font-code">
                                             {k.key_prefix}…
                                         </code>
                                     </div>

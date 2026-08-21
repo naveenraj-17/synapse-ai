@@ -389,7 +389,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                         {testResult.stdout && (
                             <div className="space-y-1">
                                 <p className="text-[9px] uppercase tracking-wider text-zinc-500">stdout</p>
-                                <pre className="p-3 bg-zinc-950 border border-zinc-800 text-[11px] font-mono text-green-300 overflow-auto max-h-48 whitespace-pre-wrap">
+                                <pre className="p-3 bg-zinc-950 border border-zinc-800 text-[11px] font-code text-green-300 overflow-auto max-h-48 whitespace-pre-wrap">
                                     {testResult.stdout}
                                 </pre>
                             </div>
@@ -398,7 +398,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                         {testResult.stderr && (
                             <div className="space-y-1">
                                 <p className="text-[9px] uppercase tracking-wider text-zinc-500">stderr</p>
-                                <pre className="p-3 bg-zinc-950 border border-red-900/40 text-[11px] font-mono text-red-300 overflow-auto max-h-32 whitespace-pre-wrap">
+                                <pre className="p-3 bg-zinc-950 border border-red-900/40 text-[11px] font-code text-red-300 overflow-auto max-h-32 whitespace-pre-wrap">
                                     {testResult.stderr}
                                 </pre>
                             </div>

@@ -101,7 +101,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                 <p className="text-xs text-zinc-600 text-center">
                     Forgot your password?{' '}
                     Run{' '}
-                    <code className="text-zinc-400 bg-zinc-900 px-1.5 py-0.5 font-mono text-[11px]">
+                    <code className="text-zinc-400 bg-zinc-900 px-1.5 py-0.5 font-code text-[11px]">
                         synapse reset-password
                     </code>
                     {' '}in your terminal.

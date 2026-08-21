@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles, Braces, GitFork, ArrowLeftRight, FileText, ArrowLeft } from 'lucide-react';
+import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -79,6 +80,7 @@ function newStep(type: StepType, position: { x: number; y: number }): StepConfig
 export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {}) {
     // --- Orchestration list ---
     const [orchestrations, setOrchestrations] = useState<Orchestration[]>([]);
+    const [orchQuery, setOrchQuery] = useState('');
     const [selectedOrchId, setSelectedOrchId] = useState<string | null>(null);
     const [draft, setDraft] = useState<Orchestration | null>(null);
     const [agents, setAgents] = useState<any[]>([]);
@@ -1191,6 +1193,9 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
         }
     };
 
+    const visibleOrchestrations = orchestrations.filter(
+        o => matchesQuery(orchQuery, o.name, o.description));
+
     return (
         <div className="flex flex-col h-full relative">
             {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
@@ -1344,6 +1349,15 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                             </div>
                         </div>
 
+                        {landingTab === 'orchestrations' && orchestrations.length > 5 && (
+                            <SearchInput
+                                value={orchQuery}
+                                onChange={setOrchQuery}
+                                placeholder="Search orchestrations by name or description…"
+                                className="mb-3 max-w-md"
+                            />
+                        )}
+
                         {landingTab === 'orchestrations' && (
                             <div className="border border-white/5 bg-zinc-900/60">
                                 <div className="overflow-x-auto">
@@ -1358,13 +1372,15 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {orchestrations.length === 0 ? (
+                                            {visibleOrchestrations.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={5} className="px-4 py-10 text-center text-xs text-zinc-600 italic">
-                                                        No orchestrations yet — create one or build with AI.
+                                                        {orchQuery
+                                                            ? `No orchestrations match “${orchQuery}”.`
+                                                            : 'No orchestrations yet — create one or build with AI.'}
                                                     </td>
                                                 </tr>
-                                            ) : orchestrations.map(o => {
+                                            ) : visibleOrchestrations.map(o => {
                                                 const lastRun = pastRuns.find(r => r.orchestration_id === o.id);
                                                 const lastMeta = lastRun ? runStatusMeta(lastRun) : null;
                                                 return (
@@ -1647,7 +1663,7 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
                 <div className="flex-1 overflow-y-auto p-5">
                     {isJson ? (
                         /* Pretty-printed JSON with basic syntax colouring */
-                        <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap break-all rounded-lg bg-zinc-800/70 border border-zinc-700/50 p-4 overflow-x-auto">
+                        <pre className="text-xs font-code leading-relaxed whitespace-pre-wrap break-all rounded-lg bg-zinc-800/70 border border-zinc-700/50 p-4 overflow-x-auto">
                             {(jsonParseOk ? formattedJson : content)
                                 .split('\n')
                                 .map((line, i) => {
@@ -1677,10 +1693,10 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
                                 code: ({ children, className }) => {
                                     const isBlock = className?.includes('language-');
                                     return isBlock
-                                        ? <code className={`block bg-zinc-800 rounded px-3 py-2 text-xs font-mono text-zinc-200 overflow-x-auto ${className}`}>{children}</code>
-                                        : <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-300">{children}</code>;
+                                        ? <code className={`block bg-zinc-800 rounded px-3 py-2 text-xs font-code text-zinc-200 overflow-x-auto ${className}`}>{children}</code>
+                                        : <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-code text-emerald-300">{children}</code>;
                                 },
-                                pre: ({ children }) => <pre className="bg-zinc-800/60 rounded-lg p-3 mb-3 overflow-x-auto border border-zinc-700/50">{children}</pre>,
+                                pre: ({ children }) => <pre className="font-code bg-zinc-800/60 rounded-lg p-3 mb-3 overflow-x-auto border border-zinc-700/50">{children}</pre>,
                                 blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-3 text-zinc-400 italic">{children}</blockquote>,
                                 a: ({ href, children }) => <a href={href} className="text-blue-400 underline hover:text-blue-300" target="_blank" rel="noreferrer">{children}</a>,
                                 strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
@@ -1942,7 +1958,7 @@ function BottomPanel({
                                                 components={{
                                                     p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
                                                     a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                    code: ({ children }) => <code className="bg-zinc-700 px-1 rounded">{children}</code>,
+                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded">{children}</code>,
                                                     strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
                                                 }}
                                             >{humanContext}</ReactMarkdown>
@@ -2006,7 +2022,7 @@ function BottomPanel({
                                                             🔧 {entry.tool_name}
                                                             {entry.step_name && <span className="text-zinc-500 text-[10px]"> · {entry.step_name}</span>}
                                                         </summary>
-                                                        <pre className="bg-zinc-800/50 p-1 rounded mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
+                                                        <pre className="font-code bg-zinc-800/50 p-1 rounded mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
                                                             {JSON.stringify(entry.args, null, 2)}
                                                         </pre>
                                                     </details>
@@ -2090,8 +2106,8 @@ function BottomPanel({
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     p: ({ children }) => <span>{children}</span>,
-                                                    code: ({ children }) => <code className="bg-zinc-800 px-1 rounded text-[10px]">{children}</code>,
-                                                    pre: ({ children }) => <pre className="bg-zinc-800 p-1 rounded mt-0.5 overflow-x-auto">{children}</pre>,
+                                                    code: ({ children }) => <code className="font-code bg-zinc-800 px-1 rounded text-[10px]">{children}</code>,
+                                                    pre: ({ children }) => <pre className="font-code bg-zinc-800 p-1 rounded mt-0.5 overflow-x-auto">{children}</pre>,
                                                     a: ({ href, children }) => <a href={href} className="underline opacity-70" target="_blank" rel="noreferrer">{children}</a>,
                                                 }}
                                             >{entry}</ReactMarkdown>

@@ -11,7 +11,7 @@ import { fetchAllSettingsData, removeAgent, removeMcpServer, removeCustomTool, u
 
 import type { Tab } from './settings/types';
 import { Screen } from './app/Screen';
-import { navEntryFor } from '@/lib/nav';
+import { isSettingsEntry, navEntryFor } from '@/lib/nav';
 import { GeneralTab } from './settings/GeneralTab';
 import { PersonalDetailsTab } from './settings/PersonalDetailsTab';
 import { MemoryTab } from './settings/MemoryTab';
@@ -851,7 +851,7 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
     return (
         <>
-            <Screen nav={nav}>
+            <Screen nav={nav} closeHref={isSettingsEntry(activeTab) ? '/' : undefined}>
                 {/* MESSAGING TAB */}
                 {activeTab === 'messaging' && <MessagingTab />}
 

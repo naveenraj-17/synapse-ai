@@ -384,7 +384,7 @@ export const CustomToolsTab = ({
                                         : '{field}';
                                     return (
                                         <p className="mt-1 text-[10px] text-zinc-600 leading-relaxed">
-                                            💡 Use <code className="text-zinc-400 bg-zinc-900 px-1 rounded">{examples}</code> in the URL to inject input values.
+                                            💡 Use <code className="font-code text-zinc-400 bg-zinc-900 px-1 rounded">{examples}</code> in the URL to inject input values.
                                             {' '}GET/DELETE args become query params; POST/PUT go in the body.
                                         </p>
                                     );

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Bot, Plus, Save, Trash, Copy, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2, MessageSquare, ExternalLink, CheckCircle, XCircle, Square } from 'lucide-react';
+import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
 import { VaultTextarea } from '@/components/VaultMention';
 import { CAPABILITIES, AUTO_TOOLS_BY_TYPE } from './types';
 import { renderTextContent } from '@/lib/utils';
@@ -44,6 +45,7 @@ export const AgentsTab = ({
     const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' } | null>(null);
     const [aiBuilderOpen, setAiBuilderOpen] = useState(false);
     const [aiBuilderDesc, setAiBuilderDesc] = useState('');
+    const [agentQuery, setAgentQuery] = useState('');
     const [isBuilding, setIsBuilding] = useState(false);
 
     const showToast = (message: string, type: 'success' | 'error') => {
@@ -261,6 +263,10 @@ export const AgentsTab = ({
         }
     };
 
+    const visibleAgents = Array.isArray(agents)
+        ? agents.filter((a: any) => matchesQuery(agentQuery, a.name, a.description, a.id))
+        : [];
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
             {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
@@ -323,6 +329,15 @@ export const AgentsTab = ({
                     </div>
                 )}
 
+                {Array.isArray(agents) && agents.length > 4 && (
+                    <SearchInput
+                        value={agentQuery}
+                        onChange={setAgentQuery}
+                        placeholder="Search agents…"
+                        className="mb-2 shrink-0"
+                    />
+                )}
+
                 <div className="space-y-2 flex-1 overflow-y-auto modern-scrollbar">
                     {loadingAgents && agents.length === 0 && (
                         <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
@@ -330,7 +345,12 @@ export const AgentsTab = ({
                             Loading agents…
                         </div>
                     )}
-                    {Array.isArray(agents) && agents.map((a: any) => (
+                    {Array.isArray(agents) && visibleAgents.length === 0 && agentQuery && (
+                        <div className="py-6 text-center text-ui text-content-muted">
+                            No agents match “{agentQuery}”.
+                        </div>
+                    )}
+                    {visibleAgents.map((a: any) => (
                         <div
                             key={a.id}
                             onClick={() => {

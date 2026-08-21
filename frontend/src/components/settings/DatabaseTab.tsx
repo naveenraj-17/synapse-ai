@@ -29,11 +29,11 @@ export const DatabaseTab = ({ sqlConnectionString, setSqlConnectionString, onSav
                     placeholder="postgresql://user:password@localhost:5432/dbname"
                 />
                 <p className="text-xs text-zinc-600">
-                    Format: <code>dialect+driver://username:password@host:port/database</code><br />
+                    Format: <code className="font-code">dialect+driver://username:password@host:port/database</code><br />
                     Examples:<br />
-                    - Postgres: <code>postgresql://scott:tiger@localhost/test</code><br />
-                    - MySQL: <code>mysql+pymysql://user:pass@localhost/foo</code><br />
-                    - SQLite: <code>sqlite:///foo.db</code>
+                    - Postgres: <code className="font-code">postgresql://scott:tiger@localhost/test</code><br />
+                    - MySQL: <code className="font-code">mysql+pymysql://user:pass@localhost/foo</code><br />
+                    - SQLite: <code className="font-code">sqlite:///foo.db</code>
                 </p>
             </div>
 

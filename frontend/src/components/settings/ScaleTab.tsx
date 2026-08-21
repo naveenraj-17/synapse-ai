@@ -211,7 +211,7 @@ const CodeBlock = ({ code }: { code: string }) => {
     };
     return (
         <div className="relative group">
-            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-words">
+            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed whitespace-pre-wrap break-words">
                 {code}
             </pre>
             <button
@@ -370,7 +370,7 @@ docker compose --profile scale up -d --scale worker=4`} />
                     </DocSection>
 
                     <DocSection title="Kubernetes Deployment">
-                        <p className="text-xs text-zinc-500">Pre-built manifests are in <code className="text-zinc-400">infra/k8s/</code> in the repo. Apply them after creating a <code className="text-zinc-400">synapse-secrets</code> Secret.</p>
+                        <p className="text-xs text-zinc-500">Pre-built manifests are in <code className="font-code text-zinc-400">infra/k8s/</code> in the repo. Apply them after creating a <code className="font-code text-zinc-400">synapse-secrets</code> Secret.</p>
                         <CodeBlock code={`# 1. Create the secrets
 kubectl create secret generic synapse-secrets \\
   --from-literal=redis-url="redis://your-redis:6379/0" \\
@@ -387,11 +387,11 @@ kubectl apply -f infra/k8s/
 # When queue > 5 jobs, a new worker pod spins up (up to 100).
 # Requires KEDA installed in your cluster:
 kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda-2.13.0.yaml`} />
-                        <p className="text-xs text-zinc-500">The worker manifest uses <code className="text-zinc-400">synapseorchai/synapse-ai-worker:latest</code> with <code className="text-zinc-400">imagePullPolicy: Always</code> so new versions roll out automatically on pod restart.</p>
+                        <p className="text-xs text-zinc-500">The worker manifest uses <code className="font-code text-zinc-400">synapseorchai/synapse-ai-worker:latest</code> with <code className="font-code text-zinc-400">imagePullPolicy: Always</code> so new versions roll out automatically on pod restart.</p>
                     </DocSection>
 
                     <DocSection title="Environment Variables Reference">
-                        <p className="text-xs text-zinc-500 mb-3">All variables supported by the worker image. Pass via <code className="text-zinc-400">-e</code>, <code className="text-zinc-400">--env-file</code>, or k8s Secret/ConfigMap.</p>
+                        <p className="text-xs text-zinc-500 mb-3">All variables supported by the worker image. Pass via <code className="font-code text-zinc-400">-e</code>, <code className="font-code text-zinc-400">--env-file</code>, or k8s Secret/ConfigMap.</p>
                         <div className="space-y-4">
                             <div>
                                 <p className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">Required</p>

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2, Terminal, Eye, EyeOff } from 'lucide-react';
+import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -237,6 +238,10 @@ export const ModelsTab = ({
     codexCliModels, setCodexCliModels,
     githubCopilotCliModels, setGithubCopilotCliModels,
 }: ModelsTabProps) => {
+    // Gemini alone lists 37 models; the native select was a scroll hunt.
+    const [modelQuery, setModelQuery] = useState('');
+    const [embedQuery, setEmbedQuery] = useState('');
+
     const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
     const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
     const toggleKeyVisible = (k: string) => setVisibleKeys(prev => ({ ...prev, [k]: !prev[k] }));
@@ -526,7 +531,7 @@ export const ModelsTab = ({
                                                         className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors font-mono"
                                                         placeholder={"Qwen/Qwen2.5-7B-Instruct\nmeta-llama/Llama-3.1-8B-Instruct\nmistralai/Mistral-7B-Instruct-v0.3"}
                                                     />
-                                                    <p className="text-[10px] text-zinc-600">Each ID becomes a selectable <code className="text-zinc-400">hf.&lt;org&gt;/&lt;model&gt;</code> model. First call to a model pays a 20-60s load cost, then stays warm in memory.</p>
+                                                    <p className="text-[10px] text-zinc-600">Each ID becomes a selectable <code className="font-code text-zinc-400">hf.&lt;org&gt;/&lt;model&gt;</code> model. First call to a model pays a 20-60s load cost, then stays warm in memory.</p>
                                                 </div>
                                             </div>
                                         )}
@@ -600,7 +605,7 @@ export const ModelsTab = ({
                                                             <label className="text-[10px] uppercase font-bold text-zinc-500">Custom Model Names (comma-separated)</label>
                                                             <input type="text" value={cfg.value} onChange={e => cfg.set(e.target.value)}
                                                                 className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder={cfg.placeholder} />
-                                                            <p className="text-[10px] text-zinc-600">Each name is passed to the CLI's <code className="text-zinc-400">-m</code> flag and becomes a selectable <code className="text-zinc-400">{cfg.prefix}.&lt;name&gt;</code> model. Use this when the CLI's default model isn't available to your account.</p>
+                                                            <p className="text-[10px] text-zinc-600">Each name is passed to the CLI's <code className="font-code text-zinc-400">-m</code> flag and becomes a selectable <code className="font-code text-zinc-400">{cfg.prefix}.&lt;name&gt;</code> model. Use this when the CLI's default model isn't available to your account.</p>
                                                         </div>
                                                     );
                                                 })()}
@@ -630,6 +635,7 @@ export const ModelsTab = ({
             <div className="space-y-2">
                 <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Default Model</label>
                 <p className="text-[10px] text-zinc-600 -mt-1">Used for system prompt generation and agents without a specific model assigned.</p>
+                <SearchInput value={modelQuery} onChange={setModelQuery} placeholder="Filter models…" />
                 <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
@@ -643,9 +649,14 @@ export const ModelsTab = ({
                             {Object.entries(providers).map(([providerKey, info]) => {
                                 if (!info.available || info.models.length === 0) return null;
                                 const label = PROVIDER_META[providerKey]?.label || providerKey;
+                                // Keep the selected value present even when it is
+                                // filtered out, or the select silently reassigns.
+                                const shown = info.models.filter((m: string) =>
+                                    m === selectedModel || matchesQuery(modelQuery, m, label));
+                                if (shown.length === 0) return null;
                                 return (
                                     <optgroup key={providerKey} label={label}>
-                                        {info.models.map((m: string) => (
+                                        {shown.map((m: string) => (
                                             <option key={m} value={m}>{m}</option>
                                         ))}
                                     </optgroup>
@@ -660,6 +671,7 @@ export const ModelsTab = ({
                 <div className="space-y-2">
                     <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Embedding Model</label>
                     <p className="text-[10px] text-zinc-600 -mt-1">Used for code indexing and repository search. Requires compatible providers like Gemini, OpenAI, or Ollama.</p>
+                    <SearchInput value={embedQuery} onChange={setEmbedQuery} placeholder="Filter embedding models…" />
                     <select
                         value={embeddingModel}
                         onChange={(e) => setEmbeddingModel(e.target.value)}
@@ -673,9 +685,12 @@ export const ModelsTab = ({
                                 {Object.entries(providers).map(([providerKey, info]) => {
                                     if (!info.available || !info.embedding_models || info.embedding_models.length === 0) return null;
                                     const label = PROVIDER_META[providerKey]?.label || providerKey;
+                                    const shown = info.embedding_models.filter((m: string) =>
+                                        m === embeddingModel || matchesQuery(embedQuery, m, label));
+                                    if (shown.length === 0) return null;
                                     return (
                                         <optgroup key={providerKey} label={label}>
-                                            {info.embedding_models.map((m: string) => (
+                                            {shown.map((m: string) => (
                                                 <option key={m} value={m}>{m}</option>
                                             ))}
                                         </optgroup>

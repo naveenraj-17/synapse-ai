@@ -1107,7 +1107,7 @@ export function UsageTab() {
                         <p className="font-medium text-zinc-400 mb-1">About cost estimates</p>
                         <p>
                             Token counts are sourced from API response metadata for OpenAI, Anthropic, Gemini, Grok, and DeepSeek.
-                            Ollama uses its <code>eval_count</code> field. AWS Bedrock does not expose token counts directly,
+                            Ollama uses its <code className="font-code">eval_count</code> field. AWS Bedrock does not expose token counts directly,
                             so tokens are estimated from character length (chars / 4) -- costs for Bedrock calls may be less accurate.
                             Edit prices above and click <strong>Save Pricing</strong> to update rates used for future cost calculations.
                         </p>

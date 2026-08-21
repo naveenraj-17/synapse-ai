@@ -312,7 +312,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {step.type === 'transform' && (
                     <div className="space-y-2">
                         <div className="rounded bg-amber-950/40 border border-amber-800/40 px-3 py-2 text-[10px] text-amber-400 leading-relaxed">
-                            <strong>Python execution</strong> — runs in Docker by default (512MB RAM, no network); switch to host mode in Settings → General to lift the sandbox. <code>state</code> dict is injected. Assign to <code>result</code> to write the output key.
+                            <strong>Python execution</strong> — runs in Docker by default (512MB RAM, no network); switch to host mode in Settings → General to lift the sandbox. <code className="font-code">state</code> dict is injected. Assign to <code className="font-code">result</code> to write the output key.
                         </div>
                         <label className="text-xs text-zinc-400 block mb-1">Python Code</label>
                         <div className="border border-zinc-700 rounded overflow-hidden h-[220px] focus-within:border-amber-600 transition-colors">
@@ -333,7 +333,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {step.type === 'extract_json' && (
                     <div className="space-y-2">
                         <div className="rounded bg-orange-950/40 border border-orange-800/40 px-3 py-2 text-[10px] text-orange-400 leading-relaxed">
-                            <strong>Extract JSON</strong> — parses JSON from input text. Handles markdown fences (<code>```json</code>), raw JSON, and multiple objects. Single object is stored directly; multiple objects are stored as an array.
+                            <strong>Extract JSON</strong> — parses JSON from input text. Handles markdown fences (<code className="font-code">```json</code>), raw JSON, and multiple objects. Single object is stored directly; multiple objects are stored as an array.
                         </div>
                         <p className="text-[10px] text-zinc-500">Configure <em>Input Keys</em> below to specify which shared state values to scan. The extracted JSON will be stored in the <em>Output Key</em>.</p>
                     </div>
@@ -343,7 +343,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                 {step.type === 'print' && (
                     <div className="space-y-2">
                         <div className="rounded bg-lime-950/40 border border-lime-800/40 px-3 py-2 text-[10px] text-lime-400 leading-relaxed">
-                            <strong>Print</strong> — stores your text or markdown into shared state. Use <code>{'{state.key}'}</code> to embed values from previous steps.
+                            <strong>Print</strong> — stores your text or markdown into shared state. Use <code className="font-code">{'{state.key}'}</code> to embed values from previous steps.
                         </div>
                         <div>
                             <label className="text-xs text-zinc-400 block mb-1">Content</label>
@@ -355,7 +355,7 @@ export function StepConfigPanel({ step, agents, allStepIds, onUpdate, onDelete, 
                                 placeholder={`# Summary\n\nThe analysis result is: {state.analysis_result}\n\nStatus: {state.status}\n\nType @ to reference a vault file`}
                             />
                             <p className="text-[10px] text-zinc-600 mt-0.5">
-                                Use <code className="text-lime-400">{'{state.key}'}</code> or <code className="text-lime-400">{'{state.key.nested}'}</code> to embed shared state values. Supports markdown. Type <span className="text-emerald-400 font-mono">@</span> to reference a vault file.
+                                Use <code className="font-code text-lime-400">{'{state.key}'}</code> or <code className="font-code text-lime-400">{'{state.key.nested}'}</code> to embed shared state values. Supports markdown. Type <span className="text-emerald-400 font-mono">@</span> to reference a vault file.
                             </p>
                         </div>
                     </div>
@@ -667,7 +667,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                                         Reuse a near-identical prior response when exact match misses. Threshold {(step.cache_response_threshold ?? 0.95).toFixed(2)} cosine similarity.
                                     </span>
                                     <span className="block text-[10px] text-amber-500/80 mt-0.5">
-                                        Needs an embedding provider — Ollama with <code>nomic-embed-text</code> (default) or an <code>embedding_model</code> set in Settings. Without one, semantic match silently does nothing; exact match still works.
+                                        Needs an embedding provider — Ollama with <code className="font-code">nomic-embed-text</code> (default) or an <code className="font-code">embedding_model</code> set in Settings. Without one, semantic match silently does nothing; exact match still works.
                                     </span>
                                 </span>
                             </label>
@@ -718,7 +718,7 @@ function CacheSection({ step, update }: { step: StepConfig; update: (patch: Part
                     <span className="text-xs text-zinc-300">
                         Cache deterministic tools
                         <span className="block text-[10px] text-zinc-500 mt-0.5">
-                            Memoize results from <code>code_search</code>, <code>pdf_parser</code>, <code>xlsx_parser</code>, <code>time</code>, <code>collect_data</code>, etc. Side-effectful tools (bash, sql_agent, web_scraper) are never cached.
+                            Memoize results from <code className="font-code">code_search</code>, <code className="font-code">pdf_parser</code>, <code className="font-code">xlsx_parser</code>, <code className="font-code">time</code>, <code className="font-code">collect_data</code>, etc. Side-effectful tools (bash, sql_agent, web_scraper) are never cached.
                         </span>
                     </span>
                 </label>
@@ -869,7 +869,7 @@ function IfElseStepConfig({ step, update, otherSteps, inputCls, selectCls }: {
                     placeholder="state.result.flag == True"
                 />
                 <p className="text-[10px] text-zinc-600 mt-0.5">
-                    Use <code className="text-yellow-400">state.key</code> or <code className="text-yellow-400">state.key.nested</code> to access shared state. Missing keys resolve to <code>None</code>.
+                    Use <code className="font-code text-yellow-400">state.key</code> or <code className="font-code text-yellow-400">state.key.nested</code> to access shared state. Missing keys resolve to <code className="font-code">None</code>.
                 </p>
             </div>
             <div>
@@ -912,7 +912,7 @@ function SwitchStepConfig({ step, update, otherSteps, inputCls, selectCls }: {
                     placeholder="state.result.status"
                 />
                 <p className="text-[10px] text-zinc-600 mt-0.5">
-                    Use <code className="text-cyan-400">state.key</code> to access shared state. Result is converted to string for matching.
+                    Use <code className="font-code text-cyan-400">state.key</code> to access shared state. Result is converted to string for matching.
                 </p>
             </div>
             <div>

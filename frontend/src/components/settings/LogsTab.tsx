@@ -143,15 +143,15 @@ export const LogsTab = () => {
             segments.push({ type: 'text', content: text.slice(lastIndex) });
         }
         if (segments.length === 0) {
-            return <pre className="text-zinc-300 whitespace-pre-wrap break-words">{text}</pre>;
+            return <pre className="font-code text-zinc-300 whitespace-pre-wrap break-words">{text}</pre>;
         }
         return segments.map((seg, i) =>
             seg.type === 'compact' ? (
                 <div key={i} className="my-3 border border-cyan-800/60 bg-cyan-950/30 px-4 py-3">
-                    <pre className="text-cyan-300 whitespace-pre-wrap break-words">{seg.content}</pre>
+                    <pre className="font-code text-cyan-300 whitespace-pre-wrap break-words">{seg.content}</pre>
                 </div>
             ) : (
-                <pre key={i} className="text-zinc-300 whitespace-pre-wrap break-words">{seg.content}</pre>
+                <pre key={i} className="font-code text-zinc-300 whitespace-pre-wrap break-words">{seg.content}</pre>
             )
         );
     };

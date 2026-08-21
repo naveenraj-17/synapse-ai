@@ -505,7 +505,7 @@ export const MessagingTab = () => {
                                     Multi-Agent Mode
                                 </label>
                                 <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
-                                    When enabled, users can switch agents mid-chat using <code className="bg-zinc-800 px-1">/agent &lt;name&gt;</code> and list them with <code className="bg-zinc-800 px-1">/agents</code>.
+                                    When enabled, users can switch agents mid-chat using <code className="font-code bg-zinc-800 px-1">/agent &lt;name&gt;</code> and list them with <code className="font-code bg-zinc-800 px-1">/agents</code>.
                                     The channel's bound agent is the default.
                                 </p>
                             </div>
