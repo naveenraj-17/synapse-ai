@@ -77,7 +77,7 @@ export const CustomToolsTab = ({
     // ── Get tool type badge ────────────────────────────────────────────────
     const getToolBadge = (t: any) => {
         if (t.tool_type === 'python') {
-            return <span className="text-[9px] font-bold bg-violet-900/40 border border-violet-700 text-violet-400 px-1.5 py-0.5 rounded-md">🐍 PYTHON</span>;
+            return <span className="text-[9px] font-bold bg-accent-subtle border border-accent/40 text-accent px-1.5 py-0.5 rounded-md">🐍 PYTHON</span>;
         }
         if (t.workflowId || t.url?.includes('webhook')) {
             return <span className="text-[9px] font-bold bg-orange-900/30 border border-orange-700/50 text-orange-400 px-1.5 py-0.5 rounded-md">n8n</span>;
@@ -138,7 +138,7 @@ export const CustomToolsTab = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {customTools.map((t: any) => (
-                            <div key={t.name} className={`p-4 border hover:border-zinc-600 transition-all group relative ${t.tool_type === 'python' ? 'bg-violet-950/10 border-violet-900/30 hover:border-violet-700/50' : 'bg-zinc-900 border-zinc-800'} rounded-md`}>
+                            <div key={t.name} className={`p-4 border hover:border-zinc-600 transition-all group relative ${t.tool_type === 'python' ? 'bg-accent-subtle border-accent/40 hover:border-accent/40' : 'bg-zinc-900 border-zinc-800'} rounded-md`}>
                                 <div className="font-bold text-white mb-1 flex items-center gap-2 pr-10">
                                     <span className="truncate">{t.generalName || t.name}</span>
                                     {getToolBadge(t)}
@@ -146,7 +146,7 @@ export const CustomToolsTab = ({
                                 {t.generalName && <div className="text-[9px] text-zinc-500 font-mono mb-1">({t.name})</div>}
                                 <div className="text-xs text-zinc-500 mb-2 h-8 overflow-hidden">{t.description}</div>
                                 {t.tool_type === 'python'
-                                    ? <div className="text-[10px] font-mono text-violet-600">🐍 Python sandboxed function</div>
+                                    ? <div className="text-[10px] font-mono text-accent">🐍 Python sandboxed function</div>
                                     : <div className="text-[10px] font-mono text-zinc-600 truncate">{t.url}</div>
                                 }
                                 <button
@@ -229,7 +229,7 @@ export const CustomToolsTab = ({
                                         }
                                         setToolBuilderMode('python');
                                     }}
-                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'python' ? 'bg-violet-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'python' ? 'bg-accent text-accent-fg' : 'text-zinc-500 hover:text-zinc-300'}`}
                                 >
                                     🐍 PYTHON
                                 </button>

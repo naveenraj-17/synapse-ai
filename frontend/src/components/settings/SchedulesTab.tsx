@@ -427,7 +427,7 @@ export const SchedulesTab = () => {
                                                 <div className="flex items-center gap-1.5 text-zinc-400">
                                                     {s.target_type === 'agent'
                                                         ? <Bot className="h-3 w-3 shrink-0 text-sky-400" />
-                                                        : <Workflow className="h-3 w-3 shrink-0 text-purple-400" />
+                                                        : <Workflow className="h-3 w-3 shrink-0 text-accent" />
                                                     }
                                                     <span className="truncate max-w-[100px]" title={targetLabel(s)}>{targetLabel(s)}</span>
                                                 </div>

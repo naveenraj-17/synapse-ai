@@ -25,7 +25,7 @@ interface ExamplesViewProps {
 }
 
 const TAG_STYLES: Record<string, string> = {
-  agents: "text-violet-400 bg-violet-950/60 border-violet-800/50",
+  agents: "text-accent bg-accent-subtle border-accent/40",
   orchestrations: "text-emerald-400 bg-emerald-950/60 border-emerald-800/50",
   mcp_servers: "text-amber-400 bg-amber-950/60 border-amber-800/50",
   custom_tools: "text-sky-400 bg-sky-950/60 border-sky-800/50",
@@ -103,7 +103,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900/60 rounded-md">
-        <Sparkles className="h-4 w-4 text-violet-400 flex-shrink-0 mt-0.5" />
+        <Sparkles className="h-4 w-4 text-accent flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-bold text-zinc-200">Example Packs</p>
           <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">
@@ -144,7 +144,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
 
                   {/* Counts */}
                   <div className="flex flex-wrap gap-3 mt-2.5">
-                    <CountPill icon={Bot} count={pack.agent_count} label="Agent" color="text-violet-400" />
+                    <CountPill icon={Bot} count={pack.agent_count} label="Agent" color="text-accent" />
                     <CountPill icon={Workflow} count={pack.orchestration_count} label="Orchestration" color="text-emerald-400" />
                     <CountPill icon={Server} count={pack.mcp_count} label="MCP Server" color="text-amber-400" />
                     <CountPill icon={Wrench} count={pack.tool_count} label="Tool" color="text-sky-400" />

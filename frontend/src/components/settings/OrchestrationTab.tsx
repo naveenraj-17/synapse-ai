@@ -1234,7 +1234,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                             setBuilderOpen(true); 
                             setBuilderSessionKey(k => k + 1); 
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-accent-fg transition-colors"
                     >
                         <Sparkles size={13} /> Build with AI
                     </button>
@@ -1266,7 +1266,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                         )}
                         <button
                             onClick={handleDeploy}
-                            className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+                            className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-accent-fg transition-colors"
                         >
                             Deploy as Agent
                         </button>
@@ -2017,7 +2017,7 @@ function BottomPanel({
                                     if (typeof entry !== 'string') {
                                         if (entry.kind === 'tool_call') {
                                             return (
-                                                <div key={i} className="text-violet-400 pl-2">
+                                                <div key={i} className="text-accent pl-2">
                                                     <details>
                                                         <summary className="cursor-pointer list-none">
                                                             🔧 {entry.tool_name}
@@ -2100,7 +2100,7 @@ function BottomPanel({
                                             entry.startsWith('✗') ? 'text-red-400' :
                                             entry.startsWith('▶') ? 'text-blue-400' :
                                             entry.startsWith('⏸') ? 'text-amber-400' :
-                                            entry.startsWith('⟳') ? 'text-purple-400' :
+                                            entry.startsWith('⟳') ? 'text-accent' :
                                             'text-zinc-400'
                                         }>
                                             <ReactMarkdown

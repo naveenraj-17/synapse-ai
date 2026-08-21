@@ -127,7 +127,7 @@ function StepDivider({ stepName, stepType }: { stepName: string; stepType?: stri
 // ─── Orchestration Info Banner ───────────────────────────────────────────────
 function OrchBanner({ content, variant }: { content: string; variant: 'start' | 'complete' | 'error' }) {
   const styles: Record<string, string> = {
-    start: 'border-purple-900/50 bg-purple-950/20 text-purple-400',
+    start: 'border-accent/40 bg-accent-subtle text-accent',
     complete: 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400',
     error: 'border-red-900/50 bg-red-950/20 text-red-400',
   };
@@ -150,25 +150,25 @@ function AgentStepResult({ msg, onCollectDataSubmit }: {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex gap-3 max-w-4xl">
-      <div className="h-7 w-7 shrink-0 flex items-center justify-center border border-purple-800/50 bg-purple-950/30 text-purple-400 mt-1 rounded-sm">
+      <div className="h-7 w-7 shrink-0 flex items-center justify-center border border-accent/40 bg-accent-subtle text-accent mt-1 rounded-sm">
         <Bot className="h-3.5 w-3.5" />
       </div>
       <div className="flex flex-col flex-1 min-w-0 gap-2">
         {msg.stepName && (
-          <div className="text-[10px] uppercase tracking-widest text-purple-500/70 font-mono">
+          <div className="text-[10px] uppercase tracking-widest text-accent/70 font-mono">
             {msg.stepName}
           </div>
         )}
         {msg.reasoning && msg.reasoning.length > 0 && (
           <ReasoningCollapsible reasoning={msg.reasoning} stepName={msg.stepName} />
         )}
-        <div className="p-3 text-[14px] leading-7 border border-purple-900/30 bg-purple-950/10 relative font-sans rounded-sm group">
+        <div className="p-3 text-[14px] leading-7 border border-accent/40 bg-accent-subtle relative font-sans rounded-sm group">
           <div className="prose prose-invert max-w-none text-zinc-200 font-normal">
             {renderTextContent(displayContent)}
           </div>
           <button
             onClick={() => { navigator.clipboard.writeText(displayContent); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-purple-950/60 hover:bg-purple-900/60 text-purple-400 hover:text-purple-200"
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-accent-subtle hover:bg-accent/20 text-accent hover:text-accent-hover"
             title="Copy response"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -269,12 +269,12 @@ function formatRelativeTime(iso: string | null): string {
 // ─── Tip data ────────────────────────────────────────────────────────────────
 const TIPS = [
   {
-    icon: <Cpu className="h-5 w-5 text-violet-400" />,
+    icon: <Cpu className="h-5 w-5 text-accent" />,
     tag: 'Build Agents',
     title: 'Create specialized AI agents',
     desc: 'Design agents with custom system prompts, tools, and models. Each agent can be fine-tuned for a specific domain or task like research, coding, or analysis.',
-    accent: 'from-violet-500/10 to-transparent border-violet-800/40',
-    tagColor: 'text-violet-400 bg-violet-950/60 border-violet-800/50',
+    accent: 'from-accent/10 to-transparent border-accent/40',
+    tagColor: 'text-accent bg-accent-subtle border-accent/40',
   },
   {
     icon: <Wrench className="h-5 w-5 text-sky-400" />,
@@ -309,12 +309,12 @@ const TIPS = [
     tagColor: 'text-rose-400 bg-rose-950/60 border-rose-800/50',
   },
   {
-    icon: <Sparkles className="h-5 w-5 text-purple-400" />,
+    icon: <Sparkles className="h-5 w-5 text-accent" />,
     tag: 'Pro Tips',
     title: 'Get the most from Synapse AI',
     desc: 'Attach images for vision tasks, switch agents mid-conversation, or orchestrate complex multi-step workflows — all from one chat interface.',
-    accent: 'from-purple-500/10 to-transparent border-purple-800/40',
-    tagColor: 'text-purple-400 bg-purple-950/60 border-purple-800/50',
+    accent: 'from-accent/10 to-transparent border-accent/40',
+    tagColor: 'text-accent bg-accent-subtle border-accent/40',
   },
 ];
 
@@ -347,25 +347,25 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
     <div className="flex flex-col items-center justify-center min-h-full px-4 pb-28 pt-6 md:pb-36 md:pt-10 select-none">
       {/* ── Welcome Examples Banner (12-day, session-dismissible) ── */}
       {showExamplesBanner && (
-        <div className="w-full max-w-2xl mb-8 relative overflow-hidden rounded-sm border border-violet-700/50 bg-gradient-to-br from-violet-950 via-purple-950/95 to-indigo-950 backdrop-blur-sm shadow-lg shadow-violet-950/40">
+        <div className="w-full max-w-2xl mb-8 relative overflow-hidden rounded-sm border border-accent/40 bg-accent-subtle bg-gradient-to-br from-accent/15 to-transparent backdrop-blur-sm shadow-lg shadow-accent/20">
           {/* Subtle animated shimmer */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-violet-500/5 to-transparent -skew-x-12 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-accent/5 to-transparent -skew-x-12 pointer-events-none" />
           <div className="relative px-4 py-3 flex flex-col gap-2.5">
             {/* Top row: icon + headline + close */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="p-1.5 rounded-sm bg-violet-700/40 border border-violet-600/30 shrink-0">
-                  <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                <div className="p-1.5 rounded-sm bg-accent/20 border border-accent/30 shrink-0">
+                  <Sparkles className="h-3.5 w-3.5 text-accent" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-bold text-white tracking-wide">Get started in seconds</p>
-                  <p className="text-[11px] text-violet-300/80 font-mono break-words">Pre-built agents, orchestrations &amp; MCP servers — ready to explore</p>
+                  <p className="text-[12px] font-bold text-text tracking-wide">Get started in seconds</p>
+                  <p className="text-[11px] text-accent/80 font-mono break-words">Pre-built agents, orchestrations &amp; MCP servers — ready to explore</p>
                 </div>
               </div>
               <button
                 id="examples-banner-close"
                 onClick={onDismissBanner}
-                className="p-1 text-violet-500 hover:text-violet-200 transition-colors cursor-pointer shrink-0 mt-0.5"
+                className="p-1 text-accent hover:text-accent-hover transition-colors cursor-pointer shrink-0 mt-0.5"
                 aria-label="Dismiss banner"
               >
                 <X className="h-3.5 w-3.5" />
@@ -375,16 +375,16 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <div className="flex items-center gap-1.5 flex-wrap justify-center sm:justify-start">
                 {['Web research agent', 'Multi-step orchestration', 'MCP Servers'].map(label => (
-                  <span key={label} className="px-2 py-0.5 text-[10px] font-mono text-violet-300 bg-violet-800/40 border border-violet-700/40 rounded-sm">
+                  <span key={label} className="px-2 py-0.5 text-[10px] font-mono text-accent bg-accent/20 border border-accent/40 rounded-sm">
                     {label}
                   </span>
                 ))}
-                <span className="text-[10px] font-mono text-violet-500">+ more →</span>
+                <span className="text-[10px] font-mono text-accent">+ more →</span>
               </div>
               <button
                 id="examples-banner-link"
                 onClick={() => onNavigate('/settings/import_export?tab=examples')}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white transition-colors rounded-sm cursor-pointer shrink-0 w-full sm:w-auto shadow-sm shadow-violet-900/50"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider bg-accent hover:bg-accent-hover active:bg-accent text-accent-fg transition-colors rounded-sm cursor-pointer shrink-0 w-full sm:w-auto shadow-sm shadow-accent/20"
               >
                 <Sparkles className="h-3 w-3" /> Browse Examples
               </button>
@@ -1544,7 +1544,7 @@ export default function Home() {
                             systemStatus?.provider === 'anthropic_cli' ? "text-amber-300" :
                               systemStatus?.provider === 'gemini_cli' ? "text-blue-300" :
                                 systemStatus?.provider === 'codex_cli' ? "text-zinc-300" :
-                                  "text-purple-400"
+                                  "text-accent"
                   )}>
                     {systemStatus?.provider ? systemStatus.provider.charAt(0).toUpperCase() + systemStatus.provider.slice(1) : 'Loading...'}
                   </span>
@@ -1652,9 +1652,9 @@ export default function Home() {
                   <div className="flex gap-4 max-w-3xl items-start">
                     {/* Spinning Bot Icon with Ring */}
                     <div className="relative h-8 w-8 shrink-0 mt-0.5">
-                      <div className="absolute inset-0 border-2 border-transparent border-t-purple-500 border-r-purple-500/50 rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 border-2 border-transparent border-t-accent border-r-accent/50 rounded-full animate-spin"></div>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <Bot className="h-4 w-4 text-purple-400" />
+                        <Bot className="h-4 w-4 text-accent" />
                       </div>
                     </div>
 
@@ -1665,9 +1665,9 @@ export default function Home() {
                         </span>
                         {!isThinking && (
                           <span className="flex gap-0.5 items-end pb-0.5 ml-0.5">
-                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
-                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
-                            <span className="inline-block w-0.5 h-0.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }}></span>
+                            <span className="inline-block w-0.5 h-0.5 bg-accent rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }}></span>
                           </span>
                         )}
                       </div>

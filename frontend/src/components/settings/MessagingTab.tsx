@@ -422,7 +422,7 @@ export const MessagingTab = () => {
                         {/* Header */}
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                <div className="h-2 w-2 rounded-full bg-purple-500" />
+                                <div className="h-2 w-2 rounded-full bg-accent" />
                                 {selectedId ? `EDITING: ${draft.name.toUpperCase() || 'CHANNEL'}` : 'NEW CHANNEL'}
                             </h3>
                             <div className="flex gap-2">
@@ -497,7 +497,7 @@ export const MessagingTab = () => {
                                 type="checkbox"
                                 checked={draft.multi_agent_mode}
                                 onChange={e => setDraft({ ...draft, multi_agent_mode: e.target.checked })}
-                                className="mt-1 accent-purple-500"
+                                className="mt-1 accent-[var(--accent)]"
                             />
                             <div className="flex-1">
                                 <label htmlFor="multi-agent-toggle" className="text-xs font-bold text-white cursor-pointer block leading-tight">

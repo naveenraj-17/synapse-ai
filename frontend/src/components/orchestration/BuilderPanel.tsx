@@ -58,7 +58,7 @@ function ActivityGroup({ events, isLive }: ActivityGroupProps) {
                     {done ? (
                         <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
                     ) : (
-                        <Loader2 size={12} className="animate-spin text-purple-400 shrink-0" />
+                        <Loader2 size={12} className="animate-spin text-accent shrink-0" />
                     )}
                     <span className={`text-[11px] font-mono truncate ${done ? 'text-zinc-600' : 'text-zinc-400'}`}>
                         {msg.stepName}
@@ -69,9 +69,9 @@ function ActivityGroup({ events, isLive }: ActivityGroupProps) {
         if (msg.kind === 'tool_call') {
             return (
                 <div key={i} className="flex items-start gap-2 pl-1 py-0.5">
-                    <span className="text-violet-400 text-[10px] shrink-0 mt-0.5">🔧</span>
+                    <span className="text-accent text-[10px] shrink-0 mt-0.5">🔧</span>
                     <details className="flex-1 min-w-0">
-                        <summary className="text-[11px] text-violet-400 cursor-pointer list-none font-mono truncate">
+                        <summary className="text-[11px] text-accent cursor-pointer list-none font-mono truncate">
                             {msg.toolName?.replace(/_/g, ' ')}
                         </summary>
                         <pre className="font-code bg-zinc-800/60 rounded-md p-1.5 mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap max-h-28 border border-zinc-700/40">
@@ -122,9 +122,9 @@ function ActivityGroup({ events, isLive }: ActivityGroupProps) {
 
 const TYPE_COLORS: Record<string, string> = {
     code: 'bg-sky-900/60 text-sky-400 border-sky-700/40',
-    conversational: 'bg-violet-900/60 text-violet-400 border-violet-700/40',
+    conversational: 'bg-accent-subtle text-accent border-accent/40',
     orchestrator: 'bg-amber-900/60 text-amber-400 border-amber-700/40',
-    builder: 'bg-purple-900/60 text-purple-400 border-purple-700/40',
+    builder: 'bg-accent-subtle text-accent border-accent/40',
 };
 
 function typeColor(type: string) {
@@ -435,7 +435,7 @@ export function BuilderPanel({
                 <button
                     onClick={() => setCollapsed(false)}
                     title="Show AI Builder"
-                    className="flex flex-col items-center gap-2 px-2 py-4 bg-zinc-900 border border-zinc-800 border-r-0 rounded-l-lg shadow-xl text-purple-400 hover:text-purple-300 hover:bg-zinc-800 transition-colors"
+                    className="flex flex-col items-center gap-2 px-2 py-4 bg-zinc-900 border border-zinc-800 border-r-0 rounded-l-lg shadow-xl text-accent hover:text-accent-hover hover:bg-zinc-800 transition-colors"
                 >
                     <Sparkles size={14} />
                     <span className="text-[10px] font-semibold tracking-wide [writing-mode:vertical-rl] rotate-180 text-zinc-400">
@@ -452,7 +452,7 @@ export function BuilderPanel({
             {/* ── Header ─────────────────────────────────────────────── */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
                 <div className="flex items-center gap-2">
-                    <Sparkles size={15} className="text-purple-400" />
+                    <Sparkles size={15} className="text-accent" />
                     <span className="text-sm font-semibold text-zinc-100">AI Builder</span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -566,7 +566,7 @@ export function BuilderPanel({
                 {/* ── Live status indicator ── */}
                 {streaming && streamingStatus && (
                     <div className="flex items-center gap-2 pl-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500/70 animate-pulse shrink-0" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
                         <span className="text-[11px] text-zinc-500 font-mono">{streamingStatus}</span>
                     </div>
                 )}
@@ -587,7 +587,7 @@ export function BuilderPanel({
                         ) : (
                             <div className="flex items-center gap-1.5 flex-wrap">
                                 {selectedNames.map((n) => (
-                                    <span key={n} className="text-[11px] px-2 py-0.5 rounded-md bg-purple-900/50 text-purple-300 border border-purple-700/40">
+                                    <span key={n} className="text-[11px] px-2 py-0.5 rounded-md bg-accent-subtle text-accent border border-accent/40">
                                         {n}
                                     </span>
                                 ))}
@@ -639,12 +639,12 @@ export function BuilderPanel({
                                             onClick={() => toggleAgent(agent.id)}
                                             className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-left transition-all ${
                                                 selected
-                                                    ? 'bg-purple-900/30 border-purple-600/60 ring-1 ring-purple-600/30'
+                                                    ? 'bg-accent-subtle border-accent/60 ring-1 ring-accent/30'
                                                     : 'bg-zinc-900 border-zinc-700/60 hover:border-zinc-600 hover:bg-zinc-800/60'
                                             }`}
                                         >
                                             <div className={`mt-0.5 w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
-                                                selected ? 'bg-purple-600 border-purple-600' : 'border-zinc-600'
+                                                selected ? 'bg-accent border-accent' : 'border-zinc-600'
                                             }`}>
                                                 {selected && (
                                                     <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
@@ -682,12 +682,12 @@ export function BuilderPanel({
                         placeholder={pendingRun ? 'Answer the question above…' : 'Describe what you want to build…'}
                         rows={2}
                         disabled={streaming}
-                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-purple-500/60 resize-none disabled:opacity-50 transition-colors font-sans"
+                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-accent/60 resize-none disabled:opacity-50 transition-colors font-sans"
                     />
                     <button
                         onClick={sendMessage}
                         disabled={!input.trim() || streaming}
-                        className="flex items-center justify-center w-9 h-9 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shrink-0"
+                        className="flex items-center justify-center w-9 h-9 rounded-xl bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-accent-fg transition-colors shrink-0"
                     >
                         {streaming ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                     </button>

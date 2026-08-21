@@ -588,7 +588,7 @@ export const ModelsTab = ({
                                                         : `No CLI binary found in PATH for ${meta.label}.`
                                                     }
                                                 </div>
-                                                <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 text-[10px] text-violet-300 leading-relaxed rounded-md">
+                                                <div className="p-2.5 bg-accent border border-accent/20 text-[10px] text-accent leading-relaxed rounded-md">
                                                     <strong>No API key needed</strong> — uses your existing CLI session. Run the CLI manually first to authenticate.
                                                 </div>
                                                 <div className="flex flex-col gap-1">

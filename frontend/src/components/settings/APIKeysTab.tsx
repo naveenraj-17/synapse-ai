@@ -60,7 +60,7 @@ const EndpointRow = ({ method, path, desc, badge }: { method: string; path: stri
             <span className={`text-[10px] font-bold uppercase w-9 shrink-0 pt-0.5 ${color}`}>{method}</span>
             <code className="text-xs font-code text-zinc-300 shrink-0">{path}</code>
             <span className="text-xs text-zinc-600 flex-1">{desc}</span>
-            {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-violet-900/40 text-violet-400 border border-violet-800/50 shrink-0 rounded-md">{badge}</span>}
+            {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-accent-subtle text-accent border border-accent/40 shrink-0 rounded-md">{badge}</span>}
         </div>
     );
 };
@@ -203,10 +203,10 @@ print(f"\\nCompleted: {data['response']}")`} />
 const V2Docs = ({ BASE }: { BASE: string }) => (
     <>
         {/* Scale mode notice */}
-        <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300 rounded-md">
-            <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 px-4 py-3 bg-accent-subtle border border-accent/40 text-xs text-accent rounded-md">
+            <Zap className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
             <span>
-                V2 requires <strong className="text-violet-200">Scale mode</strong> enabled in Settings → Scale. All jobs are enqueued to Redis ARQ workers — the API returns immediately with a <code className="font-code text-violet-300">run_id</code> and a <code className="font-code text-violet-300">202 Accepted</code>.
+                V2 requires <strong className="text-accent">Scale mode</strong> enabled in Settings → Scale. All jobs are enqueued to Redis ARQ workers — the API returns immediately with a <code className="font-code text-accent">run_id</code> and a <code className="font-code text-accent">202 Accepted</code>.
             </span>
         </div>
 
@@ -659,7 +659,7 @@ const DocsDrawer = ({ open, onClose, port }: { open: boolean; onClose: () => voi
                             </button>
                             <button
                                 onClick={() => setVersion('v2')}
-                                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1 ${version === 'v2' ? 'bg-violet-600 text-white' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
+                                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1 ${version === 'v2' ? 'bg-accent text-accent-fg' : 'bg-transparent text-zinc-500 hover:text-zinc-300'}`}
                             >
                                 <Zap className="w-2.5 h-2.5" />
                                 V2

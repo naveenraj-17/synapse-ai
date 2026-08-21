@@ -258,9 +258,9 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
         <div className="flex flex-col gap-5">
 
             {/* ── Info Banner ─────────────────────────────────────────────── */}
-            <div className="bg-zinc-950 border border-violet-900/40 rounded-sm p-3 space-y-2">
+            <div className="bg-zinc-950 border border-accent/40 rounded-sm p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-violet-400 uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wider">
                         <Package className="h-3.5 w-3.5" />
                         Python Sandbox
                     </div>
@@ -273,9 +273,9 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                     </button>
                 </div>
                 <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Code runs in a <span className="text-violet-400 font-mono">Docker sandbox</span> (512MB RAM, 1 CPU, internet enabled).
-                    Vault files are mounted at <span className="font-mono text-violet-300">/data/</span>.
-                    Arguments are injected as <span className="font-mono text-violet-300">_args</span> (dict).
+                    Code runs in a <span className="text-accent font-mono">Docker sandbox</span> (512MB RAM, 1 CPU, internet enabled).
+                    Vault files are mounted at <span className="font-mono text-accent">/data/</span>.
+                    Arguments are injected as <span className="font-mono text-accent">_args</span> (dict).
                     <span className="font-mono text-zinc-400"> print()</span> stdout becomes the tool result.
                 </p>
                 {showPackages && (
@@ -302,7 +302,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 </div>
                 <div
                     ref={editorContainerRef}
-                    className="min-h-[280px] h-[280px] overflow-hidden border border-zinc-800 focus-within:border-violet-600 transition-colors rounded-sm"
+                    className="min-h-[280px] h-[280px] overflow-hidden border border-zinc-800 focus-within:border-accent transition-colors rounded-sm"
                 />
                 {/* Lint warnings */}
                 {lintWarnings.length > 0 && (
@@ -323,7 +323,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 <textarea
                     value={schemaStr}
                     onChange={e => handleSchemaChange(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none min-h-[140px] rounded-md"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-accent focus:outline-none resize-none min-h-[140px] rounded-md"
                     placeholder='{"type": "object", "properties": {"query": {"type": "string", "description": "The input query"}}}'
                 />
                 {schemaError && (
@@ -350,14 +350,14 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                             value={testArgs}
                             onChange={e => setTestArgs(e.target.value)}
                             rows={2}
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none rounded-md"
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs font-mono text-zinc-300 focus:border-accent focus:outline-none resize-none rounded-md"
                             placeholder='{"query": "hello world"}'
                         />
                     </div>
                     <button
                         onClick={handleTestRun}
                         disabled={testLoading || !draft.code.trim()}
-                        className="flex items-center gap-2 px-4 py-2 bg-violet-700 hover:bg-violet-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold transition-colors mt-4 shrink-0"
+                        className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover disabled:bg-zinc-800 disabled:text-zinc-600 text-accent-fg text-xs font-bold transition-colors mt-4 shrink-0"
                     >
                         {testLoading
                             ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running...</>

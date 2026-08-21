@@ -278,7 +278,7 @@ export const AgentsTab = ({
                     <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => setAiBuilderOpen(v => !v)}
-                            className={`p-1.5 transition-colors ${aiBuilderOpen ? 'bg-purple-500 text-white' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                            className={`p-1.5 transition-colors ${aiBuilderOpen ? 'bg-accent text-accent-fg' : 'bg-accent hover:bg-accent-hover text-accent-fg'}`}
                             title="Build Agent with AI"
                         >
                             <Sparkles className="h-4 w-4" />
@@ -308,20 +308,20 @@ export const AgentsTab = ({
                 </div>
 
                 {aiBuilderOpen && (
-                    <div className="mb-3 p-3 border border-dashed border-purple-800 bg-purple-950/20 space-y-2 rounded-md">
-                        <p className="text-[9px] text-purple-400 font-bold uppercase">Build with AI</p>
+                    <div className="mb-3 p-3 border border-dashed border-accent/40 bg-accent-subtle space-y-2 rounded-md">
+                        <p className="text-[9px] text-accent font-bold uppercase">Build with AI</p>
                         <textarea
                             value={aiBuilderDesc}
                             onChange={e => setAiBuilderDesc(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); buildAgentWithAI(); } }}
                             placeholder="Describe what this agent should do... e.g. 'A customer support agent that searches our knowledge base'"
                             rows={3}
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 resize-none rounded-md"
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-accent focus:outline-none placeholder:text-zinc-600 resize-none rounded-md"
                         />
                         <button
                             onClick={buildAgentWithAI}
                             disabled={isBuilding || !aiBuilderDesc.trim()}
-                            className="w-full py-1.5 bg-purple-700 hover:bg-purple-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                            className="w-full py-1.5 bg-accent hover:bg-accent-hover disabled:bg-zinc-800 disabled:text-zinc-600 text-accent-fg text-xs font-bold flex items-center justify-center gap-2 transition-colors"
                         >
                             {isBuilding
                                 ? <><Loader2 className="h-3 w-3 animate-spin" /> BUILDING…</>
@@ -404,22 +404,22 @@ export const AgentsTab = ({
                         {draftAgent.type === 'orchestrator' ? (
                             <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-6 text-center">
                                 <div className="relative">
-                                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-purple-900/60 to-violet-900/40 border border-purple-700/50 flex items-center justify-center">
-                                        <svg className="h-9 w-9 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-accent/60 to-accent/40 border border-accent/40 flex items-center justify-center">
+                                        <svg className="h-9 w-9 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                                         </svg>
                                     </div>
-                                    <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-purple-600 flex items-center justify-center">
+                                    <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-accent flex items-center justify-center">
                                         <Lock className="h-2.5 w-2.5 text-white" />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <h4 className="text-sm font-bold text-white">{draftAgent.name}</h4>
                                     <p className="text-[11px] text-zinc-500 max-w-[280px] leading-relaxed">
-                                        This is an <span className="text-purple-400 font-semibold">Orchestration Agent</span>. Its workflow, steps, and configuration are managed in the dedicated Orchestrations editor.
+                                        This is an <span className="text-accent font-semibold">Orchestration Agent</span>. Its workflow, steps, and configuration are managed in the dedicated Orchestrations editor.
                                     </p>
                                 </div>
-                                <div className="px-5 py-3 border border-dashed border-purple-800/60 bg-purple-950/20 rounded-md text-[10px] text-purple-300 flex items-center gap-2">
+                                <div className="px-5 py-3 border border-dashed border-accent/40 bg-accent-subtle rounded-md text-[10px] text-accent flex items-center gap-2">
                                     <ExternalLink className="h-3 w-3 flex-shrink-0" />
                                     Open the <strong>Orchestrations</strong> menu to edit this agent's workflow
                                 </div>
@@ -427,7 +427,7 @@ export const AgentsTab = ({
                         ) : (<>
                             <div className="flex items-center justify-between">
                                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                    <div className="h-2 w-2 rounded-full bg-purple-500" />
+                                    <div className="h-2 w-2 rounded-full bg-accent" />
                                     {agents.some((a: any) => a.id === draftAgent.id) ? `EDITING: ${draftAgent.name.toUpperCase()}` : 'NEW AGENT'}
                                 </h3>
                                 {agentSubTab === 'config' && (
@@ -844,12 +844,12 @@ export const AgentsTab = ({
                                                 onChange={e => setPromptDescription(e.target.value)}
                                                 onKeyDown={e => e.key === 'Enter' && !isGenerating && generatePrompt()}
                                                 placeholder="Describe what this agent should do... e.g. 'A customer support agent for a SaaS product'"
-                                                className="flex-1 bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 rounded-md"
+                                                className="flex-1 bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white focus:border-accent focus:outline-none placeholder:text-zinc-600 rounded-md"
                                             />
                                             <button
                                                 onClick={generatePrompt}
                                                 disabled={isGenerating || !promptDescription.trim()}
-                                                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold flex items-center gap-2 transition-colors"
+                                                className="px-4 py-2 bg-accent hover:bg-accent-hover disabled:bg-zinc-800 disabled:text-zinc-600 text-accent-fg text-xs font-bold flex items-center gap-2 transition-colors"
                                             >
                                                 {isGenerating ? (
                                                     <><Loader2 className="h-3 w-3 animate-spin" /> GENERATING...</>

@@ -107,7 +107,7 @@ const PROVIDER_META: Record<Provider, { label: string; color: string; dot: strin
     anthropic: { label: 'Anthropic',     color: '#f59e0b', dot: '#f59e0b', bg: 'bg-amber-950/60',   text: 'text-amber-400' },
     gemini:    { label: 'Gemini',        color: '#3b82f6', dot: '#3b82f6', bg: 'bg-blue-950/60',    text: 'text-blue-400' },
     grok:      { label: 'xAI Grok',      color: '#a1a1aa', dot: '#a1a1aa', bg: 'bg-zinc-800/60',    text: 'text-zinc-300' },
-    deepseek:  { label: 'DeepSeek',      color: '#8b5cf6', dot: '#8b5cf6', bg: 'bg-violet-950/60',  text: 'text-violet-400' },
+    deepseek:  { label: 'DeepSeek',      color: '#8b5cf6', dot: '#8b5cf6', bg: 'bg-accent-subtle',  text: 'text-accent' },
     bedrock:   { label: 'AWS Bedrock',   color: '#f97316', dot: '#f97316', bg: 'bg-orange-950/60',  text: 'text-orange-400' },
     ollama:    { label: 'Ollama (Local)', color: '#94a3b8', dot: '#94a3b8', bg: 'bg-slate-800/60',   text: 'text-slate-400' },
 };
@@ -355,19 +355,19 @@ function SessionRow({ s }: { s: SessionStat }) {
                 className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-row-hover transition-colors">
                 <div className="flex items-center gap-2 shrink-0">
                     {isSysprompt
-                        ? <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
+                        ? <Wand2 className="w-3.5 h-3.5 text-accent" />
                         : isSched
                             ? <Clock className="w-3.5 h-3.5 text-sky-400" />
                             : isOrch
-                                ? <Activity className="w-3.5 h-3.5 text-violet-400" />
+                                ? <Activity className="w-3.5 h-3.5 text-accent" />
                                 : <Zap className="w-3.5 h-3.5 text-emerald-400" />}
                     <span className={`text-xs px-2 py-0.5 font-medium border ${
                         isSysprompt
-                            ? 'border-fuchsia-800/50 text-fuchsia-400 bg-fuchsia-950/40'
+                            ? 'border-accent/40 text-accent bg-accent-subtle'
                             : isSched
                                 ? 'border-sky-800/50 text-sky-400 bg-sky-950/40'
                                 : isOrch
-                                    ? 'border-violet-800/50 text-violet-400 bg-violet-950/40'
+                                    ? 'border-accent/40 text-accent bg-accent-subtle'
                                     : 'border-emerald-800/50 text-emerald-400 bg-emerald-950/40'
                     } rounded-md`}>
                         {isSysprompt ? 'system' : isSched ? 'schedule' : isOrch ? 'orch' : 'chat'}
@@ -381,7 +381,7 @@ function SessionRow({ s }: { s: SessionStat }) {
                         <span className={`shrink-0 text-xs px-1.5 py-0.5 border whitespace-nowrap ${
                             isSched
                                 ? 'text-sky-400 bg-sky-950/40 border-sky-800/30'
-                                : 'text-violet-400 bg-violet-950/40 border-violet-800/30'
+                                : 'text-accent bg-accent-subtle border-accent/40'
                         } rounded-md`}>
                             {s.agents_used!.length} agent{s.agents_used!.length !== 1 ? 's' : ''}
                         </span>
@@ -409,7 +409,7 @@ function SessionRow({ s }: { s: SessionStat }) {
                                         <span key={a} className={`inline-flex items-center gap-1 px-1.5 py-0.5 font-mono truncate max-w-[120px] border ${
                                             isSched
                                                 ? 'bg-sky-950/50 border-sky-800/30 text-sky-300'
-                                                : 'bg-violet-950/50 border-violet-800/30 text-violet-300'
+                                                : 'bg-accent-subtle border-accent/40 text-accent'
                                         } rounded-md`}>
                                             <Cpu className="w-2.5 h-2.5 shrink-0" />{a}
                                         </span>
@@ -1048,9 +1048,9 @@ export function UsageTab() {
                                 </div>
                                 <div className="flex items-center gap-3 text-xs text-zinc-500 flex-wrap">
                                     <span className="flex items-center gap-1.5"><Zap className="w-3 h-3 text-emerald-400" /> Chat</span>
-                                    <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-violet-400" /> Orchestration</span>
+                                    <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-accent" /> Orchestration</span>
                                     <span className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-sky-400" /> Schedule</span>
-                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3 text-fuchsia-400" /> System Prompt</span>
+                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3 text-accent" /> System Prompt</span>
                                 </div>
                             </div>
 

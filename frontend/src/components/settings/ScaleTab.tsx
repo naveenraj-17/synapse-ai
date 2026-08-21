@@ -269,10 +269,10 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 modern-scrollbar">
 
                     {/* Intro banner */}
-                    <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300 rounded-md">
-                        <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-3 px-4 py-3 bg-accent-subtle border border-accent/40 text-xs text-accent rounded-md">
+                        <Zap className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
                         <span>
-                            Scale mode turns Synapse into a <strong className="text-violet-200">distributed job queue</strong>. Your main Synapse instance manages definitions and the UI — workers pull jobs from Redis and execute them in parallel. All you need to get started is a <strong className="text-violet-200">Redis server</strong>.
+                            Scale mode turns Synapse into a <strong className="text-accent">distributed job queue</strong>. Your main Synapse instance manages definitions and the UI — workers pull jobs from Redis and execute them in parallel. All you need to get started is a <strong className="text-accent">Redis server</strong>.
                         </span>
                     </div>
 
@@ -793,7 +793,7 @@ export function ScaleTab() {
                         { label: 'Workers Online', value: analytics?.available ? analytics.workers_online : (workers.filter(w => w.status === 'online').length || '—'), color: 'text-emerald-400' },
                         { label: 'Avg Cost / Run', value: analytics?.available ? formatCost(analytics.avg_cost_usd) : '—', color: 'text-zinc-100' },
                         { label: 'Cost Today', value: analytics?.available ? formatCost(analytics.total_cost_usd_today) : '—', color: 'text-zinc-100' },
-                        { label: 'Cache Hit Rate', value: analytics?.available ? `${analytics.cache_hit_rate}%` : '—', color: 'text-purple-400' },
+                        { label: 'Cache Hit Rate', value: analytics?.available ? `${analytics.cache_hit_rate}%` : '—', color: 'text-accent' },
                     ].map(stat => (
                         <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950 rounded-md">
                             <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</p>

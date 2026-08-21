@@ -101,7 +101,7 @@ const StatusBadge = ({ status }: { status?: string }) => {
 
 const TypePill = ({ type }: { type?: string }) => (
     type === 'remote'
-        ? <span className="flex items-center gap-1 text-[9px] bg-violet-500/15 text-violet-400 px-1.5 py-0.5 rounded-md border border-violet-500/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
+        ? <span className="flex items-center gap-1 text-[9px] bg-accent text-accent px-1.5 py-0.5 rounded-md border border-accent/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
         : <span className="flex items-center gap-1 text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-md border border-zinc-700 uppercase"><Terminal className="h-2 w-2" />Local</span>
 );
 
