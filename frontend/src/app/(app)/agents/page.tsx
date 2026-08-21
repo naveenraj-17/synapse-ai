@@ -1,5 +1,5 @@
 import { AgentsScreen } from '@/components/settings/AgentsScreen';
-import { Screen } from '@/components/app/Screen';
+import { Screen } from '@/components/ui';
 import { navEntryFor } from '@/lib/nav';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,10 @@ export const dynamic = 'force-dynamic';
  * there is still one place the words live.
  */
 export default function AgentsPage() {
+    const nav = navEntryFor('agents')!;
+
     return (
-        <Screen nav={navEntryFor('agents')!}>
+        <Screen title={nav.label} description={nav.blurb}>
             <AgentsScreen />
         </Screen>
     );

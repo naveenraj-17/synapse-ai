@@ -14,12 +14,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun } from 'lucide-react';
 
-import { IconButton, Label } from '@/components/ui';
+import { IconButton, Label, usePersisted } from '@/components/ui';
 import { PRIMARY_NAV, type NavEntry } from '@/lib/nav';
 import { useNotifications } from '@/components/notifications/NotificationProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useNavGuard } from './NavGuard';
-import { usePersisted } from './usePersisted';
 import { cn } from '@/lib/utils';
 
 const SETTINGS_HREF = '/settings/general';

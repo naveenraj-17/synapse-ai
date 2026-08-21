@@ -1,5 +1,5 @@
 import { ToolsScreen } from '@/components/settings/ToolsScreen';
-import { Screen } from '@/components/app/Screen';
+import { Screen } from '@/components/ui';
 import { navEntryFor } from '@/lib/nav';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,10 @@ export const dynamic = 'force-dynamic';
  * there is still one place the words live.
  */
 export default function ToolsPage() {
+    const nav = navEntryFor('custom_tools')!;
+
     return (
-        <Screen nav={navEntryFor('custom_tools')!}>
+        <Screen title={nav.label} description={nav.blurb}>
             <ToolsScreen />
         </Screen>
     );

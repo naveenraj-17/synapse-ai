@@ -1,5 +1,5 @@
 import { McpServersScreen } from '@/components/settings/McpServersScreen';
-import { Screen } from '@/components/app/Screen';
+import { Screen } from '@/components/ui';
 import { navEntryFor } from '@/lib/nav';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,10 @@ export const dynamic = 'force-dynamic';
  * there is still one place the words live.
  */
 export default function McpServersPage() {
+    const nav = navEntryFor('mcp_servers')!;
+
     return (
-        <Screen nav={navEntryFor('mcp_servers')!}>
+        <Screen title={nav.label} description={nav.blurb}>
             <McpServersScreen />
         </Screen>
     );

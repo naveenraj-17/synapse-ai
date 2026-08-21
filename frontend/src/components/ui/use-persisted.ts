@@ -2,6 +2,10 @@
 /*
  * localStorage as an external store.
  *
+ * In the kit rather than next to the rail that first needed it: both products
+ * persist a collapsed sidebar, and this is thirty lines with no product
+ * knowledge in it at all.
+ *
  * Reading it in an effect and calling setState causes a cascading render (and
  * React's lint rule says so); reading it during render mismatches the SSR HTML.
  * useSyncExternalStore does neither — the server snapshot is the fallback,

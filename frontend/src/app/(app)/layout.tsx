@@ -12,10 +12,9 @@
  */
 import { useEffect } from 'react';
 
-import { TooltipProvider } from '@/components/ui';
+import { TooltipProvider, usePersisted } from '@/components/ui';
 import { AppRail } from '@/components/app/AppRail';
 import { NavGuardProvider } from '@/components/app/NavGuard';
-import { usePersisted } from '@/components/app/usePersisted';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const [theme, setTheme] = usePersisted<'dark' | 'light'>(

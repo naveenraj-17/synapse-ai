@@ -5,12 +5,13 @@
 import { useState, useEffect } from 'react';
 
 import { useRouter } from 'next/navigation';
+import { X } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/store';
 import { fetchAllSettingsData } from '@/store/settingsSlice';
 
 import type { Tab } from './settings/types';
-import { Screen } from './app/Screen';
+import { LinkButton, Screen } from '@/components/ui';
 import { isSettingsEntry, navEntryFor } from '@/lib/nav';
 import { GeneralTab } from './settings/GeneralTab';
 import { PersonalDetailsTab } from './settings/PersonalDetailsTab';
@@ -432,7 +433,25 @@ export const SettingsView = ({ initialTab = 'general', initialSubTab }: { initia
 
     return (
         <>
-            <Screen nav={nav} closeHref={isSettingsEntry(activeTab) ? '/' : undefined}>
+            <Screen
+                title={nav.label}
+                description={nav.blurb}
+                /* The close control is rendered here rather than being a prop
+                   on `Screen`: leaving the section is a fact about Settings,
+                   not about page frames in general, and the kit's Screen is
+                   shared with a product whose settings has no such exit. */
+                actions={isSettingsEntry(activeTab) ? (
+                    <LinkButton
+                        href="/"
+                        variant="ghost"
+                        iconOnly
+                        aria-label="Close settings"
+                        title="Close settings"
+                    >
+                        <X className="size-4" aria-hidden />
+                    </LinkButton>
+                ) : undefined}
+            >
                 {/* MESSAGING TAB */}
                 {activeTab === 'messaging' && <MessagingTab />}
 

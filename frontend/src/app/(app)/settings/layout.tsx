@@ -17,9 +17,8 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
-import { Label } from '@/components/ui';
+import { Label, usePersisted } from '@/components/ui';
 import { SETTINGS_NAV, visibleItems, type NavFlag } from '@/lib/nav';
-import { usePersisted } from '@/components/app/usePersisted';
 import { cn } from '@/lib/utils';
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

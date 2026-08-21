@@ -1,10 +1,12 @@
 import { LogsTab } from '@/components/settings/LogsTab';
-import { Screen } from '@/components/app/Screen';
+import { Screen } from '@/components/ui';
 import { navEntryFor } from '@/lib/nav';
 
 export default function RunsPage() {
+    const nav = navEntryFor('logs')!;
+
     return (
-        <Screen nav={navEntryFor('logs')!} bleed>
+        <Screen title={nav.label} description={nav.blurb} bleed>
             <LogsTab />
         </Screen>
     );
