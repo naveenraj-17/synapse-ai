@@ -1,7 +1,8 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
-import { Key, Copy, CheckCircle, AlertCircle, BookOpen, X, ChevronDown, ChevronRight, Zap } from 'lucide-react';
+import { Copy, CheckCircle, AlertCircle, BookOpen, X, ChevronDown, ChevronRight, Zap } from 'lucide-react';
+import { Button, Modal } from '@/components/ui';
 
 interface ApiKeyRecord {
     id: string;
@@ -759,31 +760,25 @@ export const APIKeysTab = () => {
 
             {/* Key Reveal Modal */}
             {revealedKey && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-zinc-700 p-6 max-w-lg w-full mx-4 shadow-2xl">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Key className="w-5 h-5 text-amber-400" />
-                            <h3 className="text-sm uppercase font-bold text-zinc-100 tracking-wider">Your API Key</h3>
-                        </div>
-                        <p className="text-xs text-zinc-500 mb-4">
-                            Copy this key now — it will <strong className="text-zinc-300">never be shown again</strong>.
-                        </p>
-                        <div className="bg-zinc-950 border border-zinc-800 p-3 font-mono text-sm text-emerald-400 break-all mb-4">
-                            {revealedKey}
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => handleCopy(revealedKey)}
-                                className="flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-colors">
-                                {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                                {copied ? 'Copied!' : 'Copy Key'}
-                            </button>
-                            <button onClick={() => setRevealedKey(null)}
-                                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-colors">
-                                Done
-                            </button>
-                        </div>
+                <Modal
+                    open
+                    onClose={() => setRevealedKey(null)}
+                    title="Your API key"
+                    description={<>Copy it now — it will <strong className="text-text">never be shown again</strong>.</>}
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setRevealedKey(null)}>Done</Button>
+                            <Button onClick={() => handleCopy(revealedKey)}>
+                                {copied ? <CheckCircle className="size-3.5" /> : <Copy className="size-3.5" />}
+                                {copied ? 'Copied' : 'Copy key'}
+                            </Button>
+                        </>
+                    }
+                >
+                    <div className="border border-border bg-bg p-3 font-code text-sm break-all text-success">
+                        {revealedKey}
                     </div>
-                </div>
+                </Modal>
             )}
 
             {/* Docs Drawer */}

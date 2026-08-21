@@ -1,94 +1,159 @@
 @import "tailwindcss";
 
+/*
+ * The design tokens, taken from `synapse-ai-pro-v1/web/src/app/globals.css`.
+ *
+ * The cloud product already had a finished token layer — a *designed* light
+ * palette rather than a ramp inversion, and the D27 accent — so this file
+ * adopts its names and values verbatim. That is what lets the 19 primitives in
+ * `components/ui/` drop in unmodified, and what makes the two products look
+ * like one.
+ *
+ * Two things stay OSS-specific: the fonts (Inter + Geist Mono, chosen here),
+ * and the zinc-ramp inversion further down, which the cloud does not need.
+ */
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  /* ── Fonts ───────────────────────────────────────────────────────────────
+   * `font-mono` and `font-sans` are both aliased to --ui-font so the ~2.6k
+   * indiscriminate utility classes in the tab components follow the UI font
+   * rather than fight it. Content that is genuinely code uses `font-code`,
+   * which never follows.
+   * -------------------------------------------------------------------- */
+  --ui-font: var(--font-inter);
+  --code-font: var(--font-geist-mono);
 
-  /* Scrollbar Default */
+  /* ── Surfaces, text, borders ─────────────────────────────────────────── */
+  --bg: #09090b;            /* zinc-950 */
+  --surface: #18181b;       /* zinc-900 */
+  --surface-2: #27272a;     /* zinc-800 */
+  --border: #27272a;        /* zinc-800 */
+  --border-strong: #3f3f46; /* zinc-700 */
+  --text: #fafafa;          /* zinc-50 */
+  --text-muted: #a1a1aa;    /* zinc-400 */
+  --text-faint: #71717a;    /* zinc-500 */
+
+  /* ── Accent (D27) ────────────────────────────────────────────────────────
+   * Cyan, hue 186 — the hue of the product mark, toned from neon down to the
+   * same muted shade the rest of the palette keeps. Used sparingly: active nav
+   * indicator, focus ring, primary button, selected-option check.
+   * -------------------------------------------------------------------- */
+  --accent: #6bb4bd;
+  --accent-hover: #80c4cb;
+  --accent-fg: #09090b;
+  --accent-subtle: #172a2c;
+  --ring: #6bb4bd40;
+
+  --danger: #f87171;
+  --danger-subtle: #2e1b18;
+  --warning: #fbbf24;
+  --warning-subtle: #2c2313;
+  --success: #4ade80;
+  --success-subtle: #17281e;
+
+  /* Table furniture. A header needs to separate from the rows under it without
+     becoming a band of its own — `surface-2` is the hover colour, so a header
+     painted with it reads as a permanently-hovered row. These sit between. */
+  --surface-header: #1f1f23;
+  --row-hover: #202024;
+
+  /* Legacy aliases: `body` and a few older rules still read these. */
+  --background: var(--bg);
+  --foreground: var(--text);
+
+  /* Scrollbar */
   --sb-track: #09090b;
   --sb-thumb: #27272a;
   --sb-thumb-hover: #3f3f46;
-
-  /* ─── THE TWO LEVERS ────────────────────────────────────────────────────
-   * Both are deliberately one line each, so the question gets answered by
-   * looking at the running app instead of by argument.
-   *
-   *   --ui-font   the UI font. `font-mono` and `font-sans` are both aliased
-   *               to it below, so the 238 indiscriminate `font-mono` call
-   *               sites follow it instead of fighting it. Content that is
-   *               genuinely code uses `font-code`, which never follows.
-   *   --accent    flip to the D27 cyan (hue 186) and every accented surface
-   *               in the new chrome follows.
-   * ------------------------------------------------------------------- */
-  --ui-font: var(--font-inter);
-  --code-font: var(--font-geist-mono);
-  --accent: #f4f4f5;          /* zinc-100 — today's value, no hue change */
-  --accent-contrast: #09090b;
-
-  /* ─── TYPE SCALE ────────────────────────────────────────────────────────
-   * Dense/quiet target (Figma/Linear register), tuned for MONO metrics:
-   * mono glyphs run ~0.6em against Inter's ~0.5em, so these sit a step
-   * below where a sans scale would. New names only — Tailwind's own
-   * text-xs/sm/base are left alone so no existing screen shifts.
-   * 11px is the floor. There are 469 uses of 9/10/11px to retire in pass two.
-   * ------------------------------------------------------------------- */
-  --step-2xs: 11px;
-  --step-ui: 13px;
-  --step-title: 20px;
-
-  /* ─── SEMANTIC SURFACES ─────────────────────────────────────────────────
-   * Today's zinc ramp verbatim — this pass changes no hue. The point is to
-   * have somewhere for pass two to aim the 2,677 raw zinc-* utilities.
-   * ------------------------------------------------------------------- */
-  --surface-0: #09090b;       /* zinc-950 — page ground */
-  --surface-1: #18181b;       /* zinc-900 — raised panel */
-  --surface-2: #27272a;       /* zinc-800 — active row, input */
-  --border-subtle: #27272a;   /* zinc-800 */
-  --border-strong: #3f3f46;   /* zinc-700 */
-  --content-primary: #fafafa;   /* zinc-50 */
-  --content-secondary: #a1a1aa; /* zinc-400 */
-  --content-muted: #71717a;     /* zinc-500 */
-  --ring: #71717a;            /* zinc-500 — visible on both grounds */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --font-sans: var(--ui-font);
   --font-mono: var(--ui-font);
   --font-ui: var(--ui-font);
   --font-code: var(--code-font);
   --font-inter: var(--font-inter), 'Inter', system-ui, sans-serif;
 
-  --text-2xs: var(--step-2xs);
-  --text-ui: var(--step-ui);
-  --text-title: var(--step-title);
+  /* Tailwind's own scale otherwise — matching the cloud so the two products
+     agree. 11px is the one addition: there is nothing below text-xs, and there
+     are ~467 hard-coded 9/10/11px labels still to land on it. */
+  --text-2xs: 11px;
 
-  --radius-ui: 6px;
-  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.30);
-  --shadow-e2: 0 4px 12px rgb(0 0 0 / 0.35);
-
-  --color-accent: var(--accent);
-  --color-accent-contrast: var(--accent-contrast);
-  --color-surface-0: var(--surface-0);
-  --color-surface-1: var(--surface-1);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
-  --color-border-subtle: var(--border-subtle);
+  --color-border: var(--border);
   --color-border-strong: var(--border-strong);
-  --color-content-primary: var(--content-primary);
-  --color-content-secondary: var(--content-secondary);
-  --color-content-muted: var(--content-muted);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-surface-header: var(--surface-header);
+  --color-row-hover: var(--row-hover);
 }
 
+/*
+ * Light mode.
+ *
+ * Two jobs in one block. The first half is the cloud's *designed* light
+ * palette — chosen values, not an algorithmic flip of the dark ones.
+ *
+ * The second half inverts the raw Tailwind ramps, and exists only because
+ * ~2,589 `zinc-*` and a few hundred other raw colour utilities are still
+ * spread across the 26 tab components. It is a compatibility layer with an
+ * expiry date: as screens move onto the tokens above, it shrinks, and when the
+ * last raw utility is gone it can be deleted outright.
+ */
 .light-mode {
-  --background: #ffffff;
-  --foreground: #09090b;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  /* Divider weight, measured rather than guessed. The cloud's #e4e4e7 is
+     1.27:1 against white — technically present, but not visible enough, twice.
+     zinc-300 is 1.44:1, which reads as a hairline without becoming a rule, and
+     matches the compatibility layer below so the semantic borders and the raw
+     `border-zinc-800` ones are finally the same colour. Worth feeding back to
+     the cloud, where the same value is in use. */
+  --border: #d4d4d8;
+  --border-strong: #a1a1aa;
+  --text: #09090b;
+  --text-muted: #52525b;
+  --text-faint: #71717a;
+
+  --accent: #2e656b;
+  --accent-hover: #235258;
+  --accent-fg: #ffffff;
+  --accent-subtle: #ebf4f5;
+  --ring: #2e656b33;
+
+  --danger: #b91c1c;
+  --danger-subtle: #fef2f2;
+  --warning: #a16207;
+  --warning-subtle: #fefce8;
+  --success: #15803d;
+  --success-subtle: #f0fdf4;
+
+  --surface-header: #fafafa;
+  --row-hover: #fafafa;
+
+  /* ── Compatibility layer: raw ramp inversion ─────────────────────────── */
 
   /* --- ZINC PALETTE INVERSION --- */
   --color-zinc-950: #fafafa;
   --color-zinc-900: #f4f4f5;
-  --color-zinc-800: #d4d4d8;   /* dividers: was #e4e4e7, ~1.15:1 on white */
-  --color-zinc-700: #b9b9c0;   /* input borders: was #d4d4d8 */
+  --color-zinc-800: #d4d4d8;   /* dividers: #e4e4e7 was ~1.15:1 on white */
+  --color-zinc-700: #b9b9c0;
   --color-zinc-600: #a1a1aa;
   --color-zinc-500: #71717a;
   --color-zinc-400: #52525b;
@@ -112,7 +177,6 @@
   --color-red-900: #fee2e2;
   --color-red-800: #fecaca;
   --color-red-700: #f97316;
-  /* adjust */
   --color-red-400: #b91c1c;
   --color-red-200: #7f1d1d;
 
@@ -172,22 +236,6 @@
   --color-black: #ffffff;
   --color-white: #09090b;
 
-  /* --- SEMANTIC TOKEN INVERSION ---
-   * These mirror the zinc inversion above. Without them light mode would
-   * invert every zinc-* utility and leave the new tokens on dark values. */
-  --accent: #18181b;
-  --accent-contrast: #fafafa;
-
-  --surface-0: #ffffff;
-  --surface-1: #fafafa;
-  --surface-2: #f4f4f5;
-  --border-subtle: #d4d4d8;
-  --border-strong: #b9b9c0;
-  --content-primary: #09090b;
-  --content-secondary: #52525b;
-  --content-muted: #71717a;
-  --ring: #71717a;
-
   /* --- SCROLLBAR LIGHT --- */
   --sb-track: #fafafa;
   --sb-thumb: #e4e4e7;
@@ -222,14 +270,6 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   transition: background-color 0.2s, color 0.2s;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
 }
 
 @layer utilities {
@@ -288,32 +328,92 @@ button:disabled {
   animation: tip-fade-in 0.4s ease forwards;
 }
 
-/* ─── FOCUS ─────────────────────────────────────────────────────────────────
- * There are 148 `focus:outline-none` in this codebase and zero `focus-visible`
- * or `focus:ring`: keyboard focus is currently invisible app-wide. Restoring it
- * once here beats 148 edits.
+/*
+ * Focus: the safety net, not the design.
  *
- * `focus:outline-none` fires on :focus, which also matches while :focus-visible
- * is active, and as a class selector it outspecifies a bare `:focus-visible`.
- * This rule sits OUTSIDE any @layer, and unlayered CSS beats layered CSS in the
- * cascade regardless of specificity — the same mechanism .light-mode already
- * relies on to override Tailwind's colour utilities.
- * -------------------------------------------------------------------------- */
+ * Anything built from `@/components/ui` sets its own `focus-visible` ring (see
+ * `focusRing` / `focusRingInset` in `lib/cn.ts`) and overrides this — a class +
+ * pseudo-class beats a bare pseudo-class. What is left catching this rule is
+ * markup that predates the primitives, where an ugly ring is still far better
+ * than none.
+ *
+ * Unlayered on purpose: `focus:outline-none` fires on :focus, which also
+ * matches while :focus-visible is active, and as a class selector it
+ * outspecifies a bare `:focus-visible`. Unlayered CSS beats layered CSS in the
+ * cascade regardless of specificity — the same mechanism .light-mode relies on.
+ *
+ * There is deliberately NO special case for input/textarea/select here. The
+ * previous version tucked a 1px outline inside every field, which drew a second
+ * edge on fields that already move their own border, and drew a box around the
+ * chat composer, which is `bg-transparent` and has no border at all. Fields get
+ * their focus treatment from `controlStyles`, per component.
+ */
 :focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Text fields already move their own border on focus. An offset ring around a
-   full-width field draws a SECOND rectangle outside the first, which reads as a
-   bar rather than as focus. Tuck it inside instead, so the field gets one crisp
-   edge — and gets one even where the component defines no focus style at all. */
-:is(input, textarea, select):focus-visible {
-  outline-width: 1px;
-  outline-offset: -1px;
-}
-
-/* Escape hatch for controls that paint their own focus state. */
+/*
+ * Escape hatch for controls whose *container* paints the focus state — the
+ * chat composer is a chrome-less textarea inside a lit box, so a ring on the
+ * field draws a rectangle inside a border that is already showing focus.
+ */
 [data-no-focus-ring]:focus-visible {
   outline: none;
+}
+
+/*
+ * CodeMirror is the same shape of problem, one level down: `.cm-content` is a
+ * contenteditable, so it matches :focus-visible, and both places that host an
+ * editor already light their wrapper with `focus-within`. CodeMirror sets
+ * `outline: none` itself, but this file is unlayered and would otherwise win.
+ */
+.cm-editor:focus-visible,
+.cm-content:focus-visible {
+  outline: none;
+}
+
+/* Every border is semantic unless a component says otherwise. */
+* {
+  border-color: var(--border);
+}
+
+@layer base {
+  /*
+   * Tailwind v3's Preflight carried `button, [role="button"] { cursor: pointer }`.
+   * v4 dropped it to defer to the browser, whose default for a button is an
+   * arrow — so every button silently stopped looking clickable on the v4 move.
+   * Restored here rather than as a `cursor-pointer` per component, because the
+   * ones that get forgotten are exactly the hand-written ones.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"],
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/*
+ * Changing palette is not an animation.
+ *
+ * Almost every control carries `transition-colors` so that *hovering* it is
+ * smooth. Swapping the whole theme then drags every one of those along at once
+ * — a second-long smear where inputs and buttons are somewhere between the two
+ * palettes while the cards, which have no transition, have already switched.
+ * The shell sets this attribute for a frame around the swap.
+ */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
 }

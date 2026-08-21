@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles, Braces, GitFork, ArrowLeftRight, FileText, ArrowLeft } from 'lucide-react';
-import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
+import { Combobox, SearchInput } from '@/components/ui';
+import { matchesQuery } from '@/lib/search';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
 import { STEP_TYPE_META } from '@/types/orchestration';
 import { readWithStallTimeout } from '@/lib/sse';
@@ -260,11 +261,11 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
     const tdCls = 'px-4 py-2.5 text-xs';
 
     const renderRunsTable = (rows: RunSummary[], empty: string) => (
-        <div className="border border-white/5 bg-zinc-900/60">
+        <div className="border border-border bg-zinc-900/60">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="border-b border-white/5 bg-zinc-950/40">
+                        <tr className="border-b border-border bg-zinc-950/40">
                             <th className={thCls}>Status</th>
                             <th className={thCls}>Orchestration</th>
                             <th className={thCls}>Step</th>
@@ -291,7 +292,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                 <tr
                                     key={run.run_id}
                                     onClick={() => restoreRun(run)}
-                                    className="border-b border-white/3 last:border-b-0 hover:bg-white/2 cursor-pointer transition-colors group"
+                                    className="border-b border-border last:border-b-0 hover:bg-row-hover cursor-pointer transition-colors group"
                                 >
                                     <td className={`${tdCls} whitespace-nowrap`}>
                                         <span className="inline-flex items-center gap-2">
@@ -1211,16 +1212,16 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                             <ArrowLeft size={14} /> Back
                         </button>
                     )}
-                    <select
-                        className="bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 outline-none max-w-[240px]"
-                        value={selectedOrchId || ''}
-                        onChange={(e) => selectOrchestration(e.target.value || null)}
-                    >
-                        <option value="">Select orchestration...</option>
-                        {orchestrations.map(o => (
-                            <option key={o.id} value={o.id}>{o.name}</option>
-                        ))}
-                    </select>
+                    <Combobox
+                        value={selectedOrchId || undefined}
+                        onChange={(id: string) => selectOrchestration(id || null)}
+                        placeholder="Select orchestration…"
+                        searchPlaceholder="Search orchestrations…"
+                        aria-label="Orchestration"
+                        size="sm"
+                        className="max-w-[240px]"
+                        options={orchestrations.map(o => ({ value: o.id, label: o.name }))}
+                    />
                     <button
                         onClick={createNew}
                         className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white transition-colors"
@@ -1319,7 +1320,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 <div className="flex-1 overflow-y-auto modern-scrollbar">
                     <div className="px-4 pb-8">
                         {/* Tab bar */}
-                        <div className="flex items-end border-b border-white/5 mb-4">
+                        <div className="flex items-end border-b border-border mb-4">
                             <div className="flex items-center">
                                 {([
                                     { id: 'orchestrations', label: 'Orchestrations', count: orchestrations.length },
@@ -1341,7 +1342,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                             <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] ${
                                                 t.id === 'active'
                                                     ? 'bg-blue-500/20 text-blue-300'
-                                                    : 'bg-white/5 text-zinc-400'
+                                                    : 'bg-surface-2 text-zinc-400'
                                             }`}>{t.count}</span>
                                         )}
                                     </button>
@@ -1359,11 +1360,11 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                         )}
 
                         {landingTab === 'orchestrations' && (
-                            <div className="border border-white/5 bg-zinc-900/60">
+                            <div className="border border-border bg-zinc-900/60">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
-                                            <tr className="border-b border-white/5 bg-zinc-950/40">
+                                            <tr className="border-b border-border bg-zinc-950/40">
                                                 <th className={thCls}>Name</th>
                                                 <th className={thCls}>Description</th>
                                                 <th className={`${thCls} text-right`}>Steps</th>
@@ -1387,7 +1388,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                                     <tr
                                                         key={o.id}
                                                         onClick={() => selectOrchestration(o.id)}
-                                                        className="border-b border-white/3 last:border-b-0 hover:bg-white/2 cursor-pointer transition-colors group"
+                                                        className="border-b border-border last:border-b-0 hover:bg-row-hover cursor-pointer transition-colors group"
                                                     >
                                                         <td className={`${tdCls} text-zinc-200 font-medium whitespace-nowrap max-w-[240px]`}>
                                                             <span className="block truncate">{o.name}</span>

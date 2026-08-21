@@ -6,12 +6,15 @@
  * template. Title and blurb both come from the nav entry now, so there is
  * exactly one header implementation and exactly one place to edit the words.
  *
+ * The header itself is the design system's `PageHeader`, so a screen here and a
+ * screen in the cloud product are the same object.
+ *
  * No "use client" — it renders no hooks, so it works from a server page and
  * from inside SettingsView alike.
  */
-import Link from 'next/link';
 import { X } from 'lucide-react';
 
+import { LinkButton, PageHeader } from '@/components/ui';
 import type { NavEntry } from '@/lib/nav';
 
 export function Screen({
@@ -33,23 +36,22 @@ export function Screen({
 }) {
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border-subtle px-6 py-4">
-                <div className="min-w-0">
-                    <h1 className="text-title font-semibold tracking-tight text-content-primary">
-                        {nav.label}
-                    </h1>
-                    <p className="mt-1 text-2xs text-content-muted">{nav.blurb}</p>
-                </div>
-                {closeHref && (
-                    <Link
-                        href={closeHref}
-                        title="Close settings"
-                        aria-label="Close settings"
-                        className="-mr-2 shrink-0 rounded-ui p-2 text-content-secondary transition-colors hover:bg-surface-1 hover:text-content-primary"
-                    >
-                        <X className="h-4 w-4" />
-                    </Link>
-                )}
+            <header className="shrink-0 border-b border-border px-6 py-4">
+                <PageHeader
+                    title={nav.label}
+                    description={nav.blurb}
+                    actions={closeHref ? (
+                        <LinkButton
+                            href={closeHref}
+                            variant="ghost"
+                            iconOnly
+                            aria-label="Close settings"
+                            title="Close settings"
+                        >
+                            <X className="size-4" aria-hidden />
+                        </LinkButton>
+                    ) : undefined}
+                />
             </header>
 
             {bleed ? (

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Check, X as XIcon, ChevronDown, ChevronUp, ExternalLink, Info, Loader2, Terminal, Eye, EyeOff } from 'lucide-react';
-import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
+import { Combobox, Select, type ComboboxOption } from '@/components/ui';
 import React, { useState } from 'react';
 
 type BrandIconProps = { className?: string; style?: React.CSSProperties };
@@ -238,9 +238,6 @@ export const ModelsTab = ({
     codexCliModels, setCodexCliModels,
     githubCopilotCliModels, setGithubCopilotCliModels,
 }: ModelsTabProps) => {
-    // Gemini alone lists 37 models; the native select was a scroll hunt.
-    const [modelQuery, setModelQuery] = useState('');
-    const [embedQuery, setEmbedQuery] = useState('');
 
     const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
     const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
@@ -278,6 +275,31 @@ export const ModelsTab = ({
             case 'local_compatible': setLocalCompatibleKey(value); break;
         }
     };
+
+    // Grouped by provider, in the order the providers are listed. The Combobox
+    // filters these itself, so nothing here has to guard the selected value
+    // against being filtered out from under the control.
+    const modelOptions: ComboboxOption[] = Object.entries(providers).flatMap(
+        ([providerKey, info]) =>
+            !info.available || info.models.length === 0
+                ? []
+                : info.models.map((m: string) => ({
+                    value: m,
+                    label: m,
+                    group: PROVIDER_META[providerKey]?.label || providerKey,
+                })),
+    );
+
+    const embeddingOptions: ComboboxOption[] = Object.entries(providers).flatMap(
+        ([providerKey, info]) =>
+            !info.available || !info.embedding_models?.length
+                ? []
+                : info.embedding_models.map((m: string) => ({
+                    value: m,
+                    label: m,
+                    group: PROVIDER_META[providerKey]?.label || providerKey,
+                })),
+    );
 
     return (
         <div className="space-y-8">
@@ -404,23 +426,23 @@ export const ModelsTab = ({
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Inference Profile (Optional)</label>
-                                                    <select
-                                                        value={bedrockInferenceProfile}
-                                                        onChange={(e) => setBedrockInferenceProfile(e.target.value)}
-                                                        className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-xs focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
-                                                    >
-                                                        <option value="">None (on-demand)</option>
-                                                        {loadingInferenceProfiles ? (
-                                                            <option value="" disabled>Loading...</option>
-                                                        ) : (
-                                                            bedrockInferenceProfiles.map((p) => {
-                                                                const value = (p.arn || p.id || '').toString();
-                                                                const label = (p.name || p.arn || p.id || '').toString();
-                                                                if (!value) return null;
-                                                                return <option key={value} value={value}>{label}</option>;
-                                                            })
-                                                        )}
-                                                    </select>
+                                                    <Select
+                                                        value={bedrockInferenceProfile || '__ondemand__'}
+                                                        onChange={(v) => setBedrockInferenceProfile(v === '__ondemand__' ? '' : v)}
+                                                        aria-label="Bedrock inference profile"
+                                                        size="sm"
+                                                        options={[
+                                                            { value: '__ondemand__', label: 'None (on-demand)' },
+                                                            ...(loadingInferenceProfiles
+                                                                ? [{ value: '__loading__', label: 'Loading…', disabled: true }]
+                                                                : bedrockInferenceProfiles
+                                                                    .map((p) => ({
+                                                                        value: (p.arn || p.id || '').toString(),
+                                                                        label: (p.name || p.arn || p.id || '').toString(),
+                                                                    }))
+                                                                    .filter((o) => o.value)),
+                                                        ]}
+                                                    />
                                                 </div>
                                                 {inferenceProfilesError && (
                                                     <div className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/20 text-[10px] text-red-400">
@@ -635,70 +657,28 @@ export const ModelsTab = ({
             <div className="space-y-2">
                 <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Default Model</label>
                 <p className="text-[10px] text-zinc-600 -mt-1">Used for system prompt generation and agents without a specific model assigned.</p>
-                <SearchInput value={modelQuery} onChange={setModelQuery} placeholder="Filter models…" />
-                <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
-                >
-                    {loadingModels ? (
-                        <option>Loading models...</option>
-                    ) : (
-                        <>
-                            <option value="" disabled>Select default model...</option>
-                            {Object.entries(providers).map(([providerKey, info]) => {
-                                if (!info.available || info.models.length === 0) return null;
-                                const label = PROVIDER_META[providerKey]?.label || providerKey;
-                                // Keep the selected value present even when it is
-                                // filtered out, or the select silently reassigns.
-                                const shown = info.models.filter((m: string) =>
-                                    m === selectedModel || matchesQuery(modelQuery, m, label));
-                                if (shown.length === 0) return null;
-                                return (
-                                    <optgroup key={providerKey} label={label}>
-                                        {shown.map((m: string) => (
-                                            <option key={m} value={m}>{m}</option>
-                                        ))}
-                                    </optgroup>
-                                );
-                            })}
-                        </>
-                    )}
-                </select>
+                <Combobox
+                    value={selectedModel || undefined}
+                    onChange={setSelectedModel}
+                    options={modelOptions}
+                    placeholder={loadingModels ? 'Loading models…' : 'Select default model…'}
+                    searchPlaceholder="Search models…"
+                    aria-label="Default model"
+                />
             </div>
             {/* Default Embedding Model Selector */}
             <div className="space-y-4">
                 <div className="space-y-2">
                     <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Embedding Model</label>
                     <p className="text-[10px] text-zinc-600 -mt-1">Used for code indexing and repository search. Requires compatible providers like Gemini, OpenAI, or Ollama.</p>
-                    <SearchInput value={embedQuery} onChange={setEmbedQuery} placeholder="Filter embedding models…" />
-                    <select
-                        value={embeddingModel}
-                        onChange={(e) => setEmbeddingModel(e.target.value)}
-                        className="w-full appearance-none bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white cursor-pointer"
-                    >
-                        {loadingModels ? (
-                            <option>Loading models...</option>
-                        ) : (
-                            <>
-                                <option value="">Select default embedding model...</option>
-                                {Object.entries(providers).map(([providerKey, info]) => {
-                                    if (!info.available || !info.embedding_models || info.embedding_models.length === 0) return null;
-                                    const label = PROVIDER_META[providerKey]?.label || providerKey;
-                                    const shown = info.embedding_models.filter((m: string) =>
-                                        m === embeddingModel || matchesQuery(embedQuery, m, label));
-                                    if (shown.length === 0) return null;
-                                    return (
-                                        <optgroup key={providerKey} label={label}>
-                                            {shown.map((m: string) => (
-                                                <option key={m} value={m}>{m}</option>
-                                            ))}
-                                        </optgroup>
-                                    );
-                                })}
-                            </>
-                        )}
-                    </select>
+                    <Combobox
+                        value={embeddingModel || undefined}
+                        onChange={setEmbeddingModel}
+                        options={embeddingOptions}
+                        placeholder={loadingModels ? 'Loading models…' : 'Select default embedding model…'}
+                        searchPlaceholder="Search embedding models…"
+                        aria-label="Embedding model"
+                    />
                 </div>
                 
                 {/* Warning Message */}

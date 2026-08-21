@@ -6,6 +6,7 @@ import {
     Loader2, Info, RefreshCw,
 } from 'lucide-react';
 import { ConfirmationModal } from './ConfirmationModal';
+import { Select } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -396,16 +397,17 @@ export const MessagingTab = () => {
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">
                         Run notifications
                     </label>
-                    <select
-                        value={notifyChannelId}
-                        onChange={e => saveNotifyChannel(e.target.value)}
-                        className="w-full bg-black border border-zinc-800 text-xs text-zinc-300 px-2 py-1.5 outline-none focus:border-zinc-600"
-                    >
-                        <option value="">Off (in-app only)</option>
-                        {channels.map(ch => (
-                            <option key={ch.id} value={ch.id}>{ch.name}</option>
-                        ))}
-                    </select>
+                    <Select
+                        value={notifyChannelId || '__off__'}
+                        onChange={v => saveNotifyChannel(v === '__off__' ? '' : v)}
+                        aria-label="Notification channel"
+                        size="sm"
+                        options={[
+                            { value: '__off__', label: 'Off (in-app only)' },
+                            // `Channel.id` is optional until the row is saved.
+                            ...channels.filter(ch => ch.id).map(ch => ({ value: ch.id as string, label: ch.name })),
+                        ]}
+                    />
                     <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">
                         Mirror orchestration notifications (needs input, completed, failed)
                         to this channel&apos;s notify chat.
@@ -479,16 +481,13 @@ export const MessagingTab = () => {
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase">Bound Agent</label>
-                                <select
-                                    value={draft.agent_id}
-                                    onChange={e => setDraft({ ...draft, agent_id: e.target.value })}
-                                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                                >
-                                    <option value="">Select an agent…</option>
-                                    {agents.map(a => (
-                                        <option key={a.id} value={a.id}>{a.name}</option>
-                                    ))}
-                                </select>
+                                <Select
+                                    value={draft.agent_id || undefined}
+                                    onChange={v => setDraft({ ...draft, agent_id: v })}
+                                    placeholder="Select an agent…"
+                                    aria-label="Agent"
+                                    options={agents.map(a => ({ value: a.id, label: a.name }))}
+                                />
                             </div>
                         </div>
 

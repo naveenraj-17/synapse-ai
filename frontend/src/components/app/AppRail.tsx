@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun } from 'lucide-react';
 
+import { IconButton } from '@/components/ui';
 import { PRIMARY_NAV, type NavEntry } from '@/lib/nav';
 import { useNotifications } from '@/components/notifications/NotificationProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -46,11 +47,11 @@ function RailLink({
             aria-current={active ? 'page' : undefined}
             title={label}
             className={cn(
-                'relative flex h-8 items-center gap-2.5 rounded-ui px-2.5 text-ui transition-colors',
+                'relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
                 collapsed ? 'justify-center' : 'justify-center md:justify-start',
                 active
-                    ? 'bg-surface-2 text-content-primary'
-                    : 'text-content-secondary hover:bg-surface-1 hover:text-content-primary',
+                    ? 'bg-surface-2 text-text'
+                    : 'text-text-muted hover:bg-surface hover:text-text',
             )}
         >
             {active && (
@@ -107,18 +108,31 @@ export function AppRail({
         <nav
             aria-label="Primary"
             className={cn(
-                'flex shrink-0 flex-col border-r border-border-subtle bg-surface-0 transition-[width] duration-150',
+                'flex shrink-0 flex-col border-r border-border bg-bg transition-[width] duration-150',
                 collapsed ? 'w-14' : 'w-14 md:w-60',
             )}
         >
-            <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border-subtle px-4">
-                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+            <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-4">
+                <span aria-hidden className="size-2 shrink-0 rounded-full bg-accent" />
                 <span className={cn(
-                    'text-ui font-semibold tracking-tight text-content-primary',
+                    'text-sm font-semibold tracking-tight text-text',
                     collapsed ? 'hidden' : 'hidden md:inline',
                 )}>
                     Synapse
                 </span>
+                {/* Collapse lives at the top while the rail is open, where it
+                    is next to the thing it collapses. Collapsed there is no
+                    room beside the mark, so the foot control takes over. */}
+                {!collapsed && (
+                    <IconButton
+                        label="Collapse sidebar"
+                        title="Collapse sidebar"
+                        icon={PanelLeftClose}
+                        aria-expanded
+                        onClick={() => setCollapsed('1')}
+                        className="-mr-2 ml-auto hidden md:inline-flex"
+                    />
+                )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-2">
@@ -126,7 +140,7 @@ export function AppRail({
                     <div key={group ?? 'root'} className="mb-4 last:mb-0">
                         {group && (
                             <div className={cn(
-                                'px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-content-muted',
+                                'px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-text-faint',
                                 collapsed ? 'hidden' : 'hidden md:block',
                             )}>
                                 {group}
@@ -138,7 +152,7 @@ export function AppRail({
                             is still the first child, so first: would never fire. */}
                         {groupIndex > 0 && (
                             <div className={cn(
-                                'mx-2 mb-2 border-t border-border-subtle',
+                                'mx-2 mb-2 border-t border-border',
                                 collapsed ? 'block' : 'block md:hidden',
                             )} />
                         )}
@@ -160,7 +174,7 @@ export function AppRail({
                 ))}
             </div>
 
-            <div className="shrink-0 space-y-1 border-t border-border-subtle p-2">
+            <div className="shrink-0 space-y-1 border-t border-border p-2">
                 <div className={cn(
                     'flex items-center gap-1',
                     collapsed ? 'flex-col' : 'flex-col md:flex-row md:justify-start',
@@ -169,22 +183,22 @@ export function AppRail({
                     <button
                         onClick={onToggleTheme}
                         title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                        className="rounded-ui p-2 text-content-secondary transition-colors hover:bg-surface-1 hover:text-content-primary"
+                        className="rounded-md p-2 text-text-muted transition-colors hover:bg-surface hover:text-text"
                     >
                         {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     </button>
-                    {/* Collapsing is a choice below md; above it the rail has no
-                        room for a label anyway, so the control would lie. */}
-                    <button
-                        onClick={() => setCollapsed(collapsed ? '0' : '1')}
-                        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        aria-expanded={!collapsed}
-                        className="hidden rounded-ui p-2 text-content-secondary transition-colors hover:bg-surface-1 hover:text-content-primary md:block"
-                    >
-                        {collapsed
-                            ? <PanelLeftOpen className="h-4 w-4" />
-                            : <PanelLeftClose className="h-4 w-4" />}
-                    </button>
+                    {/* Expand: only while collapsed. Open, the control is in
+                        the header — two of them would be noise. */}
+                    {collapsed && (
+                        <IconButton
+                            label="Expand sidebar"
+                            title="Expand sidebar"
+                            icon={PanelLeftOpen}
+                            aria-expanded={false}
+                            onClick={() => setCollapsed('0')}
+                            className="hidden md:inline-flex"
+                        />
+                    )}
                 </div>
                 <RailLink
                     href={SETTINGS_HREF}

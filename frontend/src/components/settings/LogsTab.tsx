@@ -2,6 +2,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Trash2, Bot, Workflow, ScrollText, Clock } from 'lucide-react';
+import { Combobox } from '@/components/ui';
 
 type LogType = 'agents' | 'orchestrations' | 'schedules';
 
@@ -160,12 +161,12 @@ export const LogsTab = () => {
         <div className="flex flex-col h-full overflow-hidden font-mono">
 
             {/* Sub-tabs + controls */}
-            <div className="flex items-center gap-2 px-6 py-3 border-b border-white/10 shrink-0">
+            <div className="flex items-center gap-2 px-6 py-3 border-b border-border shrink-0">
                 <button
                     onClick={() => setLogType('agents')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'agents'
                         ? 'bg-white text-black'
-                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                        : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >
                     <Bot className="h-3.5 w-3.5" />
@@ -175,7 +176,7 @@ export const LogsTab = () => {
                     onClick={() => setLogType('orchestrations')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'orchestrations'
                         ? 'bg-white text-black'
-                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                        : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >
                     <Workflow className="h-3.5 w-3.5" />
@@ -185,7 +186,7 @@ export const LogsTab = () => {
                     onClick={() => setLogType('schedules')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'schedules'
                             ? 'bg-white text-black'
-                            : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                            : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >
                     <Clock className="h-3.5 w-3.5" />
@@ -195,7 +196,7 @@ export const LogsTab = () => {
                     <span className="text-xs text-zinc-600">{logs.length} log{logs.length !== 1 ? 's' : ''}</span>
                     <button
                         onClick={() => fetchLogs()}
-                        className="p-2 text-zinc-500 hover:text-white hover:bg-white/5 transition-colors"
+                        className="p-2 text-zinc-500 hover:text-white hover:bg-surface-2 transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -205,19 +206,23 @@ export const LogsTab = () => {
 
             {/* Secondary filter -- only shown when there are multiple unique names */}
             {uniqueIds.length > 1 && (
-                <div className="flex items-center gap-3 px-6 py-2 border-b border-white/5 shrink-0 bg-zinc-900/40">
+                <div className="flex items-center gap-3 px-6 py-2 border-b border-border shrink-0 bg-zinc-900/40">
                     <span className="text-[11px] text-zinc-600 shrink-0">Filter</span>
-                    <select
+                    <Combobox
                         value={filterById}
-                        onChange={e => setFilterById(e.target.value)}
-                        className="bg-zinc-800/60 border border-white/8 text-zinc-300 text-[11px] px-2.5 py-1 focus:outline-none focus:border-white/20 transition-colors cursor-pointer appearance-none pr-6 max-w-[260px]"
-                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
-                    >
-                        <option value="all">All {logType === 'orchestrations' ? 'orchestrations' : logType === 'agents' ? 'agents' : 'schedules'}</option>
-                        {uniqueIds.map(id => (
-                            <option key={id} value={id}>{id.length > 40 ? id.slice(0, 37) + '...' : id}</option>
-                        ))}
-                    </select>
+                        onChange={setFilterById}
+                        aria-label="Filter by id"
+                        searchPlaceholder="Search…"
+                        size="sm"
+                        className="max-w-[260px]"
+                        options={[
+                            { value: 'all', label: `All ${logType === 'orchestrations' ? 'orchestrations' : logType === 'agents' ? 'agents' : 'schedules'}` },
+                            ...uniqueIds.map(id => ({
+                                value: id,
+                                label: id.length > 40 ? `${id.slice(0, 37)}…` : id,
+                            })),
+                        ]}
+                    />
                 </div>
             )}
 
@@ -225,7 +230,7 @@ export const LogsTab = () => {
             <div className="flex flex-1 overflow-hidden">
 
                 {/* Left: log list */}
-                <div className="w-80 border-r border-white/10 overflow-y-auto shrink-0 flex flex-col">
+                <div className="w-80 border-r border-border overflow-y-auto shrink-0 flex flex-col">
                     {loading && logs.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-zinc-600 text-xs">Loading...</div>
                     ) : logs.length === 0 ? (
@@ -242,8 +247,8 @@ export const LogsTab = () => {
                                 const sessionDisplayName = sid.startsWith('nosession_') ? 'Individual Run' : `Session: ${sid.slice(-8)}`;
 
                                 return (
-                                    <div key={sid} className="border-b border-white/10 last:border-b-0">
-                                        <div className="bg-white/5 px-4 py-2 border-b border-white/5 flex flex-col gap-0.5">
+                                    <div key={sid} className="border-b border-border last:border-b-0">
+                                        <div className="bg-surface-2 px-4 py-2 border-b border-border flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{sessionDisplayName}</span>
                                             {sessionInput && (
                                                 <span className="text-[10px] text-zinc-400 truncate italic">"{sessionInput}"</span>
@@ -266,9 +271,9 @@ export const LogsTab = () => {
                                                 <div
                                                     key={log.run_id}
                                                     onClick={() => fetchContent(log.run_id)}
-                                                    className={`group cursor-pointer px-4 py-3 border-b border-white/5 last:border-b-0 flex flex-col gap-1 transition-colors ${isSelected
-                                                        ? 'bg-white/10 border-l-2 border-l-white'
-                                                        : 'hover:bg-white/5 border-l-2 border-l-transparent'
+                                                    className={`group cursor-pointer px-4 py-3 border-b border-border last:border-b-0 flex flex-col gap-1 transition-colors ${isSelected
+                                                        ? 'bg-surface-2 border-l-2 border-l-white'
+                                                        : 'hover:bg-surface-2 border-l-2 border-l-transparent'
                                                         }`}
                                                 >
                                                     <div className="flex items-start justify-between gap-2">
@@ -303,7 +308,7 @@ export const LogsTab = () => {
                                 <button
                                     onClick={() => fetchLogs(true)}
                                     disabled={loading}
-                                    className="w-full py-4 text-xs text-zinc-500 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                                    className="w-full py-4 text-xs text-zinc-500 hover:text-white hover:bg-surface-2 transition-colors disabled:opacity-50"
                                 >
                                     {loading ? 'Loading more...' : 'Load More'}
                                 </button>

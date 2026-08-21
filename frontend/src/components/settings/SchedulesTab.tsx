@@ -6,6 +6,7 @@ import {
     ChevronDown, ChevronUp, CheckCircle, AlertCircle,
     ToggleLeft, ToggleRight, Bot, Workflow, Info,
 } from 'lucide-react';
+import { Select } from '@/components/ui';
 
 // -- Types ----------------------------------------------------------------
 
@@ -367,7 +368,7 @@ export const SchedulesTab = () => {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={fetchAll}
-                        className="p-2 text-zinc-500 hover:text-white hover:bg-white/5 transition-colors"
+                        className="p-2 text-zinc-500 hover:text-white hover:bg-surface-2 transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -412,7 +413,7 @@ export const SchedulesTab = () => {
                                 </thead>
                                 <tbody>
                                     {schedules.map(s => (
-                                        <tr key={s.id} className="border-b border-zinc-900 hover:bg-white/3 transition-colors group">
+                                        <tr key={s.id} className="border-b border-zinc-900 hover:bg-row-hover transition-colors group">
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.enabled ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
@@ -586,16 +587,14 @@ export const SchedulesTab = () => {
                                 <label className="block text-xs text-zinc-400 mb-1.5 font-semibold">
                                     {form.target_type === 'agent' ? 'Agent' : 'Orchestration'} <span className="text-red-400">*</span>
                                 </label>
-                                <select
-                                    value={form.target_id}
-                                    onChange={e => setForm(f => ({ ...f, target_id: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500"
-                                >
-                                    <option value="">Select {form.target_type === 'agent' ? 'an agent' : 'an orchestration'}...</option>
-                                    {(form.target_type === 'agent' ? agents : orchestrations).map(item => (
-                                        <option key={item.id} value={item.id}>{item.name}</option>
-                                    ))}
-                                </select>
+                                <Select
+                                    value={form.target_id || undefined}
+                                    onChange={v => setForm(f => ({ ...f, target_id: v }))}
+                                    placeholder={`Select ${form.target_type === 'agent' ? 'an agent' : 'an orchestration'}…`}
+                                    aria-label="Target"
+                                    options={(form.target_type === 'agent' ? agents : orchestrations)
+                                        .map(item => ({ value: item.id, label: item.name }))}
+                                />
                             </div>
 
                             {/* Prompt */}
@@ -646,15 +645,17 @@ export const SchedulesTab = () => {
                                             onChange={e => setForm(f => ({ ...f, interval_value: parseInt(e.target.value) || 1 }))}
                                             className="w-20 bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-zinc-500"
                                         />
-                                        <select
+                                        <Select
                                             value={form.interval_unit ?? 'minutes'}
-                                            onChange={e => setForm(f => ({ ...f, interval_unit: e.target.value as any }))}
-                                            className="bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white focus:outline-none focus:border-zinc-500"
-                                        >
-                                            <option value="minutes">minutes</option>
-                                            <option value="hours">hours</option>
-                                            <option value="days">days</option>
-                                        </select>
+                                            onChange={v => setForm(f => ({ ...f, interval_unit: v as any }))}
+                                            aria-label="Interval unit"
+                                            className="w-32"
+                                            options={[
+                                                { value: 'minutes', label: 'minutes' },
+                                                { value: 'hours', label: 'hours' },
+                                                { value: 'days', label: 'days' },
+                                            ]}
+                                        />
                                     </div>
                                     <p className="text-xs text-zinc-600">
                                         Runs every {form.interval_value ?? '?'} {form.interval_unit ?? 'minutes'} from the last run.
@@ -669,30 +670,28 @@ export const SchedulesTab = () => {
                                     {/* Preset picker */}
                                     <div>
                                         <label className="block text-xs text-zinc-500 mb-1.5">Quick preset</label>
-                                        <select
-                                            value={selectedPresetIdx}
-                                            onChange={e => onPresetChange(parseInt(e.target.value))}
-                                            className="w-full bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white focus:outline-none focus:border-zinc-500"
-                                        >
-                                            {CRON_PRESETS.map((p, i) => (
-                                                <option key={i} value={i}>{p.label}</option>
-                                            ))}
-                                        </select>
+                                        <Select
+                                            value={String(selectedPresetIdx)}
+                                            onChange={v => onPresetChange(parseInt(v, 10))}
+                                            aria-label="Schedule preset"
+                                            options={CRON_PRESETS.map((p, i) => ({ value: String(i), label: p.label }))}
+                                        />
                                     </div>
 
                                     {/* Hour picker (when preset has a time component) */}
                                     {selectedPresetIdx < CRON_PRESETS.length - 1 && (
                                         <div className="flex items-center gap-3">
                                             <span className="text-xs text-zinc-400">At hour (UTC)</span>
-                                            <select
-                                                value={cronHour}
-                                                onChange={e => onCronHourChange(parseInt(e.target.value))}
-                                                className="bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white focus:outline-none focus:border-zinc-500"
-                                            >
-                                                {Array.from({ length: 24 }, (_, i) => (
-                                                    <option key={i} value={i}>{i.toString().padStart(2, '0')}:00 UTC</option>
-                                                ))}
-                                            </select>
+                                            <Select
+                                                value={String(cronHour)}
+                                                onChange={v => onCronHourChange(parseInt(v, 10))}
+                                                aria-label="Hour (UTC)"
+                                                className="w-36"
+                                                options={Array.from({ length: 24 }, (_, i) => ({
+                                                    value: String(i),
+                                                    label: `${i.toString().padStart(2, '0')}:00 UTC`,
+                                                }))}
+                                            />
                                         </div>
                                     )}
 

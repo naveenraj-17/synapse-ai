@@ -12,6 +12,7 @@
  */
 import { useEffect } from 'react';
 
+import { TooltipProvider } from '@/components/ui';
 import { AppRail } from '@/components/app/AppRail';
 import { NavGuardProvider } from '@/components/app/NavGuard';
 import { usePersisted } from '@/components/app/usePersisted';
@@ -31,15 +32,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return () => root.classList.remove('light-mode');
     }, [theme]);
 
+    // Swapping the palette drags every `transition-colors` in the app along at
+    // once — a smear where controls are mid-way between the two while cards,
+    // which have no transition, have already switched. Suppress transitions for
+    // a frame around the swap.
+    const toggleTheme = () => {
+        const root = document.documentElement;
+        root.setAttribute('data-theme-switching', '');
+        setTheme(theme === 'dark' ? 'light' : 'dark');
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => root.removeAttribute('data-theme-switching'));
+        });
+    };
+
     return (
         <NavGuardProvider>
-            <div className="flex h-screen overflow-hidden bg-surface-0 font-ui text-content-primary">
-                <AppRail theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+            {/* One provider for the app. Nested providers each keep their own
+                open-delay timer, so tooltips start behaving differently
+                depending on which subtree they happen to be in. */}
+            <TooltipProvider>
+            <div className="flex h-screen overflow-hidden bg-bg font-sans text-text">
+                <AppRail theme={theme} onToggleTheme={toggleTheme} />
                 {/* The only <main> in the app. Pages render a plain flex column
                     inside it — a nested <main> gives two landmarks and two
                     scrollbars. */}
                 <main className="min-w-0 flex-1 overflow-hidden">{children}</main>
             </div>
+            </TooltipProvider>
         </NavGuardProvider>
     );
 }

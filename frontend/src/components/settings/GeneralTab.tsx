@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
+import { Button, Modal } from '@/components/ui';
 
 type EmbedIssue = 'no_psql' | 'no_db' | 'existing_url_broken' | 'no_pgvector' | 'connection_error';
 
@@ -552,46 +553,43 @@ export function GeneralTab({
 
             {/* Host-mode confirmation modal */}
             {showHostRuntimeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setShowHostRuntimeModal(false)}>
-                    <div className="bg-zinc-950 border border-amber-500/40 max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-start gap-3">
-                            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                            <div className="space-y-1">
-                                <h3 className="text-sm font-bold text-white">Enable host-mode Transform execution?</h3>
-                                <p className="text-xs text-zinc-400">This removes the Docker sandbox from Transform steps.</p>
-                            </div>
-                        </div>
-                        <div className="text-xs text-zinc-400 space-y-2 leading-relaxed">
-                            <p>With host mode on, Transform-step Python code runs as a subprocess on the host machine with:</p>
-                            <ul className="list-disc list-inside space-y-1 text-zinc-500 pl-1">
-                                <li>Full backend filesystem access (including <code className="font-code text-zinc-300">backend/data/</code>)</li>
-                                <li>Full network access</li>
-                                <li>Access to any GPU and all host RAM</li>
-                                <li>The same permissions as the Synapse backend process</li>
-                            </ul>
-                            <p className="text-amber-400/90 pt-1">
-                                Only enable this on a self-hosted instance you control. It is the wrong choice for any deployment where untrusted code or untrusted users can reach the Transform step.
-                            </p>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 pt-2">
-                            <button
-                                onClick={() => setShowHostRuntimeModal(false)}
-                                className="px-4 py-2 text-xs font-bold text-zinc-400 hover:text-white transition-colors"
-                            >
+                <Modal
+                    open
+                    onClose={() => setShowHostRuntimeModal(false)}
+                    title="Enable host-mode Transform execution?"
+                    description="This removes the Docker sandbox from Transform steps."
+                    footer={
+                        <>
+                            <Button variant="secondary" onClick={() => setShowHostRuntimeModal(false)}>
                                 Cancel
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="danger"
                                 onClick={() => {
                                     setTransformRuntime('host');
                                     setShowHostRuntimeModal(false);
                                 }}
-                                className="px-4 py-2 text-xs font-bold bg-amber-500 text-black hover:bg-amber-400 transition-colors"
                             >
                                 I understand — enable host mode
-                            </button>
-                        </div>
+                            </Button>
+                        </>
+                    }
+                >
+                    <div className="space-y-2 text-sm leading-relaxed text-text-muted">
+                        <p>With host mode on, Transform-step Python code runs as a subprocess on the host machine with:</p>
+                        <ul className="list-inside list-disc space-y-1 pl-1 text-text-faint">
+                            <li>Full backend filesystem access (including <code className="font-code text-text">backend/data/</code>)</li>
+                            <li>Full network access</li>
+                            <li>Access to any GPU and all host RAM</li>
+                            <li>The same permissions as the Synapse backend process</li>
+                        </ul>
+                        <p className="pt-1 text-warning">
+                            Only enable this on a self-hosted instance you control. It is the wrong
+                            choice for any deployment where untrusted code or untrusted users can
+                            reach the Transform step.
+                        </p>
                     </div>
-                </div>
+                </Modal>
             )}
 
             {/* Login & Security */}

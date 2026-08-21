@@ -44,17 +44,17 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             <nav
                 aria-label="Settings"
                 className={cn(
-                    'hidden shrink-0 flex-col border-r border-border-subtle transition-[width] duration-150 lg:flex',
+                    'hidden shrink-0 flex-col border-r border-border transition-[width] duration-150 lg:flex',
                     collapsed ? 'w-14' : 'w-56',
                 )}
             >
-                <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border-subtle px-4 py-4">
+                <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-4">
                     {!collapsed && (
                         <div className="min-w-0">
-                            <div className="text-title font-semibold tracking-tight text-content-primary">
+                            <div className="text-xl font-semibold tracking-tight text-text">
                                 Settings
                             </div>
-                            <p className="mt-1 text-2xs text-content-muted">Workspace configuration.</p>
+                            <p className="mt-1 text-2xs text-text-faint">Workspace configuration.</p>
                         </div>
                     )}
                     <button
@@ -62,7 +62,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                         title={collapsed ? 'Expand settings menu' : 'Collapse settings menu'}
                         aria-expanded={!collapsed}
                         className={cn(
-                            'shrink-0 rounded-ui p-2 text-content-secondary transition-colors hover:bg-surface-1 hover:text-content-primary',
+                            'shrink-0 rounded-md p-2 text-text-muted transition-colors hover:bg-surface hover:text-text',
                             collapsed ? 'mx-auto' : '-mr-2',
                         )}
                     >
@@ -79,9 +79,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                         return (
                             <div key={group} className="mb-4 last:mb-0">
                                 {collapsed ? (
-                                    <div className="mx-2 mb-2 border-t border-border-subtle first:hidden" />
+                                    <div className="mx-2 mb-2 border-t border-border first:hidden" />
                                 ) : (
-                                    <div className="px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-content-muted">
+                                    <div className="px-2.5 pb-1.5 pt-1 text-2xs font-medium uppercase tracking-wider text-text-faint">
                                         {group}
                                     </div>
                                 )}
@@ -95,11 +95,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                                                 title={item.label}
                                                 aria-current={active ? 'page' : undefined}
                                                 className={cn(
-                                                    'relative flex h-8 items-center gap-2.5 rounded-ui px-2.5 text-ui transition-colors',
+                                                    'relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
                                                     collapsed && 'justify-center',
                                                     active
-                                                        ? 'bg-surface-2 text-content-primary'
-                                                        : 'text-content-secondary hover:bg-surface-1 hover:text-content-primary',
+                                                        ? 'bg-surface-2 text-text'
+                                                        : 'text-text-muted hover:bg-surface hover:text-text',
                                                 )}
                                             >
                                                 {active && !collapsed && (
@@ -119,7 +119,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
             {/* Narrow screens get a horizontal strip instead of the column. */}
             <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border-subtle p-2 lg:hidden">
+                <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-2 lg:hidden">
                     {SETTINGS_NAV.flatMap(g => visibleItems(g.items, flags)).map(item => {
                         const active = pathname === item.href;
                         return (
@@ -128,10 +128,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                                 href={item.href}
                                 aria-current={active ? 'page' : undefined}
                                 className={cn(
-                                    'flex h-8 shrink-0 items-center gap-2 rounded-ui px-2.5 text-ui transition-colors',
+                                    'flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-sm transition-colors',
                                     active
-                                        ? 'bg-surface-2 text-content-primary'
-                                        : 'text-content-secondary hover:bg-surface-1 hover:text-content-primary',
+                                        ? 'bg-surface-2 text-text'
+                                        : 'text-text-muted hover:bg-surface hover:text-text',
                                 )}
                             >
                                 <item.icon className="h-4 w-4 shrink-0" />

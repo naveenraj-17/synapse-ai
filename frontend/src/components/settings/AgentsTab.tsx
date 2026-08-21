@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Bot, Plus, Save, Trash, Copy, ChevronDown, ChevronRight, Lock, Sparkles, Eye, EyeOff, Loader2, MessageSquare, ExternalLink, CheckCircle, XCircle, Square } from 'lucide-react';
-import { SearchInput, matchesQuery } from '@/components/app/SearchInput';
+import { Combobox, SearchInput, Select } from '@/components/ui';
+import { matchesQuery } from '@/lib/search';
 import { VaultTextarea } from '@/components/VaultMention';
 import { CAPABILITIES, AUTO_TOOLS_BY_TYPE } from './types';
 import { renderTextContent } from '@/lib/utils';
@@ -346,7 +347,7 @@ export const AgentsTab = ({
                         </div>
                     )}
                     {Array.isArray(agents) && visibleAgents.length === 0 && agentQuery && (
-                        <div className="py-6 text-center text-ui text-content-muted">
+                        <div className="py-6 text-center text-sm text-text-faint">
                             No agents match “{agentQuery}”.
                         </div>
                     )}
@@ -488,10 +489,11 @@ export const AgentsTab = ({
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Agent Type</label>
-                                            <select
+                                            <Select
                                                 value={draftAgent.type || 'conversational'}
-                                                onChange={e => {
-                                                    const newType = e.target.value;
+                                                aria-label="Agent type"
+                                                options={agentTypes.map(t => ({ value: t.value, label: t.label }))}
+                                                onChange={newType => {
                                                     const oldAutoTools = AUTO_TOOLS_BY_TYPE[draftAgent.type] || [];
                                                     const cleanedTools = draftAgent.tools.filter(
                                                         (t: string) => !oldAutoTools.includes(t)
@@ -504,12 +506,7 @@ export const AgentsTab = ({
                                                         max_turns: draftAgent.max_turns ?? defaultMaxTurns,
                                                     });
                                                 }}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                                            >
-                                                {agentTypes.map(t => (
-                                                    <option key={t.value} value={t.value}>{t.label}</option>
-                                                ))}
-                                            </select>
+                                            />
                                             <p className="text-[9px] text-zinc-500 mt-1">
                                                 {agentTypes.find(t => t.value === (draftAgent.type || 'conversational'))?.description}
                                             </p>
@@ -518,24 +515,23 @@ export const AgentsTab = ({
                                         {/* Model Selection */}
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Model</label>
-                                            <select
-                                                value={draftAgent.model || ''}
-                                                onChange={e => setDraftAgent({ ...draftAgent, model: e.target.value || null })}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
-                                            >
-                                                <option value="">Use Default ({defaultModel || 'not set'})</option>
-                                                {providers && Object.entries(providers).map(([providerKey, info]) => {
-                                                    if (!info.available || info.models.length === 0) return null;
-                                                    const providerLabel = providerKey.charAt(0).toUpperCase() + providerKey.slice(1);
-                                                    return (
-                                                        <optgroup key={providerKey} label={providerLabel}>
-                                                            {info.models.map((m: string) => (
-                                                                <option key={m} value={m}>{m}</option>
-                                                            ))}
-                                                        </optgroup>
-                                                    );
-                                                })}
-                                            </select>
+                                            <Combobox
+                                                value={draftAgent.model || '__default__'}
+                                                onChange={v => setDraftAgent({ ...draftAgent, model: v === '__default__' ? null : v })}
+                                                aria-label="Model"
+                                                searchPlaceholder="Search models…"
+                                                options={[
+                                                    { value: '__default__', label: `Use default (${defaultModel || 'not set'})` },
+                                                    ...Object.entries(providers ?? {}).flatMap(([providerKey, info]: [string, any]) =>
+                                                        !info.available || info.models.length === 0
+                                                            ? []
+                                                            : info.models.map((m: string) => ({
+                                                                value: m,
+                                                                label: m,
+                                                                group: providerKey.charAt(0).toUpperCase() + providerKey.slice(1),
+                                                            }))),
+                                                ]}
+                                            />
                                             <p className="text-[9px] text-zinc-500 mt-1">Override the default model for this agent. Leave empty to use the system default.</p>
                                         </div>
 

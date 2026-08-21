@@ -1,11 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-    FolderOpen, Folder, FileText, FileJson, ChevronRight, ChevronDown,
-    Plus, Trash2, Save, Eye, EyeOff, RefreshCw, X, FolderPlus, FilePlus, Loader2, AlignLeft, Cloud,
-} from 'lucide-react';
+import { FolderOpen, Folder, FileText, FileJson, ChevronRight, ChevronDown, Plus, Trash2, Save, Eye, EyeOff, RefreshCw, FolderPlus, FilePlus, Loader2, AlignLeft, Cloud } from 'lucide-react';
 import { renderTextContent } from '@/lib/utils';
+import { ConfirmDialog, Modal } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -160,16 +158,12 @@ function CreateDialog({
     };
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-zinc-950 border border-zinc-800 w-80 shadow-2xl">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                    <h3 className="text-sm font-bold text-white">
-                        {type === 'file' ? 'New File' : 'New Folder'}
-                    </h3>
-                    <button onClick={onClose} className="text-zinc-500 hover:text-white">
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
+        <Modal
+            open
+            onClose={onClose}
+            size="sm"
+            title={type === 'file' ? 'New file' : 'New folder'}
+        >
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
                     {parentPath && (
                         <p className="text-[10px] text-zinc-500 font-mono">
@@ -239,8 +233,7 @@ function CreateDialog({
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
+        </Modal>
     );
 }
 
@@ -258,25 +251,18 @@ function DeleteConfirm({
     onCancel: () => void;
 }) {
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-zinc-950 border border-zinc-800 w-80 shadow-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-white">Confirm Delete</h3>
-                <p className="text-xs text-zinc-400">
-                    {node.type === 'folder'
-                        ? <>Are you sure you want to delete folder <span className="font-mono text-red-400">{node.name}</span> and all its contents? This cannot be undone.</>
-                        : <>Are you sure you want to delete <span className="font-mono text-red-400">{node.name}</span>? This cannot be undone.</>
-                    }
-                </p>
-                <div className="flex gap-2">
-                    <button onClick={onCancel} className="flex-1 py-2 text-xs text-zinc-500 hover:text-white border border-zinc-700 hover:border-zinc-500 transition-colors">
-                        Cancel
-                    </button>
-                    <button onClick={onConfirm} className="flex-1 py-2 text-xs font-bold bg-red-600 text-white hover:bg-red-500 transition-colors">
-                        Delete
-                    </button>
-                </div>
-            </div>
-        </div>
+        <ConfirmDialog
+            open
+            onClose={onCancel}
+            onConfirm={onConfirm}
+            title={node.type === 'folder' ? 'Delete folder' : 'Delete file'}
+            confirmLabel="Delete"
+            description={
+                node.type === 'folder'
+                    ? <>Delete folder <span className="font-code text-danger">{node.name}</span> and everything in it? This cannot be undone.</>
+                    : <>Delete <span className="font-code text-danger">{node.name}</span>? This cannot be undone.</>
+            }
+        />
     );
 }
 

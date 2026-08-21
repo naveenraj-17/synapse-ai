@@ -453,7 +453,7 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
           <button
             key={label}
             onClick={() => onNavigate(path)}
-            className="flex items-center gap-1.5 rounded-ui border border-border-subtle bg-surface-1/70 px-3 py-1.5 text-ui text-content-secondary transition-all hover:border-border-strong hover:bg-surface-2/80 hover:text-content-primary cursor-pointer"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-surface/70 px-3 py-1.5 text-sm text-text-muted transition-all hover:border-border-strong hover:bg-surface-2/80 hover:text-text cursor-pointer"
           >
             <Icon className="h-3.5 w-3.5" />
             {label}
@@ -1724,7 +1724,7 @@ export default function Home() {
             )}
             <form
               onSubmit={handleSubmit}
-              className="flex items-end gap-1.5 border border-zinc-700/70 bg-zinc-950 shadow-2xl focus-within:border-zinc-500 focus-within:ring-2 focus-within:ring-zinc-800 transition-all p-1.5"
+              className="flex items-end gap-1.5 border border-border-strong bg-surface shadow-2xl focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--ring)] transition-all p-1.5"
               onDrop={(e) => {
                 e.preventDefault();
                 const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
@@ -1781,6 +1781,8 @@ export default function Home() {
                 }}
                 placeholder={isLoading ? "Agent is processing..." : "Enter command... (Shift+Enter for new line)"}
                 disabled={isLoading}
+                // The <form> above owns the focus ring for this control.
+                data-no-focus-ring
                 className="flex-1 bg-transparent py-3 pr-2 text-[15px] focus:outline-none font-mono text-zinc-100 placeholder:text-zinc-500 resize-none min-h-[44px] max-h-[200px] leading-relaxed"
                 rows={1}
                 autoFocus

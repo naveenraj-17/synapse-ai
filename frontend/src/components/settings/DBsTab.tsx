@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Database, RefreshCw } from 'lucide-react';
 import { ConfirmationModal } from './ConfirmationModal';
 import { ToastNotification } from './ToastNotification';
+import { Select } from '@/components/ui';
 
 export interface DBConfig {
     id: string;
@@ -150,15 +151,12 @@ export function DBsTab() {
                         </div>
                         <div className="space-y-2">
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Database Type</label>
-                            <select
+                            <Select
                                 value={draftConfig.db_type || 'postgres'}
-                                onChange={(e) => setDraftConfig({ ...draftConfig, db_type: e.target.value })}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
-                            >
-                                {DB_TYPES.map(t => (
-                                    <option key={t} value={t}>{t}</option>
-                                ))}
-                            </select>
+                                onChange={(v) => setDraftConfig({ ...draftConfig, db_type: v })}
+                                aria-label="Database type"
+                                options={DB_TYPES.map(t => ({ value: t, label: t }))}
+                            />
                         </div>
                     </div>
                     <div className="space-y-2">

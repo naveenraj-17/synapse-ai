@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Database } from 'lucide-react';
+import { Select } from '@/components/ui';
 
 interface DataLabTabProps {
     dlTopic: string; setDlTopic: (v: string) => void;
@@ -36,11 +37,15 @@ export const DataLabTab = ({
                     </div>
                     <div className="space-y-1">
                         <label className="text-[10px] uppercase font-bold text-zinc-500">Provider</label>
-                        <select value={dlProvider} onChange={e => setDlProvider(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none appearance-none">
-                            <option value="openai">OpenAI (GPT-4o)</option>
-                            <option value="gemini">Gemini (1.5 Pro)</option>
-                        </select>
+                        <Select
+                            value={dlProvider}
+                            onChange={setDlProvider}
+                            aria-label="Provider"
+                            options={[
+                                { value: 'openai', label: 'OpenAI (GPT-4o)' },
+                                { value: 'gemini', label: 'Gemini (1.5 Pro)' },
+                            ]}
+                        />
                     </div>
                 </div>
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Wrench, Plus, Trash, X, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw, Container, Import } from 'lucide-react';
 import { PythonToolEditor, type PythonDraftTool } from './PythonToolEditor';
 import { OpenApiImport } from './OpenApiImport';
+import { Select } from '@/components/ui';
 
 interface CustomToolsTabProps {
     customTools: any[];
@@ -288,26 +289,21 @@ export const CustomToolsTab = ({
                             {/* Method */}
                             <div className="space-y-1">
                                 <label className="text-[10px] uppercase font-bold text-zinc-500">Method</label>
-                                <select
-                                    value={draftTool.method}
-                                    onChange={e => setDraftTool({ ...draftTool, method: e.target.value })}
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none"
-                                >
-                                    <option>POST</option>
-                                    <option>GET</option>
-                                    <option>PUT</option>
-                                    <option>DELETE</option>
-                                </select>
+                                <Select
+                                    value={draftTool.method || 'POST'}
+                                    onChange={v => setDraftTool({ ...draftTool, method: v })}
+                                    aria-label="HTTP method"
+                                    options={['POST', 'GET', 'PUT', 'DELETE'].map(m => ({ value: m, label: m }))}
+                                />
                             </div>
 
                             {/* n8n Workflow — only shown when n8n is integrated */}
                             {n8nIntegrated && (
                                 <div className="space-y-1">
                                     <label className="text-[10px] uppercase font-bold text-zinc-500">n8n Workflow</label>
-                                    <select
-                                        value={draftTool.workflowId || ''}
-                                        onChange={async (e) => {
-                                            const workflowId = e.target.value;
+                                    <Select
+                                        value={draftTool.workflowId || undefined}
+                                        onChange={async (workflowId) => {
                                             setDraftTool({ ...draftTool, workflowId });
                                             setN8nWorkflowId(workflowId || null);
                                             if (!workflowId) return;
@@ -320,15 +316,13 @@ export const CustomToolsTab = ({
                                                 }
                                             } catch { /* ignore */ }
                                         }}
-                                        className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none"
-                                    >
-                                        <option value="">{n8nWorkflowsLoading ? 'Loading workflows...' : 'Select a workflow (optional)'}</option>
-                                        {Array.isArray(n8nWorkflows) && n8nWorkflows.map((w: any) => (
-                                            <option key={String(w.id)} value={String(w.id)}>
-                                                {w.name || w.id}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        placeholder={n8nWorkflowsLoading ? 'Loading workflows…' : 'Select a workflow (optional)'}
+                                        aria-label="n8n workflow"
+                                        options={(Array.isArray(n8nWorkflows) ? n8nWorkflows : []).map((w: any) => ({
+                                            value: String(w.id),
+                                            label: w.name || String(w.id),
+                                        }))}
+                                    />
                                     {draftTool.workflowId ? (
                                         <a
                                             href={`${getN8nBaseUrl()}/workflow/${draftTool.workflowId}`}

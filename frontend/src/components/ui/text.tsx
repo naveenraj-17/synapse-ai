@@ -1,0 +1,172 @@
+/**
+ * Type, and the two blocks built purely out of it.
+ *
+ * Every screen opened with the same fourteen-word incantation —
+ * `<h1 className="text-xl font-semibold text-text">` followed by
+ * `<p className="mt-1 text-sm text-text-muted">` inside a wrapping flex row —
+ * and the stat tile existed in three separate definitions at two sizes. Both
+ * are one component now, so a change to the page title is a change to the page
+ * title rather than to fourteen files.
+ */
+
+import * as React from "react";
+
+import { cn } from "@/lib/cn";
+
+export type Tone = "neutral" | "accent" | "danger" | "warning" | "success";
+
+const TONE_TEXT: Record<Tone, string> = {
+  neutral: "text-text-muted",
+  accent: "text-accent",
+  danger: "text-danger",
+  warning: "text-warning",
+  success: "text-success",
+};
+
+/** The `<h1>` block at the top of a screen, with its actions on the right. */
+export function PageHeader({
+  title,
+  description,
+  actions,
+  children,
+  className,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  /** Sits above the title — a back link, a breadcrumb. */
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      {children && <div className="mb-3">{children}</div>}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-text">{title}</h1>
+          {description && (
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-text-muted">{description}</p>
+          )}
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+    </div>
+  );
+}
+
+export function Heading({
+  children,
+  level = 2,
+  className,
+}: {
+  children: React.ReactNode;
+  level?: 2 | 3;
+  className?: string;
+}) {
+  const Tag = level === 2 ? "h2" : "h3";
+  return (
+    <Tag
+      className={cn(
+        level === 2 ? "text-sm font-semibold text-text" : "text-xs font-medium text-text-muted",
+        className,
+      )}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+export function Text({
+  children,
+  tone = "default",
+  className,
+}: {
+  children: React.ReactNode;
+  tone?: "default" | "muted" | "faint";
+  className?: string;
+}) {
+  return (
+    <p
+      className={cn(
+        "text-sm leading-relaxed",
+        { default: "text-text", muted: "text-text-muted", faint: "text-text-faint" }[tone],
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+/** The small grey line under something — a hint, a timestamp, an id. */
+export function Muted({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <span className={cn("text-xs text-text-faint", className)}>{children}</span>;
+}
+
+/** Ids, keys, step names: anything the user may need to compare character by character. */
+export function Mono({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn("font-mono text-xs text-text-muted", className)}>{children}</span>
+  );
+}
+
+/**
+ * One number on a bordered tile.
+ *
+ * `tone` colours the label and icon, never the number — a red *value* reads as
+ * "this figure is wrong" rather than "this figure needs attention", and the
+ * dashboard's success rate is one number people will screenshot.
+ */
+export function Stat({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+  icon: Icon,
+  size = "md",
+  className,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  tone?: Tone;
+  icon?: React.ComponentType<{ className?: string }>;
+  size?: "sm" | "md";
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border bg-surface",
+        size === "md" ? "p-5" : "p-4",
+        className,
+      )}
+    >
+      <div className={cn("flex items-center gap-2", TONE_TEXT[tone])}>
+        {Icon && <Icon className="size-4 shrink-0" aria-hidden />}
+        <span className="text-sm">{label}</span>
+      </div>
+      <p
+        className={cn(
+          "mt-2 font-semibold tabular-nums text-text",
+          size === "md" ? "text-2xl" : "text-lg",
+        )}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-1 text-xs text-text-faint">{hint}</p>}
+    </div>
+  );
+}

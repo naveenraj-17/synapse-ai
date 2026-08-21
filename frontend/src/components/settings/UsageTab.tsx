@@ -6,6 +6,7 @@ import {
     ChevronDown, ChevronUp, Clock, Activity, Cpu, Wand2,
     AlertTriangle, CheckCircle2, Info, Plus, Save, X, Edit2, Check
 } from 'lucide-react';
+import { Select } from '@/components/ui';
 
 // -------------------------------------------------------------
 // Types
@@ -160,7 +161,7 @@ function detectProvider(model: string): Provider {
 function ProviderBadge({ provider }: { provider: string }) {
     const meta = PROVIDER_META[provider as Provider] ?? PROVIDER_META.ollama;
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium ${meta.bg} ${meta.text} border border-white/5`}>
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium ${meta.bg} ${meta.text} border border-border`}>
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
             {provider || 'local'}
         </span>
@@ -179,7 +180,7 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
         return null;
     }
     return (
-        <div className="bg-zinc-900/60 border border-white/5 p-5 space-y-4">
+        <div className="bg-zinc-900/60 border border-border p-5 space-y-4">
             <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-emerald-400" />
                 <h2 className="text-sm font-semibold text-white tracking-wide">Cache Analytics</h2>
@@ -222,7 +223,7 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
                 );
                 if (activeModels.length === 0) return null;
                 return (
-                    <div className="border border-white/5 divide-y divide-white/5">
+                    <div className="border border-border divide-y divide-border">
                         <div className="grid grid-cols-[1fr_90px_90px_120px] gap-2 px-4 py-2 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950/40">
                             <span>Model</span>
                             <span className="text-right">Cache reads</span>
@@ -230,7 +231,7 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
                             <span className="text-right">Saved</span>
                         </div>
                         {activeModels.slice(0, 8).map(m => (
-                            <div key={m.model} className="grid grid-cols-[1fr_90px_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-white/2">
+                            <div key={m.model} className="grid grid-cols-[1fr_90px_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-row-hover">
                                 <span className="text-zinc-300 truncate">{m.model}</span>
                                 <span className="text-right text-cyan-400 font-mono">{fmtK(m.cache_read_tokens)}</span>
                                 <span className="text-right text-amber-400 font-mono">{m.response_cache_hits}/{m.requests}</span>
@@ -247,14 +248,14 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
                 );
                 if (activeRuns.length === 0) return null;
                 return (
-                    <div className="border border-white/5">
-                        <div className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950/40 border-b border-white/5">
+                    <div className="border border-border">
+                        <div className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950/40 border-b border-border">
                             <span>Top orchestration runs by savings</span>
                             <span className="text-right">Cache reads</span>
                             <span className="text-right">Saved</span>
                         </div>
                         {activeRuns.slice(0, 5).map(r => (
-                            <div key={r.run_id} className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-white/2 border-b border-white/3 last:border-0">
+                            <div key={r.run_id} className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-row-hover border-b border-border last:border-0">
                                 <span className="text-zinc-400 font-mono truncate">{r.run_id}</span>
                                 <span className="text-right text-cyan-400 font-mono">{fmtK(r.cache_read_tokens)}</span>
                                 <span className="text-right text-emerald-400 font-mono">{fmt$(r.estimated_savings)}</span>
@@ -271,7 +272,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
     icon: any; label: string; value: string; sub?: string; color: string;
 }) {
     return (
-        <div className="relative flex flex-col gap-3 p-5 bg-zinc-900/80 border border-white/5 overflow-hidden group hover:border-white/10 transition-all duration-300">
+        <div className="relative flex flex-col gap-3 p-5 bg-zinc-900/80 border border-border overflow-hidden group hover:border-border-strong transition-all duration-300">
             <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
                 style={{ background: `radial-gradient(ellipse at top left, ${color}10 0%, transparent 70%)` }} />
             <div className="flex items-center justify-between">
@@ -292,7 +293,7 @@ function ModelBar({ stat, maxCost }: { stat: ModelStat; maxCost: number }) {
     const pct = maxCost > 0 ? (stat.estimated_cost / maxCost) * 100 : 0;
     const meta = PROVIDER_META[detectProvider(stat.model)] ?? PROVIDER_META.ollama;
     return (
-        <div className="flex items-center gap-4 py-3 border-b border-white/5 last:border-0 -mx-4 px-4 hover:bg-white/2 transition-colors">
+        <div className="flex items-center gap-4 py-3 border-b border-border last:border-0 -mx-4 px-4 hover:bg-row-hover transition-colors">
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-sm font-medium text-white truncate">{stat.model}</span>
@@ -349,9 +350,9 @@ function SessionRow({ s }: { s: SessionStat }) {
         : [];
 
     return (
-        <div className="border border-white/5 mb-2 hover:border-white/10 transition-colors overflow-hidden">
+        <div className="border border-border mb-2 hover:border-border-strong transition-colors overflow-hidden">
             <button onClick={toggle}
-                className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/3 transition-colors">
+                className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-row-hover transition-colors">
                 <div className="flex items-center gap-2 shrink-0">
                     {isSysprompt
                         ? <Wand2 className="w-3.5 h-3.5 text-fuchsia-400" />
@@ -397,9 +398,9 @@ function SessionRow({ s }: { s: SessionStat }) {
             </button>
 
             {open && (
-                <div className="border-t border-white/5 bg-zinc-950/50">
+                <div className="border-t border-border bg-zinc-950/50">
                     {/* Session metadata */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-4 py-3 border-b border-white/5 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-4 py-3 border-b border-border text-xs">
                         <div>
                             <p className="text-zinc-500 mb-1">{(isOrch || isSched) && (s.agents_used?.length ?? 0) > 1 ? 'Agents' : 'Agent'}</p>
                             {(isOrch || isSched) && (s.agents_used?.length ?? 0) > 1
@@ -459,7 +460,7 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
                 <thead>
-                    <tr className="border-b border-white/8">
+                    <tr className="border-b border-border">
                         <th className="text-left py-2 pr-3 pl-3 text-zinc-500 font-medium">#</th>
                         <th className="text-left py-2 pr-3 text-zinc-500 font-medium">Time</th>
                         <th className="text-left py-2 pr-3 text-zinc-500 font-medium">Model</th>
@@ -504,7 +505,7 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
                             return (
                                 <React.Fragment key={log.globalIdx}>
                                     {agentChanged && (
-                                        <tr className="border-t border-b border-white/5">
+                                        <tr className="border-t border-b border-border">
                                             <td colSpan={COL_COUNT - 2} style={{ background: `${dividerColor}10` }} className="px-3 py-2">
                                                 <span className="flex items-center gap-2">
                                                     <Cpu className="w-3 h-3 shrink-0" style={{ color: dividerColor }} />
@@ -700,9 +701,9 @@ function PricingEditor({ initialPricing, onSaved }: {
     const providerList = PROVIDERS.filter(p => p !== 'ollama' || Object.values(pricing).some(v => v.provider === 'ollama'));
 
     return (
-        <div className="border border-white/5">
+        <div className="border border-border">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-zinc-900/40">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-zinc-900/40">
                 <div className="flex items-center gap-3">
                     <Info className="w-4 h-4 text-zinc-400" />
                     <span className="text-sm font-semibold text-white">Pricing Reference</span>
@@ -725,7 +726,7 @@ function PricingEditor({ initialPricing, onSaved }: {
             </div>
 
             {/* Provider tabs */}
-            <div className="flex items-center gap-0 border-b border-white/5 overflow-x-auto">
+            <div className="flex items-center gap-0 border-b border-border overflow-x-auto">
                 {(['all', ...providerList] as (typeof providerList[number] | 'all')[]).map(p => {
                     const isActive = activeProvider === p;
                     const meta = p === 'all' ? null : PROVIDER_META[p];
@@ -753,7 +754,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                     if (models.length === 0 && addingFor !== provider && activeProvider === 'all') return null;
                     const meta = PROVIDER_META[provider];
                     return (
-                        <div key={provider} className="border-b border-white/5 last:border-0">
+                        <div key={provider} className="border-b border-border last:border-0">
                             {/* Provider header row */}
                             <div className={`flex items-center justify-between px-5 py-2 ${meta.bg}`}>
                                 <div className="flex items-center gap-2">
@@ -769,7 +770,7 @@ function PricingEditor({ initialPricing, onSaved }: {
 
                             {/* Column headers */}
                             {models.length > 0 && (
-                                <div className="grid grid-cols-[1fr_130px_130px_36px] gap-2 px-5 py-1.5 text-xs text-zinc-600 border-b border-white/3">
+                                <div className="grid grid-cols-[1fr_130px_130px_36px] gap-2 px-5 py-1.5 text-xs text-zinc-600 border-b border-border">
                                     <span>Model ID</span>
                                     <span className="text-right">Input / 1M tokens</span>
                                     <span className="text-right">Output / 1M tokens</span>
@@ -779,7 +780,7 @@ function PricingEditor({ initialPricing, onSaved }: {
 
                             {/* Model rows */}
                             {models.map(([model, entry]) => (
-                                <div key={model} className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-2.5 border-b border-white/3 last:border-0 hover:bg-white/2 transition-colors">
+                                <div key={model} className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-2.5 border-b border-border last:border-0 hover:bg-row-hover transition-colors">
                                     <span className="text-xs font-mono text-zinc-300 truncate pr-2">
                                         {model}
                                         {(entry as any)._new && <span className="ml-2 text-emerald-500 text-[10px]">NEW</span>}
@@ -790,7 +791,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             type="number" min="0" step="0.001"
                                             value={entry.input_per_1m}
                                             onChange={e => update(model, 'input_per_1m', e.target.value)}
-                                            className="w-20 bg-zinc-800 border border-white/10 text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-white/30 transition-colors"
+                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors"
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
@@ -799,7 +800,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             type="number" min="0" step="0.001"
                                             value={entry.output_per_1m}
                                             onChange={e => update(model, 'output_per_1m', e.target.value)}
-                                            className="w-20 bg-zinc-800 border border-white/10 text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-white/30 transition-colors"
+                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors"
                                         />
                                     </div>
                                     <button onClick={() => removeModel(model)}
@@ -811,7 +812,7 @@ function PricingEditor({ initialPricing, onSaved }: {
 
                             {/* Add model form */}
                             {addingFor === provider && (
-                                <div className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-3 bg-zinc-900/80 border-t border-white/5">
+                                <div className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-3 bg-zinc-900/80 border-t border-border">
                                     {useCustomModel ? (
                                         <input
                                             autoFocus
@@ -819,41 +820,43 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             value={newModel}
                                             onChange={e => setNewModel(e.target.value)}
                                             onKeyDown={e => { if (e.key === 'Escape') { setUseCustomModel(false); setNewModel(''); } }}
-                                            className="bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-white/40 transition-colors placeholder:text-zinc-600"
+                                            className="bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
                                         />
                                     ) : (
-                                        <select
-                                            value={newModel}
-                                            onChange={e => {
-                                                if (e.target.value === '__custom__') {
+                                        <Select
+                                            value={newModel || undefined}
+                                            onChange={v => {
+                                                if (v === '__custom__') {
                                                     setUseCustomModel(true);
                                                     setNewModel('');
                                                 } else {
-                                                    setNewModel(e.target.value);
+                                                    setNewModel(v);
                                                 }
                                             }}
-                                            className="bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-white/40 transition-colors"
-                                        >
-                                            <option value="">-- select model --</option>
-                                            {(availableModels[provider] ?? [])
-                                                .filter((m: string) => !pricing[m])
-                                                .map((m: string) => <option key={m} value={m}>{m}</option>)
-                                            }
-                                            <option value="__custom__">Custom model ID...</option>
-                                        </select>
+                                            placeholder="Select model…"
+                                            aria-label="Model"
+                                            size="sm"
+                                            className="w-56"
+                                            options={[
+                                                ...(availableModels[provider] ?? [])
+                                                    .filter((m: string) => !pricing[m])
+                                                    .map((m: string) => ({ value: m, label: m })),
+                                                { value: '__custom__', label: 'Custom model ID…' },
+                                            ]}
+                                        />
                                     )}
                                     <div className="flex items-center gap-1 justify-end">
                                         <span className="text-zinc-500 text-xs">$</span>
                                         <input placeholder="0.000" value={newIn} onChange={e => setNewIn(e.target.value)}
                                             type="number" min="0" step="0.001"
-                                            className="w-20 bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-white/40 transition-colors placeholder:text-zinc-600"
+                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
                                         <span className="text-zinc-500 text-xs">$</span>
                                         <input placeholder="0.000" value={newOut} onChange={e => setNewOut(e.target.value)}
                                             type="number" min="0" step="0.001"
-                                            className="w-20 bg-zinc-800 border border-white/20 text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-white/40 transition-colors placeholder:text-zinc-600"
+                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
                                         />
                                     </div>
                                     <button onClick={() => addModel(provider)}
@@ -964,11 +967,11 @@ export function UsageTab() {
     return (
         <div className="flex-1 overflow-y-auto bg-black text-white font-mono modern-scrollbar">
             {/* Header */}
-            <div className="sticky top-0 z-10 border-b border-white/5 bg-black/90 backdrop-blur-sm px-6 md:px-10 py-4">
+            <div className="sticky top-0 z-10 border-b border-border bg-black/90 backdrop-blur-sm px-6 md:px-10 py-4">
                 <div className="max-w-6xl mx-auto flex items-center justify-end gap-4">
                     <div className="flex items-center gap-2">
                         <button onClick={load} disabled={loading}
-                            className="flex items-center gap-2 px-3 py-2 text-xs border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition-all">
+                            className="flex items-center gap-2 px-3 py-2 text-xs border border-border text-zinc-400 hover:text-white hover:border-border-strong transition-all">
                             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                             Refresh
                         </button>
@@ -993,14 +996,14 @@ export function UsageTab() {
                 {loading && !summary && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {[...Array(4)].map((_, i) => (
-                            <div key={i} className="h-28 bg-zinc-900/80 border border-white/5 animate-pulse" />
+                            <div key={i} className="h-28 bg-zinc-900/80 border border-border animate-pulse" />
                         ))}
                     </div>
                 )}
 
                 {!loading && summary && summary.total_requests === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                        <div className="p-4 bg-zinc-900 border border-white/5">
+                        <div className="p-4 bg-zinc-900 border border-border">
                             <BarChart3 className="w-8 h-8 text-zinc-600" />
                         </div>
                         <div>
@@ -1023,7 +1026,7 @@ export function UsageTab() {
                         {cacheSummary && <CacheDashboard summary={cacheSummary} />}
 
                         {/* Cost by Model */}
-                        <div className="bg-zinc-900/60 border border-white/5 p-5">
+                        <div className="bg-zinc-900/60 border border-border p-5">
                             <div className="flex items-center gap-2 mb-5">
                                 <BarChart3 className="w-4 h-4 text-zinc-400" />
                                 <h2 className="text-sm font-semibold text-white tracking-wide">Cost by Model</h2>
@@ -1035,7 +1038,7 @@ export function UsageTab() {
                         </div>
 
                         {/* Session History -- always visible, includes schedule info */}
-                        <div className="bg-zinc-900/60 border border-white/5 p-5">
+                        <div className="bg-zinc-900/60 border border-border p-5">
                             {/* Header */}
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -1052,22 +1055,24 @@ export function UsageTab() {
                             </div>
 
                             {/* Filter bar */}
-                            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/5">
+                            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-border">
                                 <span className="text-xs text-zinc-500 shrink-0">Filter by</span>
-                                <select
+                                <Select
                                     value={sessionFilter}
-                                    onChange={e => {
-                                        setSessionFilter(e.target.value as SessionFilterType);
+                                    onChange={v => {
+                                        setSessionFilter(v as SessionFilterType);
                                         setSessionPage(0);
                                     }}
-                                    className="bg-zinc-800 border border-white/10 text-white text-xs px-2.5 py-1.5 focus:outline-none focus:border-white/30 transition-colors cursor-pointer appearance-none pr-6"
-                                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
-                                >
-                                    <option value="all">All Sessions</option>
-                                    <option value="orchestrations">Orchestrations</option>
-                                    <option value="agents">Agents</option>
-                                    <option value="schedules">Schedules</option>
-                                </select>
+                                    aria-label="Session filter"
+                                    size="sm"
+                                    className="w-44"
+                                    options={[
+                                        { value: 'all', label: 'All sessions' },
+                                        { value: 'orchestrations', label: 'Orchestrations' },
+                                        { value: 'agents', label: 'Agents' },
+                                        { value: 'schedules', label: 'Schedules' },
+                                    ]}
+                                />
 
                                 <span className="text-xs text-zinc-600 ml-auto">
                                     {finalSessions.length} result{finalSessions.length !== 1 ? 's' : ''}
@@ -1084,9 +1089,9 @@ export function UsageTab() {
                             )}
 
                             {(sessionPage + 1) * PAGE_SIZE < finalSessions.length && (
-                                <div className="flex justify-center mt-4 pt-4 border-t border-white/5">
+                                <div className="flex justify-center mt-4 pt-4 border-t border-border">
                                     <button onClick={() => setSessionPage(p => p + 1)}
-                                        className="px-4 py-2 text-xs border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition-all">
+                                        className="px-4 py-2 text-xs border border-border text-zinc-400 hover:text-white hover:border-border-strong transition-all">
                                         Load More ({finalSessions.length - (sessionPage + 1) * PAGE_SIZE} remaining)
                                     </button>
                                 </div>
@@ -1101,7 +1106,7 @@ export function UsageTab() {
                 )}
 
                 {/* Disclaimer */}
-                <div className="flex items-start gap-3 p-4 bg-zinc-900/40 border border-white/5 text-xs text-zinc-500">
+                <div className="flex items-start gap-3 p-4 bg-zinc-900/40 border border-border text-xs text-zinc-500">
                     <CheckCircle2 className="w-4 h-4 text-zinc-600 shrink-0 mt-0.5" />
                     <div>
                         <p className="font-medium text-zinc-400 mb-1">About cost estimates</p>

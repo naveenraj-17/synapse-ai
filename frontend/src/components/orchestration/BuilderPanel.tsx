@@ -5,6 +5,7 @@ import { X, Send, Sparkles, ChevronDown, ChevronUp, Loader2, Bot, Plus, CheckCir
 import type { Orchestration } from '@/types/orchestration';
 import { renderTextContent } from '@/lib/utils';
 import { readWithStallTimeout } from '@/lib/sse';
+import { Combobox } from '@/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -694,16 +695,18 @@ export function BuilderPanel({
 
                 <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-zinc-600 shrink-0">Model</span>
-                    <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        className="bg-transparent text-[10px] text-zinc-500 hover:text-zinc-300 outline-none cursor-pointer transition-colors max-w-[160px] truncate"
-                    >
-                        <option value="" className="bg-zinc-900 text-zinc-300">Default</option>
-                        {availableModels.map((m) => (
-                            <option key={m} value={m} className="bg-zinc-900 text-zinc-300">{m}</option>
-                        ))}
-                    </select>
+                    <Combobox
+                        value={selectedModel || '__default__'}
+                        onChange={(v) => setSelectedModel(v === '__default__' ? '' : v)}
+                        aria-label="Model"
+                        searchPlaceholder="Search models…"
+                        size="sm"
+                        className="max-w-[180px]"
+                        options={[
+                            { value: '__default__', label: 'Default' },
+                            ...availableModels.map((m) => ({ value: m, label: m })),
+                        ]}
+                    />
                     <span className="text-[10px] text-zinc-700 ml-auto">Enter to send · Shift+Enter for newline</span>
                 </div>
             </div>

@@ -1,12 +1,12 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 import { ExternalLink } from 'lucide-react';
+import { cn } from './cn';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs));
-}
+// One implementation, in lib/cn.ts, alongside the focus-ring helpers the
+// design system uses. Re-exported so the existing `@/lib/utils` call sites keep
+// working; imported because renderTextContent below uses it too.
+export { cn };
 
 // Helper to render text with full markdown support
 export const renderTextContent = (content: string) => {
