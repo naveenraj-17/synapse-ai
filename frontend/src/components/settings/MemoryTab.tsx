@@ -131,7 +131,7 @@ export const MemoryTab = () => {
                             {/* Custom checkbox */}
                             <div className={`mt-0.5 h-4 w-4 flex-shrink-0 flex items-center justify-center transition-colors border ${isChecked ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-700 group-hover:border-zinc-500'} rounded-md`}>
                                 {isChecked && (
-                                    <svg className="h-3 w-3 text-black" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg className="h-3 w-3 text-accent-fg" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <polyline points="2,6 5,9 10,3" />
                                     </svg>
                                 )}

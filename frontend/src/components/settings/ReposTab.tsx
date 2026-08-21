@@ -354,7 +354,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                         <button
                             onClick={handleSaveRepo}
                             disabled={isSaving}
-                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                             {isSaving ? 'Saving…' : 'Save Repository'}
@@ -381,7 +381,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                 </div>
                 <button
                     onClick={() => setDraftRepo({})}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                 >
                     <Plus className="w-4 h-4" /> Add Repo
                 </button>
@@ -396,7 +396,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                     </p>
                     <button
                         onClick={() => setDraftRepo({})}
-                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                     >
                         <Plus className="w-4 h-4" /> Add Repository
                     </button>

@@ -8,7 +8,7 @@ import {
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '@/store';
 import { setMcpServers } from '@/store/settingsSlice';
-import type { ToastTone } from '@/components/ui';
+import { Label, type ToastTone } from '@/components/ui';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -87,22 +87,22 @@ const REMOTE_PRESETS: Preset[] = [
 
 const StatusBadge = ({ status }: { status?: string }) => {
     if (status === 'connecting') return (
-        <span className="flex items-center gap-1 text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md border border-blue-500/30 uppercase">
+        <span className="flex items-center gap-1 text-2xs bg-accent/20 text-accent px-1.5 py-0.5 rounded-md border border-accent/30 uppercase">
             <Loader2 className="h-2.5 w-2.5 animate-spin" /> Connecting
         </span>
     );
     if (status === 'connected') return (
-        <span className="flex items-center gap-1 text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-md border border-green-500/30 uppercase">
+        <span className="flex items-center gap-1 text-2xs bg-success/20 text-success px-1.5 py-0.5 rounded-md border border-success/30 uppercase">
             <CheckCircle className="h-2.5 w-2.5" /> Active
         </span>
     );
     if (status === 'reauth_needed') return (
-        <span className="flex items-center gap-1 text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded-md border border-orange-500/30 uppercase">
+        <span className="flex items-center gap-1 text-2xs bg-warning/20 text-warning px-1.5 py-0.5 rounded-md border border-warning/30 uppercase">
             <ShieldAlert className="h-2.5 w-2.5" /> Re-Auth
         </span>
     );
     return (
-        <span className="flex items-center gap-1 text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-md border border-yellow-500/30 uppercase">
+        <span className="flex items-center gap-1 text-2xs bg-warning/20 text-warning px-1.5 py-0.5 rounded-md border border-warning/30 uppercase">
             <XCircle className="h-2.5 w-2.5" /> Disconnected
         </span>
     );
@@ -110,8 +110,8 @@ const StatusBadge = ({ status }: { status?: string }) => {
 
 const TypePill = ({ type }: { type?: string }) => (
     type === 'remote'
-        ? <span className="flex items-center gap-1 text-[9px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-md border border-accent/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
-        : <span className="flex items-center gap-1 text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded-md border border-zinc-700 uppercase"><Terminal className="h-2 w-2" />Local</span>
+        ? <span className="flex items-center gap-1 text-2xs bg-accent/15 text-accent px-1.5 py-0.5 rounded-md border border-accent/25 uppercase"><Globe className="h-2 w-2" />Remote</span>
+        : <span className="flex items-center gap-1 text-2xs bg-surface-2 text-text-faint px-1.5 py-0.5 rounded-md border border-border-strong uppercase"><Terminal className="h-2 w-2" />Local</span>
 );
 
 const NOTICE_TONES: Record<ToastTone, { chip: string; icon: React.ElementType }> = {
@@ -120,7 +120,7 @@ const NOTICE_TONES: Record<ToastTone, { chip: string; icon: React.ElementType }>
     danger: { chip: 'bg-danger-subtle border-danger/40 text-danger', icon: XCircle },
 };
 
-const inputCls = "w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700";
+const inputCls = "w-full bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none placeholder:text-text-faint";
 const monoInputCls = `${inputCls} font-mono`;
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -247,10 +247,10 @@ export const McpServersTab = ({
             {/* ── Header ── */}
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-text flex items-center gap-2">
                         <Server className="h-5 w-5" /> External MCP Servers
                     </h3>
-                    <p className="text-zinc-500 text-sm mt-1">
+                    <p className="text-text-faint text-sm mt-1">
                         Connect local and remote Model Context Protocol servers to extend agent capabilities.
                     </p>
                 </div>
@@ -258,7 +258,7 @@ export const McpServersTab = ({
                     onClick={() => refreshServers()}
                     disabled={isRefreshing}
                     title="Refresh server statuses"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white rounded-md transition-colors disabled:opacity-50 shrink-0 mt-1"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border-strong text-text-muted hover:border-text-faint hover:text-text rounded-md transition-colors disabled:opacity-50 shrink-0 mt-1"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                     {isRefreshing ? 'Refreshing…' : 'Refresh'}
@@ -275,31 +275,31 @@ export const McpServersTab = ({
 
             {/* ── Connected Servers List ── */}
             <div className="space-y-4">
-                <h4 className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Connected Servers</h4>
+                <h4 className="text-xs uppercase font-bold text-text-faint tracking-wider">Connected Servers</h4>
                 {loadingMcp ? (
-                    <div className="flex items-center gap-2 text-zinc-500 text-sm">
+                    <div className="flex items-center gap-2 text-text-faint text-sm">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading…
                     </div>
                 ) : mcpServers.length === 0 ? (
-                    <div className="p-8 text-center border border-dashed border-zinc-800 rounded-md bg-zinc-900/30">
-                        <Server className="h-8 w-8 mx-auto text-zinc-700 mb-2" />
-                        <p className="text-zinc-500 text-sm">No servers added yet.</p>
-                        <p className="text-zinc-700 text-xs mt-1">Pick a preset or fill the form below.</p>
+                    <div className="p-8 text-center border border-dashed border-border rounded-md bg-surface/30">
+                        <Server className="h-8 w-8 mx-auto text-text-faint mb-2" />
+                        <p className="text-text-faint text-sm">No servers added yet.</p>
+                        <p className="text-text-faint text-xs mt-1">Pick a preset or fill the form below.</p>
                     </div>
                 ) : (
                     <div className="grid gap-3">
                         {mcpServers.map((server) => (
-                            <div key={server.name} className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-md group">
+                            <div key={server.name} className="flex items-center justify-between p-4 bg-surface border border-border rounded-md group">
                                 <div className="flex flex-col gap-1.5 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-white text-sm">{server.label || server.name}</span>
+                                        <span className="font-bold text-text text-sm">{server.label || server.name}</span>
                                         {server.label && server.label !== server.name && (
-                                            <span className="text-[10px] text-zinc-600 font-mono">{server.name}</span>
+                                            <span className="text-2xs text-text-faint font-mono">{server.name}</span>
                                         )}
                                         <TypePill type={server.server_type} />
                                         <StatusBadge status={server.status} />
                                     </div>
-                                    <code className="text-[10px] text-zinc-500 font-code truncate">
+                                    <code className="text-2xs text-text-faint font-code truncate">
                                         {server.server_type === 'remote'
                                             ? server.url
                                             : `${server.command} ${(server.args || []).join(' ')}`}
@@ -307,30 +307,30 @@ export const McpServersTab = ({
                                 </div>
                                 <div className="flex items-center gap-1 ml-4 shrink-0">
                                     {server.status === 'connecting' && (
-                                        <span className="p-2"><Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" /></span>
+                                        <span className="p-2"><Loader2 className="h-3.5 w-3.5 text-accent animate-spin" /></span>
                                     )}
                                     {server.status === 'reauth_needed' && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Re-authenticate"
-                                            className="p-2 text-orange-400 hover:text-orange-300 hover:bg-zinc-800 rounded-md transition-colors">
+                                            className="p-2 text-warning hover:bg-surface-2 rounded-md transition-colors">
                                             <ShieldAlert className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     {(!server.status || server.status === 'disconnected') && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Retry connection"
-                                            className="p-2 text-zinc-500 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors">
+                                            className="p-2 text-text-faint hover:text-accent hover:bg-surface-2 rounded-md transition-colors">
                                             <RefreshCw className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     {server.status === 'connected' && (
                                         <button onClick={() => onReconnectServer(server.name)} title="Force reconnect (refresh stale session)"
-                                            className="p-2 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 rounded-md opacity-0 group-hover:opacity-100 transition-all">
+                                            className="p-2 text-text-faint hover:text-text hover:bg-surface-2 rounded-md opacity-0 group-hover:opacity-100 transition-all">
                                             <RefreshCw className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                     <button onClick={() => onDeleteServer(server.name)}
                                         aria-label={`Remove ${server.label || server.name}`}
                                         title={`Remove ${server.label || server.name}`}
-                                        className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-800 rounded-md transition-colors">
+                                        className="p-2 text-text-faint hover:text-danger hover:bg-surface-2 rounded-md transition-colors">
                                         <Trash className="h-4 w-4" />
                                     </button>
                                 </div>
@@ -341,19 +341,19 @@ export const McpServersTab = ({
             </div>
 
             {/* ── Add Server Form ── */}
-            <div className="pt-6 border-t border-zinc-800 space-y-6">
+            <div className="pt-6 border-t border-border space-y-6">
 
                 {/* Type toggle */}
-                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit rounded-md">
+                <div className="flex items-center gap-1 bg-surface border border-border p-1 w-fit rounded-md">
                     <button
                         onClick={() => setServerType('stdio')}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'stdio' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'stdio' ? 'bg-accent text-accent-fg' : 'text-text-faint hover:text-text'}`}
                     >
                         <Terminal className="h-3 w-3" /> Local (stdio)
                     </button>
                     <button
                         onClick={() => setServerType('remote')}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'remote' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'remote' ? 'bg-accent text-accent-fg' : 'text-text-faint hover:text-text'}`}
                     >
                         <Globe className="h-3 w-3" /> Remote (URL)
                     </button>
@@ -362,23 +362,23 @@ export const McpServersTab = ({
                 {/* ── Presets ── */}
                 <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                        <Zap className="h-3.5 w-3.5 text-zinc-500" />
-                        <h4 className="text-xs uppercase font-bold text-zinc-500 tracking-wider">
+                        <Zap className="h-3.5 w-3.5 text-text-faint" />
+                        <h4 className="text-xs uppercase font-bold text-text-faint tracking-wider">
                             {serverType === 'stdio' ? 'Local Presets' : 'Remote Presets'}
                         </h4>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {(serverType === 'stdio' ? STDIO_PRESETS : REMOTE_PRESETS).map(p => (
                             <button key={p.name + p.label} onClick={() => applyPreset(p)}
-                                className="px-3 py-1.5 text-[11px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-white rounded-md transition-colors">
+                                className="px-3 py-1.5 text-2xs font-medium bg-surface border border-border text-text-muted hover:border-text-faint hover:text-text rounded-md transition-colors">
                                 {p.label}
                             </button>
                         ))}
                     </div>
-                    <p className="text-[10px] text-zinc-600">
+                    <p className="text-2xs text-text-faint">
                         Find more on the{' '}
                         <a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener noreferrer"
-                            className="text-zinc-400 underline underline-offset-2 hover:text-white transition-colors">
+                            className="text-text-muted underline underline-offset-2 hover:text-text transition-colors">
                             MCP servers registry
                         </a>.
                         {serverType === 'remote' && ' Remote servers use native OAuth — no npx required.'}
@@ -390,14 +390,14 @@ export const McpServersTab = ({
                     {/* Display Label + Unique ID — always shown */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500">Display Label</label>
-                            <input type="text" value={draftMcpServer.label}
+                            <Label htmlFor="mcp-draftmcpserver-label" className="block">Display Label</Label>
+                            <input id="mcp-draftmcpserver-label" type="text" value={draftMcpServer.label}
                                 onChange={e => setDraftMcpServer({ ...draftMcpServer, label: e.target.value })}
                                 className={inputCls} placeholder="e.g. GitHub Production" />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500">Unique ID</label>
-                            <input type="text" value={draftMcpServer.name}
+                            <Label htmlFor="mcp-draftmcpserver-name" className="block">Unique ID</Label>
+                            <input id="mcp-draftmcpserver-name" type="text" value={draftMcpServer.name}
                                 onChange={e => setDraftMcpServer({ ...draftMcpServer, name: e.target.value })}
                                 className={inputCls} placeholder="e.g. github-prod" />
                         </div>
@@ -408,14 +408,14 @@ export const McpServersTab = ({
                         <>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Command</label>
-                                    <input type="text" value={draftMcpServer.command}
+                                    <Label htmlFor="mcp-draftmcpserver-command" className="block">Command</Label>
+                                    <input id="mcp-draftmcpserver-command" type="text" value={draftMcpServer.command}
                                         onChange={e => setDraftMcpServer({ ...draftMcpServer, command: e.target.value })}
                                         className={monoInputCls} placeholder="npx, uvx, python3" />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Arguments</label>
-                                    <input type="text" value={draftMcpServer.args}
+                                    <Label htmlFor="mcp-draftmcpserver-args" className="block">Arguments</Label>
+                                    <input id="mcp-draftmcpserver-args" type="text" value={draftMcpServer.args}
                                         onChange={e => setDraftMcpServer({ ...draftMcpServer, args: e.target.value })}
                                         className={monoInputCls} placeholder="-y @org/server-name" />
                                 </div>
@@ -424,9 +424,9 @@ export const McpServersTab = ({
                             {/* Env vars */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Environment Variables</label>
+                                    <Label className="block">Environment Variables</Label>
                                     <button onClick={addEnvVar}
-                                        className="text-[10px] font-bold text-zinc-400 hover:text-white flex items-center gap-1">
+                                        className="text-2xs font-bold text-text-muted hover:text-text flex items-center gap-1">
                                         <Plus className="h-3 w-3" /> ADD VAR
                                     </button>
                                 </div>
@@ -434,11 +434,11 @@ export const McpServersTab = ({
                                     <div key={i} className="flex gap-2">
                                         <input type="text" placeholder="KEY" value={env.key}
                                             onChange={e => updateEnvVar(i, 'key', e.target.value)}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none rounded-md" />
+                                            className="flex-1 bg-surface border border-border p-2 text-xs text-text font-mono focus:border-border-strong focus:outline-none rounded-md" />
                                         <input type="text" placeholder="VALUE" value={env.value}
                                             onChange={e => updateEnvVar(i, 'value', e.target.value)}
-                                            className="flex-[2] bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none rounded-md" />
-                                        <button onClick={() => removeEnvVar(i)} className="p-2 text-zinc-600 hover:text-red-500">
+                                            className="flex-[2] bg-surface border border-border p-2 text-xs text-text font-mono focus:border-border-strong focus:outline-none rounded-md" />
+                                        <button onClick={() => removeEnvVar(i)} className="p-2 text-text-faint hover:text-danger">
                                             <Trash className="h-4 w-4" />
                                         </button>
                                     </div>
@@ -449,18 +449,22 @@ export const McpServersTab = ({
                         /* ── remote fields ── */
                         <>
                             <div className="space-y-2">
-                                <label className="text-[10px] uppercase font-bold text-zinc-500">Server URL</label>
-                                <input type="url" value={draftMcpServer.url}
+                                <Label htmlFor="mcp-draftmcpserver-url" className="block">Server URL</Label>
+                                <input id="mcp-draftmcpserver-url" type="url" value={draftMcpServer.url}
                                     onChange={e => setDraftMcpServer({ ...draftMcpServer, url: e.target.value })}
                                     className={monoInputCls} placeholder="https://mcp.example.com/mcp" />
-                                <p className="text-[10px] text-zinc-600">
+                                <p className="text-2xs text-text-faint">
                                     Leave token empty to use OAuth (browser will open). Fill token for PAT-based servers (Figma, GitHub).
                                 </p>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] uppercase font-bold text-zinc-500">Bearer Token / Personal Access Token <span className="text-zinc-600 normal-case font-normal">(optional — leave empty for OAuth)</span></label>
+                                <Label htmlFor="mcp-token" className="block">
+                                    Bearer Token / Personal Access Token{' '}
+                                    <span className="normal-case font-normal">(optional — leave empty for OAuth)</span>
+                                </Label>
                                 <div className="relative">
                                     <input
+                                        id="mcp-token"
                                         type={tokenVisible ? 'text' : 'password'}
                                         value={draftMcpServer.token}
                                         onChange={e => setDraftMcpServer({ ...draftMcpServer, token: e.target.value })}
@@ -471,7 +475,7 @@ export const McpServersTab = ({
                                         type="button"
                                         onClick={() => setTokenVisible(v => !v)}
                                         title={tokenVisible ? 'Hide token' : 'Show token'}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-faint hover:text-text transition-colors"
                                     >
                                         {tokenVisible
                                             ? <EyeOff className="h-4 w-4" />
@@ -486,7 +490,7 @@ export const McpServersTab = ({
                 {/* Submit */}
                 <div className="flex justify-end pt-2">
                     <button onClick={onAddServer} disabled={isConnecting}
-                        className="flex items-center gap-2 px-6 py-2 bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                        className="flex items-center gap-2 px-6 py-2 bg-accent text-accent-fg text-sm font-bold hover:bg-accent-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                         {isConnecting
                             ? <><Loader2 className="h-4 w-4 animate-spin" /> Connecting…</>
                             : 'Connect Server'}

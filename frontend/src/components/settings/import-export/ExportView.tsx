@@ -116,7 +116,7 @@ export function ExportView() {
           <button
             onClick={loadData}
             disabled={loading}
-            className="mt-4 flex items-center gap-2 px-5 py-2 bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors disabled:opacity-50 mx-auto"
+            className="mt-4 flex items-center gap-2 px-5 py-2 bg-accent text-accent-fg text-sm font-bold hover:bg-accent-hover transition-colors disabled:opacity-50 mx-auto"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
             {loading ? "Loading…" : "Load Export Data"}
@@ -182,7 +182,7 @@ export function ExportView() {
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="flex items-center gap-2 px-6 py-2 bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors disabled:opacity-50 shrink-0"
+              className="flex items-center gap-2 px-6 py-2 bg-accent text-accent-fg text-sm font-bold hover:bg-accent-hover transition-colors disabled:opacity-50 shrink-0"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {exporting ? "Exporting…" : "Export & Download"}

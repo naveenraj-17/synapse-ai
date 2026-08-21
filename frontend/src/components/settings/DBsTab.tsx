@@ -189,7 +189,7 @@ export function DBsTab() {
                         </button>
                         <button
                             onClick={handleSaveConfig}
-                            className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                            className="px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                         >
                             Save Database
                         </button>
@@ -212,7 +212,7 @@ export function DBsTab() {
                 </div>
                 <button
                     onClick={() => setDraftConfig({})}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                 >
                     <Plus className="w-4 h-4" /> Add Database
                 </button>
@@ -225,7 +225,7 @@ export function DBsTab() {
                     <p className="text-sm text-zinc-500 mt-1 mb-6">Add a database connection to enable schema context for code agents.</p>
                     <button
                         onClick={() => setDraftConfig({})}
-                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                     >
                         <Plus className="w-4 h-4" /> Add Database
                     </button>

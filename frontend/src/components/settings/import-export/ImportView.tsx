@@ -519,7 +519,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
           <button
             disabled={total === 0}
             onClick={() => needsSecrets ? setStep("secrets") : handleImport()}
-            className="flex items-center gap-2 px-6 py-2 bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors disabled:opacity-40"
+            className="flex items-center gap-2 px-6 py-2 bg-accent text-accent-fg text-sm font-bold hover:bg-accent-hover transition-colors disabled:opacity-40"
           >
             {needsSecrets ? "Configure Secrets →" : <><Upload className="h-4 w-4" /> Import Now</>}
           </button>
@@ -640,7 +640,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
           <button
             disabled={importing}
             onClick={handleImport}
-            className="flex items-center gap-2 px-6 py-2 bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-6 py-2 bg-accent text-accent-fg text-sm font-bold hover:bg-accent-hover transition-colors disabled:opacity-50"
           >
             {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {importing ? "Importing…" : "Start Import"}

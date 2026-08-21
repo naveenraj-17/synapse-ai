@@ -137,7 +137,7 @@ export const PersonalDetailsTab = ({
         <div className="pt-2 flex justify-end">
             <button
                 onClick={onSave}
-                className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                className="px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
             >
                 Save Changes
             </button>

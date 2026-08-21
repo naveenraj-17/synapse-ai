@@ -190,7 +190,7 @@ export const IntegrationsTab = ({
                                             href="/auth/login"
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="inline-flex items-center gap-2 px-4 py-2 bg-white text-black text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors"
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-fg text-xs font-bold uppercase tracking-wider hover:bg-accent-hover transition-colors"
                                         >
                                             <Shield className="h-3.5 w-3.5" />
                                             Connect Google Account
@@ -363,7 +363,7 @@ export const IntegrationsTab = ({
                     <div className="pt-2 flex justify-end">
                         <button
                             onClick={onSave}
-                            className="px-6 py-2.5 text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg"
+                            className="px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-all shadow-lg"
                         >
                             Save Changes
                         </button>

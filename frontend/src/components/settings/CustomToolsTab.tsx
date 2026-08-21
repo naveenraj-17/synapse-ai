@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Wrench, Plus, Trash, X, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw, Container, Import } from 'lucide-react';
 import { PythonToolEditor, type PythonDraftTool } from './PythonToolEditor';
 import { OpenApiImport } from './OpenApiImport';
-import { Select } from '@/components/ui';
+import { Label, Select } from '@/components/ui';
 
 interface CustomToolsTabProps {
     customTools: any[];
@@ -77,12 +77,12 @@ export const CustomToolsTab = ({
     // ── Get tool type badge ────────────────────────────────────────────────
     const getToolBadge = (t: any) => {
         if (t.tool_type === 'python') {
-            return <span className="text-[9px] font-bold bg-accent-subtle border border-accent/40 text-accent px-1.5 py-0.5 rounded-md">🐍 PYTHON</span>;
+            return <span className="text-2xs font-bold bg-accent-subtle border border-accent/40 text-accent px-1.5 py-0.5 rounded-md">🐍 PYTHON</span>;
         }
         if (t.workflowId || t.url?.includes('webhook')) {
-            return <span className="text-[9px] font-bold bg-orange-900/30 border border-orange-700/50 text-orange-400 px-1.5 py-0.5 rounded-md">n8n</span>;
+            return <span className="text-2xs font-bold bg-warning/30 border border-warning/50 text-warning px-1.5 py-0.5 rounded-md">n8n</span>;
         }
-        return <span className="text-[9px] font-bold bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-md">HTTP</span>;
+        return <span className="text-2xs font-bold bg-surface-2 border border-border-strong text-text-muted px-1.5 py-0.5 rounded-md">HTTP</span>;
     };
 
     return (
@@ -98,17 +98,17 @@ export const CustomToolsTab = ({
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
                         <div>
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-text flex items-center gap-2">
                                 <Wrench className="h-5 w-5" /> Custom Tools
                             </h3>
-                            <p className="text-zinc-500 text-sm">
+                            <p className="text-text-faint text-sm">
                                 Extend your agent with n8n webhooks, HTTP endpoints, or Python functions.
                             </p>
                         </div>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowImport(true)}
-                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors rounded-md"
+                                className="px-3 py-2 bg-surface border border-border-strong text-text-muted font-bold text-xs uppercase flex items-center gap-2 hover:bg-surface-2 hover:text-text transition-colors rounded-md"
                             >
                                 <Import className="h-4 w-4" /> Import OpenAPI
                             </button>
@@ -129,7 +129,7 @@ export const CustomToolsTab = ({
                                     setHeaderRows([{ id: 'h1', key: '', value: '' }]);
                                     setToolBuilderMode('config');
                                 }}
-                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors rounded-md"
+                                className="px-3 py-2 bg-surface border border-border-strong text-text-muted font-bold text-xs uppercase flex items-center gap-2 hover:bg-surface-2 hover:text-text transition-colors rounded-md"
                             >
                                 <Plus className="h-4 w-4" /> New Tool
                             </button>
@@ -138,22 +138,22 @@ export const CustomToolsTab = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {customTools.map((t: any) => (
-                            <div key={t.name} className={`p-4 border hover:border-zinc-600 transition-all group relative ${t.tool_type === 'python' ? 'bg-accent-subtle border-accent/40 hover:border-accent/40' : 'bg-zinc-900 border-zinc-800'} rounded-md`}>
-                                <div className="font-bold text-white mb-1 flex items-center gap-2 pr-10">
+                            <div key={t.name} className={`p-4 border hover:border-text-faint transition-all group relative ${t.tool_type === 'python' ? 'bg-accent-subtle border-accent/40 hover:border-accent/40' : 'bg-surface border-border'} rounded-md`}>
+                                <div className="font-bold text-text mb-1 flex items-center gap-2 pr-10">
                                     <span className="truncate">{t.generalName || t.name}</span>
                                     {getToolBadge(t)}
                                 </div>
-                                {t.generalName && <div className="text-[9px] text-zinc-500 font-mono mb-1">({t.name})</div>}
-                                <div className="text-xs text-zinc-500 mb-2 h-8 overflow-hidden">{t.description}</div>
+                                {t.generalName && <div className="text-2xs text-text-faint font-mono mb-1">({t.name})</div>}
+                                <div className="text-xs text-text-faint mb-2 h-8 overflow-hidden">{t.description}</div>
                                 {t.tool_type === 'python'
-                                    ? <div className="text-[10px] font-mono text-accent">🐍 Python sandboxed function</div>
-                                    : <div className="text-[10px] font-mono text-zinc-600 truncate">{t.url}</div>
+                                    ? <div className="text-2xs font-mono text-accent">🐍 Python sandboxed function</div>
+                                    : <div className="text-2xs font-mono text-text-faint truncate">{t.url}</div>
                                 }
                                 <button
                                     onClick={() => onDeleteTool(t.name)}
                                     aria-label={`Delete ${t.generalName || t.name}`}
                                     title={`Delete ${t.generalName || t.name}`}
-                                    className="absolute top-2 right-2 p-1 text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                                    className="absolute top-2 right-2 p-1 text-text-faint hover:text-danger opacity-0 group-hover:opacity-100"
                                 >
                                     <Trash className="h-4 w-4" />
                                 </button>
@@ -178,14 +178,14 @@ export const CustomToolsTab = ({
                                             setToolBuilderMode('config');
                                         }
                                     }}
-                                    className="absolute bottom-2 right-2 text-[10px] text-zinc-400 hover:text-white font-bold uppercase"
+                                    className="absolute bottom-2 right-2 text-2xs text-text-muted hover:text-text font-bold uppercase"
                                 >
                                     Edit
                                 </button>
                             </div>
                         ))}
                         {customTools.length === 0 && (
-                            <div className="col-span-full py-12 text-center text-zinc-600 italic text-sm border border-dashed border-zinc-800">
+                            <div className="col-span-full py-12 text-center text-text-faint italic text-sm border border-dashed border-border">
                                 No custom tools yet. Create an HTTP, n8n webhook, or Python tool.
                             </div>
                         )}
@@ -195,21 +195,21 @@ export const CustomToolsTab = ({
                 /* ── Builder View ────────────────────────────────────────── */
                 <div className="flex flex-col h-full">
                     {/* Header */}
-                    <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
+                    <div className="flex items-center justify-between mb-4 pb-4 border-b border-border">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => { setDraftTool(null); setToolBuilderMode('config'); }}
-                                className="text-zinc-500 hover:text-white"
+                                className="text-text-faint hover:text-text"
                             >
                                 <X className="h-5 w-5" />
                             </button>
-                            <h3 className="font-bold text-white uppercase tracking-wider">
+                            <h3 className="font-bold text-text uppercase tracking-wider">
                                 {draftTool.name ? `Editing: ${draftTool.name}` : 'New Tool Builder'}
                             </h3>
                         </div>
                         <div className="flex gap-2">
                             {/* Mode tabs */}
-                            <div className="flex bg-zinc-900 border border-zinc-800 p-1 rounded-md gap-0.5">
+                            <div className="flex bg-surface border border-border p-1 rounded-md gap-0.5">
                                 <button
                                     onClick={() => {
                                         if (draftTool.tool_type === 'python') {
@@ -219,7 +219,7 @@ export const CustomToolsTab = ({
                                         }
                                         setToolBuilderMode('config');
                                     }}
-                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'config' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'config' ? 'bg-surface-2 text-text' : 'text-text-faint hover:text-text'}`}
                                 >
                                     CONFIG
                                 </button>
@@ -231,14 +231,14 @@ export const CustomToolsTab = ({
                                         }
                                         setToolBuilderMode('python');
                                     }}
-                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'python' ? 'bg-accent text-accent-fg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                    className={`px-3 py-1 text-xs font-bold rounded-md ${toolBuilderMode === 'python' ? 'bg-accent text-accent-fg' : 'text-text-faint hover:text-text'}`}
                                 >
                                     🐍 PYTHON
                                 </button>
                             </div>
                             <button
                                 onClick={onSaveTool}
-                                className="px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200"
+                                className="px-4 py-1.5 bg-accent text-accent-fg text-xs font-bold hover:bg-accent-hover"
                             >
                                 SAVE
                             </button>
@@ -248,8 +248,8 @@ export const CustomToolsTab = ({
                     {/* Shared name / description fields */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500">General Name</label>
-                            <input
+                            <Label htmlFor="cus-drafttool-generalname" className="block">General Name</Label>
+                            <input id="cus-drafttool-generalname"
                                 type="text"
                                 value={draftTool.generalName || ''}
                                 onChange={e => {
@@ -260,27 +260,27 @@ export const CustomToolsTab = ({
                                     }
                                     setDraftTool(update);
                                 }}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700 rounded-md"
+                                className="w-full bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none placeholder:text-text-faint rounded-md"
                                 placeholder="e.g. Process Orders"
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-zinc-500">System Name (Snake Case)</label>
-                            <input
+                            <Label htmlFor="cus-drafttool-name" className="block">System Name (Snake Case)</Label>
+                            <input id="cus-drafttool-name"
                                 type="text"
                                 value={draftTool.name}
                                 onChange={e => setDraftTool({ ...draftTool, name: e.target.value })}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono placeholder:text-zinc-700 rounded-md"
+                                className="w-full bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none font-mono placeholder:text-text-faint rounded-md"
                                 placeholder="e.g. process_orders"
                             />
                         </div>
                     </div>
                     <div className="space-y-1 mb-5">
-                        <label className="text-[10px] uppercase font-bold text-zinc-500">Description (For AI)</label>
-                        <textarea
+                        <Label htmlFor="cus-drafttool-description" className="block">Description (For AI)</Label>
+                        <textarea id="cus-drafttool-description"
                             value={draftTool.description}
                             onChange={e => setDraftTool({ ...draftTool, description: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none resize-vertical min-h-[80px] rounded-md"
+                            className="w-full bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none resize-vertical min-h-[80px] rounded-md"
                             placeholder="What does this tool do? Describe its purpose and critical rules for the AI..."
                         />
                     </div>
@@ -290,7 +290,7 @@ export const CustomToolsTab = ({
                         <div className="space-y-5 pr-2">
                             {/* Method */}
                             <div className="space-y-1">
-                                <label className="text-[10px] uppercase font-bold text-zinc-500">Method</label>
+                                <Label className="block">Method</Label>
                                 <Select
                                     value={draftTool.method || 'POST'}
                                     onChange={v => setDraftTool({ ...draftTool, method: v })}
@@ -302,7 +302,7 @@ export const CustomToolsTab = ({
                             {/* n8n Workflow — only shown when n8n is integrated */}
                             {n8nIntegrated && (
                                 <div className="space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">n8n Workflow</label>
+                                    <Label className="block">n8n Workflow</Label>
                                     <Select
                                         value={draftTool.workflowId || undefined}
                                         onChange={async (workflowId) => {
@@ -330,7 +330,7 @@ export const CustomToolsTab = ({
                                             href={`${getN8nBaseUrl()}/workflow/${draftTool.workflowId}`}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="inline-flex items-center gap-1 text-[10px] text-[#ff6d5a] hover:text-[#ff8a78] hover:underline mt-1"
+                                            className="inline-flex items-center gap-1 text-2xs text-[#ff6d5a] hover:text-[#ff8a78] hover:underline mt-1"
                                         >
                                             Open workflow in n8n <ExternalLink className="h-3 w-3" />
                                         </a>
@@ -339,7 +339,7 @@ export const CustomToolsTab = ({
                                             href={`${getN8nBaseUrl()}/workflow/new`}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 hover:underline mt-1"
+                                            className="inline-flex items-center gap-1 text-2xs text-text-faint hover:text-text hover:underline mt-1"
                                         >
                                             Create new workflow in n8n <ExternalLink className="h-3 w-3" />
                                         </a>
@@ -350,9 +350,9 @@ export const CustomToolsTab = ({
                             {/* URL */}
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">URL</label>
+                                    <Label className="block">URL</Label>
                                     {!n8nIntegrated && (
-                                        <span className="text-[9px] text-zinc-600">
+                                        <span className="text-2xs text-text-faint">
                                             (you can also{' '}
                                             <a href="/settings/workspace" className="text-[#ff6d5a] hover:underline">
                                                 integrate n8n workflows
@@ -365,7 +365,7 @@ export const CustomToolsTab = ({
                                     type="text"
                                     value={draftTool.url}
                                     onChange={e => setDraftTool({ ...draftTool, url: e.target.value })}
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
+                                    className="w-full bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none font-mono rounded-md"
                                     placeholder="https://api.example.com/users/{id}"
                                 />
                                 {/* URL templating hint — dynamic based on input schema */}
@@ -379,8 +379,8 @@ export const CustomToolsTab = ({
                                         ? keys.slice(0, 3).map(k => `{${k}}`).join(', ')
                                         : '{field}';
                                     return (
-                                        <p className="mt-1 text-[10px] text-zinc-600 leading-relaxed">
-                                            💡 Use <code className="font-code text-zinc-400 bg-zinc-900 px-1 rounded-md">{examples}</code> in the URL to inject input values.
+                                        <p className="mt-1 text-2xs text-text-faint leading-relaxed">
+                                            💡 Use <code className="font-code text-text-muted bg-surface px-1 rounded-md">{examples}</code> in the URL to inject input values.
                                             {' '}GET/DELETE args become query params; POST/PUT go in the body.
                                         </p>
                                     );
@@ -390,10 +390,10 @@ export const CustomToolsTab = ({
                             {/* Headers */}
                             <div className="space-y-2 pt-2">
                                 <div className="flex justify-between items-end mb-1">
-                                    <label className="text-[10px] uppercase font-bold text-zinc-500">Headers</label>
+                                    <Label className="block">Headers</Label>
                                     <button
                                         onClick={() => setHeaderRows([...headerRows, { id: `h-${Date.now()}`, key: '', value: '' }])}
-                                        className="text-[10px] text-zinc-400 hover:text-white font-bold bg-zinc-800 px-2 py-1 rounded-md transition-colors"
+                                        className="text-2xs text-text-muted hover:text-text font-bold bg-surface-2 px-2 py-1 rounded-md transition-colors"
                                     >
                                         + ADD HEADER
                                     </button>
@@ -409,7 +409,7 @@ export const CustomToolsTab = ({
                                                 newRows[idx].key = e.target.value;
                                                 setHeaderRows(newRows);
                                             }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
+                                            className="flex-1 bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none font-mono rounded-md"
                                         />
                                         <input
                                             type="text"
@@ -420,11 +420,11 @@ export const CustomToolsTab = ({
                                                 newRows[idx].value = e.target.value;
                                                 setHeaderRows(newRows);
                                             }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
+                                            className="flex-1 bg-surface border border-border p-2 text-sm text-text focus:border-border-strong focus:outline-none font-mono rounded-md"
                                         />
                                         <button
                                             onClick={() => setHeaderRows(headerRows.filter(r => r.id !== row.id))}
-                                            className="p-2 text-zinc-600 hover:text-red-500 transition-colors"
+                                            className="p-2 text-text-faint hover:text-danger transition-colors"
                                         >
                                             <Trash className="h-4 w-4" />
                                         </button>
@@ -434,11 +434,11 @@ export const CustomToolsTab = ({
 
                             {/* Schemas */}
                             <div className="space-y-1 flex flex-col min-h-[280px]">
-                                <label className="text-[10px] uppercase font-bold text-zinc-500">Input Schema (JSON)</label>
-                                <textarea
+                                <Label htmlFor="cus-drafttool-inputschemastr" className="block">Input Schema (JSON)</Label>
+                                <textarea id="cus-drafttool-inputschemastr"
                                     value={draftTool.inputSchemaStr}
                                     onChange={e => setDraftTool({ ...draftTool, inputSchemaStr: e.target.value })}
-                                    className="w-full flex-1 bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md"
+                                    className="w-full flex-1 bg-bg border border-border p-3 text-2xs font-mono text-text focus:border-border-strong focus:outline-none resize-none rounded-md"
                                     placeholder='{"type": "object", "properties": {"msg": {"type": "string"}}}'
                                 />
                             </div>
@@ -450,7 +450,7 @@ export const CustomToolsTab = ({
                         <div className="flex flex-col gap-4">
                             {/* Docker Status Banner */}
                             {dockerChecking && !dockerStatus ? (
-                                <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-xs text-zinc-500">
+                                <div className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-md text-xs text-text-faint">
                                     <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
                                     Checking Docker status...
                                 </div>
@@ -458,47 +458,47 @@ export const CustomToolsTab = ({
                                 const allGood = dockerStatus.installed && dockerStatus.running && dockerStatus.image_exists;
                                 if (allGood && !dockerBuildError) {
                                     return (
-                                        <div className="flex items-center gap-2 px-3 py-2 bg-green-950/30 border border-green-800/40 rounded-md text-xs text-green-400">
+                                        <div className="flex items-center gap-2 px-3 py-2 bg-success/30 border border-success/40 rounded-md text-xs text-success">
                                             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                                             Docker sandbox is ready
-                                            <button onClick={checkDockerStatus} disabled={dockerChecking} className="ml-auto text-green-700 hover:text-green-400 disabled:opacity-50">
+                                            <button onClick={checkDockerStatus} disabled={dockerChecking} className="ml-auto text-success hover:opacity-80 transition-opacity disabled:opacity-50">
                                                 <RefreshCw className={`h-3 w-3 ${dockerChecking ? 'animate-spin' : ''}`} />
                                             </button>
                                         </div>
                                     );
                                 }
                                 return (
-                                    <div className="p-3 bg-amber-950/30 border border-amber-700/50 rounded-md space-y-2">
+                                    <div className="p-3 bg-warning/30 border border-warning/50 rounded-md space-y-2">
                                         <div className="flex items-start gap-2">
-                                            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                                            <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                                             <div className="flex-1 space-y-1">
                                                 {!dockerStatus.installed && (
                                                     <>
-                                                        <p className="text-xs font-semibold text-amber-300">Docker is not installed</p>
-                                                        <p className="text-xs text-amber-500/80">Python tools run in a Docker sandbox. Install Docker Desktop to use them.</p>
+                                                        <p className="text-xs font-semibold text-warning">Docker is not installed</p>
+                                                        <p className="text-xs text-warning/80">Python tools run in a Docker sandbox. Install Docker Desktop to use them.</p>
                                                         <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noreferrer"
-                                                            className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-200 underline">
+                                                            className="inline-flex items-center gap-1 text-xs text-warning hover:opacity-80 transition-opacity underline">
                                                             Install Docker Desktop <ExternalLink className="h-3 w-3" />
                                                         </a>
                                                     </>
                                                 )}
                                                 {dockerStatus.installed && !dockerStatus.running && (
                                                     <>
-                                                        <p className="text-xs font-semibold text-amber-300">Docker is not running</p>
-                                                        <p className="text-xs text-amber-500/80">Start Docker Desktop, then refresh the status.</p>
+                                                        <p className="text-xs font-semibold text-warning">Docker is not running</p>
+                                                        <p className="text-xs text-warning/80">Start Docker Desktop, then refresh the status.</p>
                                                     </>
                                                 )}
                                                 {dockerStatus.installed && dockerStatus.running && !dockerStatus.image_exists && (
                                                     <>
-                                                        <p className="text-xs font-semibold text-amber-300">Python sandbox image not built</p>
-                                                        <p className="text-xs text-amber-500/80">The sandbox image needs to be built once. This downloads Python and installs packages (~2–3 min).</p>
+                                                        <p className="text-xs font-semibold text-warning">Python sandbox image not built</p>
+                                                        <p className="text-xs text-warning/80">The sandbox image needs to be built once. This downloads Python and installs packages (~2–3 min).</p>
                                                     </>
                                                 )}
                                                 {dockerBuildError && (
-                                                    <p className="text-xs text-red-400 font-mono whitespace-pre-wrap mt-1">{dockerBuildError}</p>
+                                                    <p className="text-xs text-danger font-mono whitespace-pre-wrap mt-1">{dockerBuildError}</p>
                                                 )}
                                             </div>
-                                            <button onClick={checkDockerStatus} disabled={dockerChecking} className="text-amber-700 hover:text-amber-400 shrink-0 disabled:opacity-50">
+                                            <button onClick={checkDockerStatus} disabled={dockerChecking} className="text-warning hover:opacity-80 transition-opacity shrink-0 disabled:opacity-50">
                                                 <RefreshCw className={`h-3.5 w-3.5 ${dockerChecking ? 'animate-spin' : ''}`} />
                                             </button>
                                         </div>
@@ -506,7 +506,7 @@ export const CustomToolsTab = ({
                                             <button
                                                 onClick={buildSandboxImage}
                                                 disabled={dockerBuilding}
-                                                className="flex items-center gap-2 px-3 py-1.5 bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition-colors rounded-md"
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-warning hover:opacity-90 transition-opacity disabled:opacity-50 text-warning-subtle text-xs font-bold transition-colors rounded-md"
                                             >
                                                 <Container className="h-3.5 w-3.5" />
                                                 {dockerBuilding ? 'Building… (this may take a few minutes)' : 'Build Sandbox Image'}

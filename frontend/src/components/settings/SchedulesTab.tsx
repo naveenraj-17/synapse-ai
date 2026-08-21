@@ -375,7 +375,7 @@ export const SchedulesTab = () => {
                     </button>
                     <button
                         onClick={openCreate}
-                        className="flex items-center gap-2 px-4 py-2 bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-accent text-accent-fg text-sm font-semibold hover:bg-accent-hover transition-colors"
                     >
                         <Plus className="h-4 w-4" />
                         New Schedule
@@ -571,7 +571,7 @@ export const SchedulesTab = () => {
                                             onClick={() => setForm(f => ({ ...f, target_type: t, target_id: '' }))}
                                             className={`flex items-center gap-2 px-4 py-2 text-xs font-medium border transition-all ${
                                                 form.target_type === t
-                                                    ? 'border-white bg-white text-black'
+                                                    ? 'border-white bg-accent text-accent-fg'
                                                     : 'border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
                                             } rounded-md`}
                                         >
@@ -622,7 +622,7 @@ export const SchedulesTab = () => {
                                             onClick={() => setForm(f => ({ ...f, schedule_type: t }))}
                                             className={`flex items-center gap-2 px-4 py-2 text-xs font-medium border transition-all ${
                                                 form.schedule_type === t
-                                                    ? 'border-white bg-white text-black'
+                                                    ? 'border-white bg-accent text-accent-fg'
                                                     : 'border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
                                             } rounded-md`}
                                         >
@@ -760,7 +760,7 @@ export const SchedulesTab = () => {
                                 <button
                                     onClick={saveSchedule}
                                     disabled={saving}
-                                    className="w-full py-2.5 bg-white text-black text-sm font-semibold hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+                                    className="w-full py-2.5 bg-accent text-accent-fg text-sm font-semibold hover:bg-accent-hover disabled:opacity-50 transition-colors"
                                 >
                                     {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Schedule'}
                                 </button>

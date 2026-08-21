@@ -717,7 +717,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                     )}
                     {dirty && (
                         <button onClick={save} disabled={saving}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white text-black font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-accent-fg font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50">
                             {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                             Save Pricing
                         </button>

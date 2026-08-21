@@ -165,7 +165,7 @@ export const LogsTab = () => {
                 <button
                     onClick={() => setLogType('agents')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'agents'
-                        ? 'bg-white text-black'
+                        ? 'bg-accent text-accent-fg'
                         : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >
@@ -175,7 +175,7 @@ export const LogsTab = () => {
                 <button
                     onClick={() => setLogType('orchestrations')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'orchestrations'
-                        ? 'bg-white text-black'
+                        ? 'bg-accent text-accent-fg'
                         : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >
@@ -185,7 +185,7 @@ export const LogsTab = () => {
                 <button
                     onClick={() => setLogType('schedules')}
                     className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${logType === 'schedules'
-                            ? 'bg-white text-black'
+                            ? 'bg-accent text-accent-fg'
                             : 'text-zinc-400 hover:text-white hover:bg-surface-2'
                         }`}
                 >

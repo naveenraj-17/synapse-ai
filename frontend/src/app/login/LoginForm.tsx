@@ -90,8 +90,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full px-6 py-2.5 text-sm font-bold bg-white text-black
-                                   hover:bg-zinc-200 transition-all disabled:opacity-50
+                        className="w-full px-6 py-2.5 text-sm font-bold bg-accent text-accent-fg
+                                   hover:bg-accent-hover transition-all disabled:opacity-50
                                    disabled:cursor-not-allowed mt-2"
                     >
                         {isLoading ? 'Signing in…' : 'Sign In'}

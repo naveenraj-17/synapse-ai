@@ -439,7 +439,7 @@ export const MessagingTab = () => {
                                 <button
                                     onClick={saveAndConnect}
                                     disabled={saving}
-                                    className="flex items-center gap-2 px-4 py-1.5 bg-white text-black text-xs font-bold hover:bg-zinc-200 disabled:opacity-50"
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-accent text-accent-fg text-xs font-bold hover:bg-accent-hover disabled:opacity-50"
                                 >
                                     {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                                     SAVE & CONNECT

@@ -441,7 +441,7 @@ function WelcomeScreen({ agentName, onPrompt, onNavigate, showExamplesBanner, on
             <button
               key={i}
               onClick={() => { setActiveIdx(i); setIsPaused(true); setTimeout(() => setIsPaused(false), 6000); }}
-              className={`transition-all duration-300 rounded-full cursor-pointer ${i === activeIdx ? 'w-5 h-1.5 bg-zinc-300' : 'w-1.5 h-1.5 bg-zinc-700 hover:bg-zinc-500'}`}
+              className={`transition-all duration-300 rounded-full cursor-pointer ${i === activeIdx ? 'w-5 h-1.5 bg-zinc-300' : 'w-1.5 h-1.5 bg-zinc-700 hover:bg-accent-hover0'}`}
             />
           ))}
         </div>
@@ -1817,7 +1817,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && attachedImages.length === 0)}
-                className="px-4 py-2 bg-white text-black font-semibold text-[11px] uppercase tracking-wider border border-transparent hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all self-end mb-1 shrink-0 flex items-center justify-center rounded-md"
+                className="px-4 py-2 bg-accent text-accent-fg font-semibold text-[11px] uppercase tracking-wider border border-transparent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all self-end mb-1 shrink-0 flex items-center justify-center rounded-md"
               >
                 <span className="hidden md:inline">Execute</span>
                 <Send className="h-4 w-4 md:hidden" />

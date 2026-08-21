@@ -107,10 +107,10 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
                         "w-full text-left px-4 py-2 border text-sm transition-colors",
                         field.multiple
                           ? (selectedOptions[key] || []).includes(option)
-                            ? "bg-white text-black border-white"
+                            ? "bg-accent text-accent-fg border-white"
                             : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-zinc-500"
                           : values[key] === option
-                          ? "bg-white text-black border-white"
+                          ? "bg-accent text-accent-fg border-white"
                           : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:border-zinc-500"
                       )}
                     >
@@ -142,7 +142,7 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
         <div className="flex gap-2">
           <button
             type="submit"
-            className="flex-1 bg-white text-black px-4 py-2 text-sm font-bold uppercase hover:bg-zinc-200 transition-colors"
+            className="flex-1 bg-accent text-accent-fg px-4 py-2 text-sm font-bold uppercase hover:bg-accent-hover transition-colors"
             disabled={false}
           >
             Submit

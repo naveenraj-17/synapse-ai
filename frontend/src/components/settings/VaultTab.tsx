@@ -227,7 +227,7 @@ function CreateDialog({
                         <button
                             type="submit"
                             disabled={!name.trim()}
-                            className="flex-1 py-2 text-xs font-bold bg-white text-black hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            className="flex-1 py-2 text-xs font-bold bg-accent text-accent-fg hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                             Create
                         </button>
@@ -637,7 +637,7 @@ export function VaultTab() {
                                 onClick={handleSave}
                                 disabled={savingFile || !isDirty}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                                    ${saveStatus === 'saved' ? 'bg-emerald-600 text-white' : saveStatus === 'error' ? 'bg-red-600 text-white' : 'bg-white text-black hover:bg-zinc-200'}`}
+                                    ${saveStatus === 'saved' ? 'bg-emerald-600 text-white' : saveStatus === 'error' ? 'bg-red-600 text-white' : 'bg-accent text-accent-fg hover:bg-accent-hover'}`}
                             >
                                 {savingFile ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                                 {saveStatus === 'saved' ? 'SAVED' : saveStatus === 'error' ? 'ERROR' : 'SAVE'}
@@ -677,7 +677,7 @@ export function VaultTab() {
                             </button>
                             <button
                                 onClick={() => { setContextFolder(''); setCreateDialog({ type: 'file', parentPath: '' }); }}
-                                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-white text-black hover:bg-zinc-200 transition-colors"
+                                className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-accent text-accent-fg hover:bg-accent-hover transition-colors"
                             >
                                 <Plus className="h-3.5 w-3.5" /> New File
                             </button>
