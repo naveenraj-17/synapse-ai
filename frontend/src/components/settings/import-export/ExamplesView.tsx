@@ -89,7 +89,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
 
   if (error) {
     return (
-      <div className="flex items-start gap-3 p-4 border border-red-900/50 bg-red-950/10">
+      <div className="flex items-start gap-3 p-4 border border-red-900/50 bg-red-950/10 rounded-md">
         <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-red-400 text-xs font-bold uppercase tracking-wider">Failed to load examples</p>
@@ -102,7 +102,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900/60">
+      <div className="flex items-start gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900/60 rounded-md">
         <Sparkles className="h-4 w-4 text-violet-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-bold text-zinc-200">Example Packs</p>
@@ -119,7 +119,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
           return (
             <div
               key={pack.id}
-              className="group flex flex-col border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900/70 hover:border-zinc-700 transition-all duration-200"
+              className="group flex flex-col border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900/70 hover:border-zinc-700 transition-all duration-200 rounded-md"
             >
               <div className="flex items-start justify-between gap-4 p-4">
                 {/* Left */}
@@ -129,7 +129,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
                     {pack.tags.map(tag => (
                       <span
                         key={tag}
-                        className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 border ${TAG_STYLES[tag] || "text-zinc-400 bg-zinc-900 border-zinc-700"}`}
+                        className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 border ${TAG_STYLES[tag] || "text-zinc-400 bg-zinc-900 border-zinc-700"} rounded-md`}
                       >
                         {TAG_LABELS[tag] || tag}
                       </span>
@@ -155,7 +155,7 @@ export function ExamplesView({ onLoadBundle }: ExamplesViewProps) {
                 <button
                   onClick={() => handleImport(pack)}
                   disabled={!!loadingId}
-                  className="flex items-center gap-1.5 shrink-0 px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-white hover:text-black hover:border-white text-xs font-bold transition-all duration-150 disabled:opacity-50 group-hover:border-zinc-500"
+                  className="flex items-center gap-1.5 shrink-0 px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-white hover:text-black hover:border-white text-xs font-bold transition-all duration-150 disabled:opacity-50 group-hover:border-zinc-500 rounded-md"
                 >
                   {isLoading ? (
                     <>

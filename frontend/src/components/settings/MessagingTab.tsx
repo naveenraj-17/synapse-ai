@@ -131,17 +131,17 @@ const SETUP_GUIDES: Record<Platform, { title: string; steps: string[] }> = {
 
 const StatusBadge = ({ status, lastError }: { status?: string; lastError?: string | null }) => {
     if (status === 'running') return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-950/50 border border-green-900 px-2 py-0.5">
+        <span className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-950/50 border border-green-900 px-2 py-0.5 rounded-md">
             <CheckCircle className="h-2.5 w-2.5" /> RUNNING
         </span>
     );
     if (status === 'error') return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/50 border border-red-900 px-2 py-0.5" title={lastError || ''}>
+        <span className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-950/50 border border-red-900 px-2 py-0.5 rounded-md" title={lastError || ''}>
             <XCircle className="h-2.5 w-2.5" /> ERROR
         </span>
     );
     return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-0.5">
+        <span className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-md">
             <Square className="h-2.5 w-2.5" /> STOPPED
         </span>
     );
@@ -312,7 +312,7 @@ export const MessagingTab = () => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
             {/* Toast */}
             {toastMsg && (
-                <div className="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white text-xs px-4 py-3 shadow-xl animate-in slide-in-from-bottom-4">
+                <div className="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white text-xs px-4 py-3 shadow-xl animate-in slide-in-from-bottom-4 rounded-md">
                     {toastMsg}
                 </div>
             )}
@@ -331,7 +331,7 @@ export const MessagingTab = () => {
                         </button>
                         <button
                             onClick={newChannel}
-                            className="p-1.5 hover:bg-zinc-800 text-white transition-colors border border-dashed border-zinc-600 hover:border-white"
+                            className="p-1.5 hover:bg-zinc-800 text-white transition-colors border border-dashed border-zinc-600 hover:border-white rounded-md"
                             title="New Channel"
                         >
                             <Plus className="h-4 w-4" />
@@ -354,7 +354,7 @@ export const MessagingTab = () => {
                                 key={ch.id}
                                 onClick={() => selectChannel(ch)}
                                 className={`p-3 border cursor-pointer transition-all group relative
-                                    ${isSelected ? 'bg-zinc-900 border-white' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                    ${isSelected ? 'bg-zinc-900 border-white' : 'bg-black border-zinc-800 hover:border-zinc-600'} rounded-md`}
                             >
                                 <div className="flex items-center gap-3">
                                     <div className={`h-8 w-8 flex-shrink-0 flex items-center justify-center border ${pm?.color ?? ''}`}>
@@ -476,7 +476,7 @@ export const MessagingTab = () => {
                                     value={draft.name}
                                     onChange={e => setDraft({ ...draft, name: e.target.value })}
                                     placeholder="e.g. Support Bot"
-                                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none rounded-md"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -491,7 +491,7 @@ export const MessagingTab = () => {
                             </div>
                         </div>
 
-                        <div className="flex items-start gap-4 p-3 bg-zinc-950 border border-zinc-800">
+                        <div className="flex items-start gap-4 p-3 bg-zinc-950 border border-zinc-800 rounded-md">
                             <input
                                 id="multi-agent-toggle"
                                 type="checkbox"
@@ -527,7 +527,7 @@ export const MessagingTab = () => {
                                                 key={opt.v}
                                                 onClick={() => { setWaMode(opt.v as any); setWaRiskAck(false); }}
                                                 className={`p-3 border text-left text-xs transition-all
-                                                    ${waMode === opt.v ? 'bg-zinc-900 border-white' : 'bg-black border-zinc-800 hover:border-zinc-600'}`}
+                                                    ${waMode === opt.v ? 'bg-zinc-900 border-white' : 'bg-black border-zinc-800 hover:border-zinc-600'} rounded-md`}
                                             >
                                                 <div className="font-bold text-white">{opt.label}</div>
                                                 <div className="text-zinc-500 mt-1">{opt.desc}</div>
@@ -550,7 +550,7 @@ export const MessagingTab = () => {
                                                         value={draft.credentials[f.key] || ''}
                                                         onChange={e => updateCred(f.key, e.target.value)}
                                                         placeholder={f.placeholder}
-                                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none font-mono"
+                                                        className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none font-mono rounded-md"
                                                     />
                                                     {f.note && <p className="text-[9px] text-zinc-600">{f.note}</p>}
                                                 </div>
@@ -560,7 +560,7 @@ export const MessagingTab = () => {
 
                                     {waMode === 'unofficial' && (
                                         <div className="space-y-3">
-                                            <div className="flex gap-2 p-3 bg-amber-950/30 border border-amber-800/50">
+                                            <div className="flex gap-2 p-3 bg-amber-950/30 border border-amber-800/50 rounded-md">
                                                 <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
                                                 <div className="text-[10px] text-amber-300 space-y-1">
                                                     <p className="font-bold">⚠️ Unofficial Approach — Use at Your Own Risk</p>
@@ -573,7 +573,7 @@ export const MessagingTab = () => {
                                                     <p>We recommend using the official Meta Business path instead.</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-start gap-3 p-3 bg-zinc-950 border border-zinc-800">
+                                            <div className="flex items-start gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-md">
                                                 <input
                                                     id="wa-risk-ack"
                                                     type="checkbox"
@@ -586,7 +586,7 @@ export const MessagingTab = () => {
                                                 </label>
                                             </div>
                                             {waRiskAck && (
-                                                <div className="p-3 bg-zinc-950 border border-zinc-700 text-[10px] text-zinc-400 space-y-1">
+                                                <div className="p-3 bg-zinc-950 border border-zinc-700 text-[10px] text-zinc-400 space-y-1 rounded-md">
                                                     <p>After saving & connecting, Synapse will open WhatsApp Web in a Chromium browser window.</p>
                                                     <p>Scan the QR code shown in the browser to authenticate. The session is saved and persists across restarts.</p>
                                                 </div>
@@ -605,7 +605,7 @@ export const MessagingTab = () => {
                                                 value={draft.credentials[f.key] || ''}
                                                 onChange={e => updateCred(f.key, e.target.value)}
                                                 placeholder={f.placeholder}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none font-mono"
+                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none font-mono rounded-md"
                                             />
                                             {f.note && (
                                                 <p className="text-[9px] text-zinc-600 flex items-center gap-1">
@@ -643,7 +643,7 @@ export const MessagingTab = () => {
 
                         {/* Error display */}
                         {draft.last_error && (
-                            <div className="flex gap-2 p-3 bg-red-950/30 border border-red-900/50">
+                            <div className="flex gap-2 p-3 bg-red-950/30 border border-red-900/50 rounded-md">
                                 <XCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
                                 <div>
                                     <p className="text-xs font-bold text-red-400">Last Error</p>

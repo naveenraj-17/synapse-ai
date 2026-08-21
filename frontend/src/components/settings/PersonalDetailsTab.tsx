@@ -38,7 +38,7 @@ export const PersonalDetailsTab = ({
                     type="text"
                     value={pdFirstName}
                     onChange={(e) => setPdFirstName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                     placeholder="First name"
                 />
             </div>
@@ -48,7 +48,7 @@ export const PersonalDetailsTab = ({
                     type="text"
                     value={pdLastName}
                     onChange={(e) => setPdLastName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                     placeholder="Last name"
                 />
             </div>
@@ -58,7 +58,7 @@ export const PersonalDetailsTab = ({
                     type="email"
                     value={pdEmail}
                     onChange={(e) => setPdEmail(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                     placeholder="name@company.com"
                 />
             </div>
@@ -68,13 +68,13 @@ export const PersonalDetailsTab = ({
                     type="tel"
                     value={pdPhone}
                     onChange={(e) => setPdPhone(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                     placeholder="+1 555 555 5555"
                 />
             </div>
         </div>
 
-        <div className="border border-zinc-800 bg-zinc-900/20 p-6 space-y-6">
+        <div className="border border-zinc-800 bg-zinc-900/20 p-6 space-y-6 rounded-md">
             <div>
                 <div className="text-sm font-bold text-white">Address</div>
                 <div className="text-xs text-zinc-500">Used when a workflow needs a billing or mailing address.</div>
@@ -87,7 +87,7 @@ export const PersonalDetailsTab = ({
                         type="text"
                         value={pdAddress1}
                         onChange={(e) => setPdAddress1(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                         placeholder="Street address"
                     />
                 </div>
@@ -97,7 +97,7 @@ export const PersonalDetailsTab = ({
                         type="text"
                         value={pdAddress2}
                         onChange={(e) => setPdAddress2(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                         placeholder="Apt, suite, unit"
                     />
                 </div>
@@ -107,7 +107,7 @@ export const PersonalDetailsTab = ({
                         type="text"
                         value={pdCity}
                         onChange={(e) => setPdCity(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                         placeholder="City"
                     />
                 </div>
@@ -117,7 +117,7 @@ export const PersonalDetailsTab = ({
                         type="text"
                         value={pdState}
                         onChange={(e) => setPdState(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors rounded-md"
                         placeholder="State"
                     />
                 </div>
@@ -127,7 +127,7 @@ export const PersonalDetailsTab = ({
                         type="text"
                         value={pdZipcode}
                         onChange={(e) => setPdZipcode(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                         placeholder="Zipcode"
                     />
                 </div>

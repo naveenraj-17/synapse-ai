@@ -25,7 +25,7 @@ export const DatabaseTab = ({ sqlConnectionString, setSqlConnectionString, onSav
                     type="password"
                     value={sqlConnectionString}
                     onChange={(e) => setSqlConnectionString(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                     placeholder="postgresql://user:password@localhost:5432/dbname"
                 />
                 <p className="text-xs text-zinc-600">
@@ -37,7 +37,7 @@ export const DatabaseTab = ({ sqlConnectionString, setSqlConnectionString, onSav
                 </p>
             </div>
 
-            <div className="p-4 bg-zinc-900/50 border border-zinc-800 text-xs text-zinc-400">
+            <div className="p-4 bg-zinc-900/50 border border-zinc-800 text-xs text-zinc-400 rounded-md">
                 <strong>Security Note:</strong> The agent will have access to execute queries. Use a read-only user if possible.
             </div>
         </div>

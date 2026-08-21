@@ -76,13 +76,13 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
 
 
   return (
-    <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800">
+    <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 rounded-md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {!hasFields && (
           <textarea
             value={defaultText}
             onChange={(e) => setDefaultText(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors resize-none"
+            className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors resize-none rounded-md"
             placeholder="Type your response..."
             rows={3}
           />
@@ -131,7 +131,7 @@ export function CollectDataForm({ data, onSubmit, onCancel }: CollectDataFormPro
                   }
                   value={values[key] || ''}
                   onChange={(e) => setValue(key, e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors"
+                  className="w-full bg-zinc-900 border border-zinc-700 text-white px-4 py-2 text-sm focus:outline-none focus:border-white transition-colors rounded-md"
                   placeholder={`Enter ${field.type}...`}
                 />
               )}

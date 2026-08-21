@@ -114,7 +114,7 @@ export const IntegrationsTab = ({
         <div className="space-y-8">
 
             {/* ── Google Workspace ────────────────────────────────────── */}
-            <div className="bg-zinc-900 border border-zinc-800 overflow-hidden">
+            <div className="bg-zinc-900 border border-zinc-800 overflow-hidden rounded-md">
 
                 {/* Header */}
                 <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
@@ -131,7 +131,7 @@ export const IntegrationsTab = ({
                         >
                             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
                         </button>
-                        <span className={`text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 ${isConnected ? 'text-green-400' : 'text-zinc-500'}`}>
+                        <span className={`text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 ${isConnected ? 'text-green-400' : 'text-zinc-500'} rounded-md`}>
                             {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
                         </span>
                     </div>
@@ -143,7 +143,7 @@ export const IntegrationsTab = ({
                     {hasCredentials ? (
                         <div className="space-y-4">
                             {/* Credential Summary Card */}
-                            <div className="bg-zinc-950 border border-zinc-800 p-4 space-y-3">
+                            <div className="bg-zinc-950 border border-zinc-800 p-4 space-y-3 rounded-md">
                                 <div className="flex items-center gap-2 mb-3">
                                     <CheckCircle2 className="h-4 w-4 text-green-500" />
                                     <span className="text-xs font-bold text-green-400 uppercase tracking-wider">OAuth Credentials Configured</span>
@@ -217,7 +217,7 @@ export const IntegrationsTab = ({
                                         <textarea
                                             className={`w-full h-28 bg-black border p-3 text-[10px] font-mono text-zinc-300 focus:outline-none resize-none transition-colors ${pasteStatus === 'saved' ? 'border-green-600' :
                                                     pasteStatus === 'error' ? 'border-red-600' : 'border-zinc-800 focus:border-white'
-                                                }`}
+                                                } rounded-md`}
                                             placeholder='{"installed":{"client_id":"...","project_id":"..."}}'
                                             onChange={e => handleCredentialsPaste(e.target.value)}
                                         />
@@ -245,7 +245,7 @@ export const IntegrationsTab = ({
                                 {showTokenImport && (
                                     <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-150">
                                         <textarea
-                                            className="w-full h-24 bg-black border border-zinc-800 p-3 font-mono text-xs text-zinc-300 focus:border-white focus:outline-none resize-none"
+                                            className="w-full h-24 bg-black border border-zinc-800 p-3 font-mono text-xs text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md"
                                             placeholder='{"token": "...", "refresh_token": "..."}'
                                             onChange={e => handleTokenPaste(e.target.value)}
                                         />
@@ -268,7 +268,7 @@ export const IntegrationsTab = ({
                                     Upload your OAuth credentials below to enable it.
                                 </p>
 
-                                <div className="text-left text-[10px] bg-black p-4 border border-zinc-800 mb-5 max-w-md mx-auto overflow-y-auto max-h-[300px]">
+                                <div className="text-left text-[10px] bg-black p-4 border border-zinc-800 mb-5 max-w-md mx-auto overflow-y-auto max-h-[300px] rounded-md">
                                     <p className="font-bold text-zinc-300 mb-2">Quick Setup Guide:</p>
                                     <ol className="list-decimal pl-4 space-y-1.5 text-zinc-500">
                                         <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Google Cloud Console</a> &amp; create a Project.</li>
@@ -283,14 +283,14 @@ export const IntegrationsTab = ({
                             <div className="border-t border-zinc-800 pt-5 space-y-4">
                                 {/* Paste area */}
                                 <details className="group appearance-none">
-                                    <summary className="cursor-pointer text-xs font-bold text-zinc-400 hover:text-white list-none flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors">
+                                    <summary className="cursor-pointer text-xs font-bold text-zinc-400 hover:text-white list-none flex items-center gap-2 p-3 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors rounded-md">
                                         <span>+ PASTE CREDENTIALS.JSON CONTENT</span>
                                     </summary>
                                     <div className="mt-2">
                                         <textarea
                                             className={`w-full h-32 bg-black border p-3 text-[10px] font-mono text-zinc-300 focus:outline-none resize-none transition-colors ${pasteStatus === 'saved' ? 'border-green-600' :
                                                     pasteStatus === 'error' ? 'border-red-600' : 'border-zinc-800 focus:border-white'
-                                                }`}
+                                                } rounded-md`}
                                             placeholder='{"installed":{"client_id":"...","project_id":"..."}}'
                                             onChange={e => handleCredentialsPaste(e.target.value)}
                                         />
@@ -313,7 +313,7 @@ export const IntegrationsTab = ({
                                     </summary>
                                     <div className="mt-2">
                                         <textarea
-                                            className="w-full h-24 bg-black border border-zinc-800 p-3 font-mono text-xs text-zinc-300 focus:border-white focus:outline-none resize-none"
+                                            className="w-full h-24 bg-black border border-zinc-800 p-3 font-mono text-xs text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md"
                                             placeholder='{"token": "...", "refresh_token": "..."}'
                                             onChange={e => handleTokenPaste(e.target.value)}
                                         />
@@ -326,13 +326,13 @@ export const IntegrationsTab = ({
             </div>
 
             {/* ── n8n ─────────────────────────────────────────────────── */}
-            <div className="bg-zinc-900 border border-zinc-800 overflow-hidden">
+            <div className="bg-zinc-900 border border-zinc-800 overflow-hidden rounded-md">
                 <div className="p-4 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className={`h-2 w-2 ${n8nApiKey ? 'bg-green-500' : 'bg-red-500'}`} />
                         <span className="text-sm font-bold text-zinc-400">n8n</span>
                     </div>
-                    <span className={`text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 ${n8nApiKey ? 'text-green-400' : 'text-zinc-500'}`}>
+                    <span className={`text-xs px-2 py-1 bg-zinc-900 border border-zinc-800 ${n8nApiKey ? 'text-green-400' : 'text-zinc-500'} rounded-md`}>
                         {n8nApiKey ? 'CONFIGURED' : 'NOT CONFIGURED'}
                     </span>
                 </div>
@@ -343,7 +343,7 @@ export const IntegrationsTab = ({
                             type="text"
                             value={n8nUrl}
                             onChange={(e) => setN8nUrl(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                             placeholder="http://localhost:5678"
                         />
                         <p className="text-xs text-zinc-600">Defaults to localhost for local dev. Use your production n8n base URL in deployment.</p>
@@ -354,7 +354,7 @@ export const IntegrationsTab = ({
                             type="password"
                             value={n8nApiKey}
                             onChange={(e) => setN8nApiKey(e.target.value)}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                             placeholder="X-N8N-API-KEY"
                         />
                         <p className="text-xs text-zinc-600">Used server-side to list workflows and derive webhook URLs.</p>

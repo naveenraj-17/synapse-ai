@@ -24,7 +24,7 @@ export const DataLabTab = ({
                 <div className="space-y-1">
                     <label className="text-[10px] uppercase font-bold text-zinc-500">Domain / Topic</label>
                     <input type="text" value={dlTopic} onChange={e => setDlTopic(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none"
+                        className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none rounded-md"
                         placeholder="e.g. Medical Assistant, Python Coding Tutor" />
                 </div>
 
@@ -32,7 +32,7 @@ export const DataLabTab = ({
                     <div className="space-y-1">
                         <label className="text-[10px] uppercase font-bold text-zinc-500">Count</label>
                         <input type="number" value={dlCount} onChange={e => setDlCount(parseInt(e.target.value))}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none rounded-md"
                             min={1} max={100} />
                     </div>
                     <div className="space-y-1">
@@ -52,13 +52,13 @@ export const DataLabTab = ({
                 <div className="space-y-1">
                     <label className="text-[10px] uppercase font-bold text-zinc-500">Target Persona (System Prompt)</label>
                     <textarea value={dlSystemPrompt} onChange={e => setDlSystemPrompt(e.target.value)}
-                        className="w-full h-24 bg-zinc-900 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none" />
+                        className="w-full h-24 bg-zinc-900 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md" />
                 </div>
 
                 <div className="space-y-1">
                     <label className="text-[10px] uppercase font-bold text-zinc-500">Edge Cases & Constraints</label>
                     <textarea value={dlEdgeCases} onChange={e => setDlEdgeCases(e.target.value)}
-                        className="w-full h-24 bg-zinc-900 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none"
+                        className="w-full h-24 bg-zinc-900 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md"
                         placeholder="e.g. 'If user asks for illegal advice, politely refuse.' or 'Always include code comments.'" />
                 </div>
 
@@ -69,7 +69,7 @@ export const DataLabTab = ({
             </div>
         </div>
 
-        <div className="bg-zinc-950 border border-zinc-800 p-6 flex flex-col h-full">
+        <div className="bg-zinc-950 border border-zinc-800 p-6 flex flex-col h-full rounded-md">
             <h3 className="text-sm font-bold text-zinc-400 mb-4 flex items-center justify-between">
                 <span>DATASETS</span>
                 {dlStatus?.status === 'generating' && (
@@ -85,7 +85,7 @@ export const DataLabTab = ({
                     <div className="text-center py-10 text-zinc-600 text-xs italic">No datasets generated yet.</div>
                 ) : (
                     dlDatasets.map((ds: any) => (
-                        <div key={ds.filename} className="p-3 bg-black border border-zinc-800 flex justify-between items-center group hover:border-zinc-600">
+                        <div key={ds.filename} className="p-3 bg-black border border-zinc-800 flex justify-between items-center group hover:border-zinc-600 rounded-md">
                             <div className="flex-1 min-w-0">
                                 <div className="text-xs text-white font-mono truncate mb-1">{ds.filename}</div>
                                 <div className="text-[10px] text-zinc-500 flex gap-2">

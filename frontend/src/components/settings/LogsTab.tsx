@@ -148,7 +148,7 @@ export const LogsTab = () => {
         }
         return segments.map((seg, i) =>
             seg.type === 'compact' ? (
-                <div key={i} className="my-3 border border-cyan-800/60 bg-cyan-950/30 px-4 py-3">
+                <div key={i} className="my-3 border border-cyan-800/60 bg-cyan-950/30 px-4 py-3 rounded-md">
                     <pre className="font-code text-cyan-300 whitespace-pre-wrap break-words">{seg.content}</pre>
                 </div>
             ) : (

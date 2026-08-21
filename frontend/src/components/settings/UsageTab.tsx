@@ -180,7 +180,7 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
         return null;
     }
     return (
-        <div className="bg-zinc-900/60 border border-border p-5 space-y-4">
+        <div className="bg-zinc-900/60 border border-border p-5 space-y-4 rounded-md">
             <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-emerald-400" />
                 <h2 className="text-sm font-semibold text-white tracking-wide">Cache Analytics</h2>
@@ -255,7 +255,7 @@ function CacheDashboard({ summary }: { summary: CacheSummary }) {
                             <span className="text-right">Saved</span>
                         </div>
                         {activeRuns.slice(0, 5).map(r => (
-                            <div key={r.run_id} className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-row-hover border-b border-border last:border-0">
+                            <div key={r.run_id} className="grid grid-cols-[1fr_90px_120px] gap-2 px-4 py-2 text-xs hover:bg-row-hover border-b border-border last:border-0 rounded-md">
                                 <span className="text-zinc-400 font-mono truncate">{r.run_id}</span>
                                 <span className="text-right text-cyan-400 font-mono">{fmtK(r.cache_read_tokens)}</span>
                                 <span className="text-right text-emerald-400 font-mono">{fmt$(r.estimated_savings)}</span>
@@ -272,7 +272,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
     icon: any; label: string; value: string; sub?: string; color: string;
 }) {
     return (
-        <div className="relative flex flex-col gap-3 p-5 bg-zinc-900/80 border border-border overflow-hidden group hover:border-border-strong transition-all duration-300">
+        <div className="relative flex flex-col gap-3 p-5 bg-zinc-900/80 border border-border overflow-hidden group hover:border-border-strong transition-all duration-300 rounded-md">
             <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
                 style={{ background: `radial-gradient(ellipse at top left, ${color}10 0%, transparent 70%)` }} />
             <div className="flex items-center justify-between">
@@ -293,7 +293,7 @@ function ModelBar({ stat, maxCost }: { stat: ModelStat; maxCost: number }) {
     const pct = maxCost > 0 ? (stat.estimated_cost / maxCost) * 100 : 0;
     const meta = PROVIDER_META[detectProvider(stat.model)] ?? PROVIDER_META.ollama;
     return (
-        <div className="flex items-center gap-4 py-3 border-b border-border last:border-0 -mx-4 px-4 hover:bg-row-hover transition-colors">
+        <div className="flex items-center gap-4 py-3 border-b border-border last:border-0 -mx-4 px-4 hover:bg-row-hover transition-colors rounded-md">
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-sm font-medium text-white truncate">{stat.model}</span>
@@ -369,7 +369,7 @@ function SessionRow({ s }: { s: SessionStat }) {
                                 : isOrch
                                     ? 'border-violet-800/50 text-violet-400 bg-violet-950/40'
                                     : 'border-emerald-800/50 text-emerald-400 bg-emerald-950/40'
-                    }`}>
+                    } rounded-md`}>
                         {isSysprompt ? 'system' : isSched ? 'schedule' : isOrch ? 'orch' : 'chat'}
                     </span>
                 </div>
@@ -382,7 +382,7 @@ function SessionRow({ s }: { s: SessionStat }) {
                             isSched
                                 ? 'text-sky-400 bg-sky-950/40 border-sky-800/30'
                                 : 'text-violet-400 bg-violet-950/40 border-violet-800/30'
-                        }`}>
+                        } rounded-md`}>
                             {s.agents_used!.length} agent{s.agents_used!.length !== 1 ? 's' : ''}
                         </span>
                     )}
@@ -410,7 +410,7 @@ function SessionRow({ s }: { s: SessionStat }) {
                                             isSched
                                                 ? 'bg-sky-950/50 border-sky-800/30 text-sky-300'
                                                 : 'bg-violet-950/50 border-violet-800/30 text-violet-300'
-                                        }`}>
+                                        } rounded-md`}>
                                             <Cpu className="w-2.5 h-2.5 shrink-0" />{a}
                                         </span>
                                     ))}
@@ -522,7 +522,7 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
                                             </td>
                                         </tr>
                                     )}
-                                    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
+                                    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors rounded-md">
                                         <td className="py-2.5 pr-3 pl-3 text-zinc-600 tabular-nums">{i + 1}</td>
                                         <td className="py-2.5 pr-3 text-zinc-500 whitespace-nowrap tabular-nums">{fmtTime(log.timestamp)}</td>
                                         <td className="py-2.5 pr-3 font-mono max-w-[140px]">
@@ -583,7 +583,7 @@ function CompactionRow({ log, idx }: { log: IndexedLog; idx: number }) {
                 <span className="inline-flex items-center gap-1.5 text-cyan-400 font-semibold text-xs">
                     <span>🗜</span>
                     context compact
-                    <span className="text-[10px] text-cyan-600 font-normal border border-cyan-800/50 px-1.5 py-0.5 bg-cyan-950/60">{stage}</span>
+                    <span className="text-[10px] text-cyan-600 font-normal border border-cyan-800/50 px-1.5 py-0.5 bg-cyan-950/60 rounded-md">{stage}</span>
                 </span>
             </td>
             <td className="py-2.5 pr-3 text-right text-zinc-500 tabular-nums text-xs">{fmtKB(charsAfter)}</td>
@@ -780,7 +780,7 @@ function PricingEditor({ initialPricing, onSaved }: {
 
                             {/* Model rows */}
                             {models.map(([model, entry]) => (
-                                <div key={model} className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-2.5 border-b border-border last:border-0 hover:bg-row-hover transition-colors">
+                                <div key={model} className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center px-5 py-2.5 border-b border-border last:border-0 hover:bg-row-hover transition-colors rounded-md">
                                     <span className="text-xs font-mono text-zinc-300 truncate pr-2">
                                         {model}
                                         {(entry as any)._new && <span className="ml-2 text-emerald-500 text-[10px]">NEW</span>}
@@ -791,7 +791,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             type="number" min="0" step="0.001"
                                             value={entry.input_per_1m}
                                             onChange={e => update(model, 'input_per_1m', e.target.value)}
-                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors"
+                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors rounded-md"
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
@@ -800,7 +800,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             type="number" min="0" step="0.001"
                                             value={entry.output_per_1m}
                                             onChange={e => update(model, 'output_per_1m', e.target.value)}
-                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors"
+                                            className="w-20 bg-zinc-800 border border-border text-white text-xs px-2 py-1 text-right focus:outline-none focus:border-border-strong transition-colors rounded-md"
                                         />
                                     </div>
                                     <button onClick={() => removeModel(model)}
@@ -820,7 +820,7 @@ function PricingEditor({ initialPricing, onSaved }: {
                                             value={newModel}
                                             onChange={e => setNewModel(e.target.value)}
                                             onKeyDown={e => { if (e.key === 'Escape') { setUseCustomModel(false); setNewModel(''); } }}
-                                            className="bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
+                                            className="bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600 rounded-md"
                                         />
                                     ) : (
                                         <Select
@@ -849,14 +849,14 @@ function PricingEditor({ initialPricing, onSaved }: {
                                         <span className="text-zinc-500 text-xs">$</span>
                                         <input placeholder="0.000" value={newIn} onChange={e => setNewIn(e.target.value)}
                                             type="number" min="0" step="0.001"
-                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
+                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600 rounded-md"
                                         />
                                     </div>
                                     <div className="flex items-center gap-1 justify-end">
                                         <span className="text-zinc-500 text-xs">$</span>
                                         <input placeholder="0.000" value={newOut} onChange={e => setNewOut(e.target.value)}
                                             type="number" min="0" step="0.001"
-                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600"
+                                            className="w-20 bg-zinc-800 border border-border-strong text-white text-xs px-2 py-1.5 text-right focus:outline-none focus:border-accent transition-colors placeholder:text-zinc-600 rounded-md"
                                         />
                                     </div>
                                     <button onClick={() => addModel(provider)}
@@ -987,7 +987,7 @@ export function UsageTab() {
             <div className="max-w-6xl mx-auto px-6 md:px-10 py-8 space-y-8">
 
                 {error && (
-                    <div className="flex items-center gap-3 p-4 bg-red-950/40 border border-red-800/40 text-red-300 text-sm">
+                    <div className="flex items-center gap-3 p-4 bg-red-950/40 border border-red-800/40 text-red-300 text-sm rounded-md">
                         <AlertTriangle className="w-4 h-4 shrink-0" />
                         {error}
                     </div>
@@ -996,14 +996,14 @@ export function UsageTab() {
                 {loading && !summary && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {[...Array(4)].map((_, i) => (
-                            <div key={i} className="h-28 bg-zinc-900/80 border border-border animate-pulse" />
+                            <div key={i} className="h-28 bg-zinc-900/80 border border-border animate-pulse rounded-md" />
                         ))}
                     </div>
                 )}
 
                 {!loading && summary && summary.total_requests === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                        <div className="p-4 bg-zinc-900 border border-border">
+                        <div className="p-4 bg-zinc-900 border border-border rounded-md">
                             <BarChart3 className="w-8 h-8 text-zinc-600" />
                         </div>
                         <div>
@@ -1026,7 +1026,7 @@ export function UsageTab() {
                         {cacheSummary && <CacheDashboard summary={cacheSummary} />}
 
                         {/* Cost by Model */}
-                        <div className="bg-zinc-900/60 border border-border p-5">
+                        <div className="bg-zinc-900/60 border border-border p-5 rounded-md">
                             <div className="flex items-center gap-2 mb-5">
                                 <BarChart3 className="w-4 h-4 text-zinc-400" />
                                 <h2 className="text-sm font-semibold text-white tracking-wide">Cost by Model</h2>
@@ -1038,7 +1038,7 @@ export function UsageTab() {
                         </div>
 
                         {/* Session History -- always visible, includes schedule info */}
-                        <div className="bg-zinc-900/60 border border-border p-5">
+                        <div className="bg-zinc-900/60 border border-border p-5 rounded-md">
                             {/* Header */}
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -1106,7 +1106,7 @@ export function UsageTab() {
                 )}
 
                 {/* Disclaimer */}
-                <div className="flex items-start gap-3 p-4 bg-zinc-900/40 border border-border text-xs text-zinc-500">
+                <div className="flex items-start gap-3 p-4 bg-zinc-900/40 border border-border text-xs text-zinc-500 rounded-md">
                     <CheckCircle2 className="w-4 h-4 text-zinc-600 shrink-0 mt-0.5" />
                     <div>
                         <p className="font-medium text-zinc-400 mb-1">About cost estimates</p>

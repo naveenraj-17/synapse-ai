@@ -46,11 +46,11 @@ export const SupportTab = () => {
             answer: (
                 <div className="space-y-3 text-zinc-400">
                     <p>There are two main ways to extend your agents' capabilities:</p>
-                    <div className="bg-zinc-950 p-3 border border-zinc-800">
+                    <div className="bg-zinc-950 p-3 border border-zinc-800 rounded-md">
                         <strong className="text-zinc-300 block mb-1">1. Tool Builder (Custom Python / HTTP)</strong>
                         <p className="text-sm">Write a Python script or configure an HTTP request (like n8n) in the <Link href="/tools" className="text-blue-400 hover:underline">Tools</Link>.</p>
                     </div>
-                    <div className="bg-zinc-950 p-3 border border-zinc-800">
+                    <div className="bg-zinc-950 p-3 border border-zinc-800 rounded-md">
                         <strong className="text-zinc-300 block mb-1">2. MCP Servers</strong>
                         <p className="text-sm">Connect external tools via the Model Context Protocol in the <Link href="/mcp-servers" className="text-blue-400 hover:underline">MCP Servers</Link>. Provide the connection command/URL, and the server's tools will be auto-registered.</p>
                     </div>
@@ -93,7 +93,7 @@ export const SupportTab = () => {
                     <p>
                         The <Link href="/vault" className="text-blue-400 hover:underline">Vault</Link> stores persistent files, knowledge bases, and skills.
                     </p>
-                    <p className="text-sm bg-zinc-950 p-2 border border-zinc-800">
+                    <p className="text-sm bg-zinc-950 p-2 border border-zinc-800 rounded-md">
                         <strong>Pro Tip:</strong> Agents can reference vault files directly in their prompts using the <code className="font-code text-zinc-300 bg-zinc-900 px-1 py-0.5">@[path]</code> syntax. This gives them immediate access to essential context.
                     </p>
                     <a href="https://docs.synapseorch.com/vault" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-400 hover:underline">
@@ -140,7 +140,7 @@ export const SupportTab = () => {
                             href={href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="group bg-zinc-900 border border-zinc-800 p-3 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors"
+                            className="group bg-zinc-900 border border-zinc-800 p-3 hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors rounded-md"
                         >
                             <Icon className="h-4 w-4 text-zinc-500 group-hover:text-zinc-300 mb-2 transition-colors" />
                             <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">{label}</div>
@@ -153,7 +153,7 @@ export const SupportTab = () => {
             {/* Discord Callout */}
             <div className="space-y-4">
                 <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Community</label>
-                <div className="bg-zinc-900 border border-zinc-800 p-4">
+                <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-md">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                             <h3 className="text-sm font-bold text-zinc-200 flex items-center gap-2 mb-1">
@@ -197,13 +197,13 @@ export const SupportTab = () => {
                 <div className="space-y-3">
 
                     <div className="flex gap-4 group">
-                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors">
+                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors rounded-md">
                             1
                         </div>
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Configure Models
-                                <Link href="/settings/models" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/settings/models" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 rounded-md">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>
@@ -212,13 +212,13 @@ export const SupportTab = () => {
                     </div>
 
                     <div className="flex gap-4 group">
-                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors">
+                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors rounded-md">
                             2
                         </div>
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Add Tools & Servers (Optional)
-                                <Link href="/mcp-servers" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/mcp-servers" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 rounded-md">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>
@@ -227,13 +227,13 @@ export const SupportTab = () => {
                     </div>
 
                     <div className="flex gap-4 group">
-                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors">
+                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors rounded-md">
                             3
                         </div>
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Build Agents
-                                <Link href="/agents" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/agents" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 rounded-md">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>
@@ -242,13 +242,13 @@ export const SupportTab = () => {
                     </div>
 
                     <div className="flex gap-4 group">
-                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors">
+                        <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold text-xs group-hover:bg-white group-hover:text-black group-hover:border-white transition-colors rounded-md">
                             4
                         </div>
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-0.5 flex items-center gap-2">
                                 Create Orchestrations
-                                <Link href="/orchestrations" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+                                <Link href="/orchestrations" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 rounded-md">
                                     Go <ChevronRight className="h-2.5 w-2.5" />
                                 </Link>
                             </h3>

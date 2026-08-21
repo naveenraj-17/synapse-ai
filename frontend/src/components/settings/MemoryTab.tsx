@@ -126,10 +126,10 @@ export const MemoryTab = () => {
                                 isChecked 
                                     ? 'bg-red-950/20 border-red-900/50' 
                                     : 'bg-zinc-900/40 border-zinc-800/50 hover:border-zinc-700/50 hover:bg-zinc-900/80'
-                            }`}
+                            } rounded-md`}
                         >
                             {/* Custom checkbox */}
-                            <div className={`mt-0.5 h-4 w-4 flex-shrink-0 flex items-center justify-center transition-colors border ${isChecked ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-700 group-hover:border-zinc-500'}`}>
+                            <div className={`mt-0.5 h-4 w-4 flex-shrink-0 flex items-center justify-center transition-colors border ${isChecked ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-700 group-hover:border-zinc-500'} rounded-md`}>
                                 {isChecked && (
                                     <svg className="h-3 w-3 text-black" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <polyline points="2,6 5,9 10,3" />
@@ -150,7 +150,7 @@ export const MemoryTab = () => {
 
             {/* Result message */}
             {result && (
-                <div className={`flex items-center gap-2 text-sm p-3 border ${result.type === 'success' ? 'text-green-400 border-green-900/50 bg-green-950/10' : 'text-red-400 border-red-900/50 bg-red-950/10'}`}>
+                <div className={`flex items-center gap-2 text-sm p-3 border ${result.type === 'success' ? 'text-green-400 border-green-900/50 bg-green-950/10' : 'text-red-400 border-red-900/50 bg-red-950/10'} rounded-md`}>
                     {result.type === 'success'
                         ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
                         : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
@@ -160,7 +160,7 @@ export const MemoryTab = () => {
 
             {/* Danger Zone */}
             <div className="mt-8 pt-6 border-t border-zinc-800/50">
-                <div className="bg-transparent border border-red-900/30 p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-8 hover:border-red-900/50 transition-colors">
+                <div className="bg-transparent border border-red-900/30 p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-8 hover:border-red-900/50 transition-colors rounded-md">
                     <div>
                         <h3 className="text-sm uppercase tracking-wider font-bold text-red-500 flex items-center gap-2">
                             <Trash2 className="h-4 w-4" /> Danger Zone
@@ -172,7 +172,7 @@ export const MemoryTab = () => {
                     <button
                         disabled={selectedCount === 0 || clearing}
                         onClick={() => setShowConfirm(true)}
-                        className="flex-shrink-0 px-6 py-2.5 text-sm font-bold bg-red-950/40 border border-red-900/50 text-red-500 hover:bg-red-900/60 hover:text-red-400 hover:border-red-500/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        className="flex-shrink-0 px-6 py-2.5 text-sm font-bold bg-red-950/40 border border-red-900/50 text-red-500 hover:bg-red-900/60 hover:text-red-400 hover:border-red-500/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all rounded-md"
                     >
                         {clearing ? 'Clearing...' : selectedCount === 0 ? 'Clear Selected' : `Clear Selected (${selectedCount})`}
                     </button>

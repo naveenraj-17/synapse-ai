@@ -108,7 +108,7 @@ export const CustomToolsTab = ({
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowImport(true)}
-                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors"
+                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors rounded-md"
                             >
                                 <Import className="h-4 w-4" /> Import OpenAPI
                             </button>
@@ -129,7 +129,7 @@ export const CustomToolsTab = ({
                                     setHeaderRows([{ id: 'h1', key: '', value: '' }]);
                                     setToolBuilderMode('config');
                                 }}
-                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors"
+                                className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors rounded-md"
                             >
                                 <Plus className="h-4 w-4" /> New Tool
                             </button>
@@ -138,7 +138,7 @@ export const CustomToolsTab = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {customTools.map((t: any) => (
-                            <div key={t.name} className={`p-4 border hover:border-zinc-600 transition-all group relative ${t.tool_type === 'python' ? 'bg-violet-950/10 border-violet-900/30 hover:border-violet-700/50' : 'bg-zinc-900 border-zinc-800'}`}>
+                            <div key={t.name} className={`p-4 border hover:border-zinc-600 transition-all group relative ${t.tool_type === 'python' ? 'bg-violet-950/10 border-violet-900/30 hover:border-violet-700/50' : 'bg-zinc-900 border-zinc-800'} rounded-md`}>
                                 <div className="font-bold text-white mb-1 flex items-center gap-2 pr-10">
                                     <span className="truncate">{t.generalName || t.name}</span>
                                     {getToolBadge(t)}
@@ -258,7 +258,7 @@ export const CustomToolsTab = ({
                                     }
                                     setDraftTool(update);
                                 }}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700"
+                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none placeholder:text-zinc-700 rounded-md"
                                 placeholder="e.g. Process Orders"
                             />
                         </div>
@@ -268,7 +268,7 @@ export const CustomToolsTab = ({
                                 type="text"
                                 value={draftTool.name}
                                 onChange={e => setDraftTool({ ...draftTool, name: e.target.value })}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono placeholder:text-zinc-700"
+                                className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono placeholder:text-zinc-700 rounded-md"
                                 placeholder="e.g. process_orders"
                             />
                         </div>
@@ -278,7 +278,7 @@ export const CustomToolsTab = ({
                         <textarea
                             value={draftTool.description}
                             onChange={e => setDraftTool({ ...draftTool, description: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none resize-vertical min-h-[80px]"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none resize-vertical min-h-[80px] rounded-md"
                             placeholder="What does this tool do? Describe its purpose and critical rules for the AI..."
                         />
                     </div>
@@ -363,7 +363,7 @@ export const CustomToolsTab = ({
                                     type="text"
                                     value={draftTool.url}
                                     onChange={e => setDraftTool({ ...draftTool, url: e.target.value })}
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono"
+                                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
                                     placeholder="https://api.example.com/users/{id}"
                                 />
                                 {/* URL templating hint — dynamic based on input schema */}
@@ -407,7 +407,7 @@ export const CustomToolsTab = ({
                                                 newRows[idx].key = e.target.value;
                                                 setHeaderRows(newRows);
                                             }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono"
+                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
                                         />
                                         <input
                                             type="text"
@@ -418,7 +418,7 @@ export const CustomToolsTab = ({
                                                 newRows[idx].value = e.target.value;
                                                 setHeaderRows(newRows);
                                             }}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono"
+                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-sm text-white focus:border-white focus:outline-none font-mono rounded-md"
                                         />
                                         <button
                                             onClick={() => setHeaderRows(headerRows.filter(r => r.id !== row.id))}
@@ -436,7 +436,7 @@ export const CustomToolsTab = ({
                                 <textarea
                                     value={draftTool.inputSchemaStr}
                                     onChange={e => setDraftTool({ ...draftTool, inputSchemaStr: e.target.value })}
-                                    className="w-full flex-1 bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-white focus:outline-none resize-none"
+                                    className="w-full flex-1 bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-white focus:outline-none resize-none rounded-md"
                                     placeholder='{"type": "object", "properties": {"msg": {"type": "string"}}}'
                                 />
                             </div>

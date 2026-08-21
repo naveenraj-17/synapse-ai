@@ -261,7 +261,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
     const tdCls = 'px-4 py-2.5 text-xs';
 
     const renderRunsTable = (rows: RunSummary[], empty: string) => (
-        <div className="border border-border bg-zinc-900/60">
+        <div className="border border-border bg-zinc-900/60 rounded-md">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead>
@@ -1301,7 +1301,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                 <button
                                     key={run.run_id}
                                     onClick={() => restoreRun(run)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors"
+                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors rounded-md"
                                 >
                                     <span className={`w-1.5 h-1.5 rounded-full ${
                                         run.status === 'running' ? 'bg-blue-400 animate-pulse' : 'bg-yellow-400'
@@ -1360,7 +1360,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                         )}
 
                         {landingTab === 'orchestrations' && (
-                            <div className="border border-border bg-zinc-900/60">
+                            <div className="border border-border bg-zinc-900/60 rounded-md">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
@@ -1704,7 +1704,7 @@ function ResponseModal({ stepName, stepType, content, onClose }: { stepName: str
                                 em: ({ children }) => <em className="italic text-zinc-300">{children}</em>,
                                 hr: () => <hr className="border-zinc-700 my-4" />,
                                 table: ({ children }) => <table className="w-full text-xs border-collapse mb-3">{children}</table>,
-                                th: ({ children }) => <th className="border border-zinc-700 px-2 py-1 text-zinc-200 font-semibold bg-zinc-800">{children}</th>,
+                                th: ({ children }) => <th className="border border-zinc-700 px-2 py-1 text-zinc-200 font-semibold bg-zinc-800 rounded-md">{children}</th>,
                                 td: ({ children }) => <td className="border border-zinc-700 px-2 py-1 text-zinc-300">{children}</td>,
                             }}
                         >

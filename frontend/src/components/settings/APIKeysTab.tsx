@@ -24,12 +24,12 @@ const CodeBlock = ({ code }: { code: string }) => {
     };
     return (
         <div className="relative group">
-            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed">
+            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed rounded-md">
                 {code}
             </pre>
             <button
                 onClick={copy}
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold border border-zinc-700"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold border border-zinc-700 rounded-md"
             >
                 {copied ? '✓ Copied' : 'Copy'}
             </button>
@@ -60,7 +60,7 @@ const EndpointRow = ({ method, path, desc, badge }: { method: string; path: stri
             <span className={`text-[10px] font-bold uppercase w-9 shrink-0 pt-0.5 ${color}`}>{method}</span>
             <code className="text-xs font-code text-zinc-300 shrink-0">{path}</code>
             <span className="text-xs text-zinc-600 flex-1">{desc}</span>
-            {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-violet-900/40 text-violet-400 border border-violet-800/50 shrink-0">{badge}</span>}
+            {badge && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-violet-900/40 text-violet-400 border border-violet-800/50 shrink-0 rounded-md">{badge}</span>}
         </div>
     );
 };
@@ -203,7 +203,7 @@ print(f"\\nCompleted: {data['response']}")`} />
 const V2Docs = ({ BASE }: { BASE: string }) => (
     <>
         {/* Scale mode notice */}
-        <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300">
+        <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300 rounded-md">
             <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
             <span>
                 V2 requires <strong className="text-violet-200">Scale mode</strong> enabled in Settings → Scale. All jobs are enqueued to Redis ARQ workers — the API returns immediately with a <code className="font-code text-violet-300">run_id</code> and a <code className="font-code text-violet-300">202 Accepted</code>.
@@ -667,7 +667,7 @@ const DocsDrawer = ({ open, onClose, port }: { open: boolean; onClose: () => voi
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        <code className="text-[10px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-1 font-code">Base: {BASE}</code>
+                        <code className="text-[10px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-1 font-code rounded-md">Base: {BASE}</code>
                         <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
                             <X className="w-4 h-4" />
                         </button>
@@ -752,7 +752,7 @@ export const APIKeysTab = () => {
             {/* Toast */}
             {toast && (
                 <div className={`fixed top-6 right-6 z-50 flex items-center gap-2 px-4 py-3 text-sm font-medium shadow-lg
-                    ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                    ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'} rounded-md`}>
                     {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                     {toast.message}
                 </div>
@@ -775,7 +775,7 @@ export const APIKeysTab = () => {
                         </>
                     }
                 >
-                    <div className="border border-border bg-bg p-3 font-code text-sm break-all text-success">
+                    <div className="border border-border bg-bg p-3 font-code text-sm break-all text-success rounded-md">
                         {revealedKey}
                     </div>
                 </Modal>
@@ -790,14 +790,14 @@ export const APIKeysTab = () => {
                     <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Generate API Key</label>
                     <button
                         onClick={() => setDocsOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors rounded-md"
                     >
                         <BookOpen className="w-3 h-3" />
                         View Docs
                     </button>
                 </div>
                 <p className="text-xs text-zinc-600">
-                    API keys authenticate calls to <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v1/*</code> (synchronous) and <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400">/api/v2/*</code> (distributed, scale mode).
+                    API keys authenticate calls to <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400 rounded-md">/api/v1/*</code> (synchronous) and <code className="font-code bg-zinc-900 border border-zinc-800 px-1 py-0.5 text-zinc-400 rounded-md">/api/v2/*</code> (distributed, scale mode).
                 </p>
                 <div className="flex gap-2">
                     <input
@@ -806,7 +806,7 @@ export const APIKeysTab = () => {
                         onChange={e => setNewKeyName(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleGenerate()}
                         placeholder="Key name (e.g., Slack Bot, Internal Tool)"
-                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
+                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
                     />
                     <button
                         onClick={handleGenerate}
@@ -828,11 +828,11 @@ export const APIKeysTab = () => {
                 ) : (
                     <div className="space-y-1">
                         {keys.map(k => (
-                            <div key={k.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2 group">
+                            <div key={k.id} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2 group rounded-md">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-medium text-zinc-200">{k.name}</span>
-                                        <code className="text-xs bg-zinc-950 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 font-code">
+                                        <code className="text-xs bg-zinc-950 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 font-code rounded-md">
                                             {k.key_prefix}…
                                         </code>
                                     </div>

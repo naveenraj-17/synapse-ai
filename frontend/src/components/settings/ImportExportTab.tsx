@@ -32,7 +32,7 @@ export function ImportExportTab({ defaultView, onImportSuccess, onNavigate }: { 
   return (
     <div className="space-y-8">
       {/* View toggle */}
-      <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit">
+      <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit rounded-md">
         <button
           onClick={() => setView("export")}
           className={`flex items-center gap-1.5 px-5 py-2 text-xs font-bold transition-colors ${view === "export" ? "bg-white text-black" : "text-zinc-500 hover:text-white"}`}

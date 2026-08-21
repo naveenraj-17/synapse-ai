@@ -337,7 +337,7 @@ export const McpServersTab = ({
             <div className="pt-6 border-t border-zinc-800 space-y-6">
 
                 {/* Type toggle */}
-                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit">
+                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 w-fit rounded-md">
                     <button
                         onClick={() => setServerType('stdio')}
                         className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold transition-colors ${serverType === 'stdio' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'}`}
@@ -427,10 +427,10 @@ export const McpServersTab = ({
                                     <div key={i} className="flex gap-2">
                                         <input type="text" placeholder="KEY" value={env.key}
                                             onChange={e => updateEnvVar(i, 'key', e.target.value)}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none" />
+                                            className="flex-1 bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none rounded-md" />
                                         <input type="text" placeholder="VALUE" value={env.value}
                                             onChange={e => updateEnvVar(i, 'value', e.target.value)}
-                                            className="flex-[2] bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none" />
+                                            className="flex-[2] bg-zinc-900 border border-zinc-800 p-2 text-xs text-white font-mono focus:border-white focus:outline-none rounded-md" />
                                         <button onClick={() => removeEnvVar(i)} className="p-2 text-zinc-600 hover:text-red-500">
                                             <Trash className="h-4 w-4" />
                                         </button>

@@ -109,7 +109,7 @@ export function ExportView() {
   if (!data) {
     return (
       <div className="space-y-4">
-        <div className="p-8 text-center border border-dashed border-zinc-800 bg-zinc-900/30">
+        <div className="p-8 text-center border border-dashed border-zinc-800 bg-zinc-900/30 rounded-md">
           <Package className="h-8 w-8 mx-auto text-zinc-700 mb-3" />
           <p className="text-zinc-400 text-sm font-bold">Export your configurations</p>
           <p className="text-zinc-600 text-xs mt-1">Select orchestrations, agents, MCP servers, and tools to export as a portable bundle</p>
@@ -123,7 +123,7 @@ export function ExportView() {
           </button>
         </div>
         {error && (
-          <div className="flex items-center gap-2 text-red-400 text-xs p-3 border border-red-900/50 bg-red-950/10">
+          <div className="flex items-center gap-2 text-red-400 text-xs p-3 border border-red-900/50 bg-red-950/10 rounded-md">
             <XCircle className="h-4 w-4 flex-shrink-0" /> {error}
           </div>
         )}
@@ -135,7 +135,7 @@ export function ExportView() {
     <div className="space-y-6">
 
       {hasPythonTool && (
-        <div className="flex items-start gap-3 p-4 border border-yellow-900/50 bg-yellow-950/10">
+        <div className="flex items-start gap-3 p-4 border border-yellow-900/50 bg-yellow-950/10 rounded-md">
           <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Python Tool Warning</p>
@@ -159,7 +159,7 @@ export function ExportView() {
       )}
 
       {total > 0 && (
-        <div className="border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
+        <div className="border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 rounded-md">
           <h4 className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Export File</h4>
           <div className="flex items-center gap-2">
             <input

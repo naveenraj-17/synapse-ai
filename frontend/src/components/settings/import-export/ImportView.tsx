@@ -312,7 +312,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onClick={() => fileRef.current?.click()}
-        className={`flex flex-col items-center justify-center border border-dashed py-14 px-8 cursor-pointer transition-colors ${dragging ? "border-white bg-zinc-800" : "border-zinc-700 bg-zinc-900/30 hover:border-zinc-500 hover:bg-zinc-900/60"}`}
+        className={`flex flex-col items-center justify-center border border-dashed py-14 px-8 cursor-pointer transition-colors ${dragging ? "border-white bg-zinc-800" : "border-zinc-700 bg-zinc-900/30 hover:border-zinc-500 hover:bg-zinc-900/60"} rounded-md`}
       >
         <Upload className="h-8 w-8 text-zinc-600 mb-3" />
         <p className="text-zinc-300 text-sm font-bold">Drop your export file here</p>
@@ -320,7 +320,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
         <input ref={fileRef} type="file" accept=".json" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); e.target.value = ""; }} />
       </div>
       {parseError && (
-        <div className="flex items-center gap-2 text-red-400 text-xs p-3 border border-red-900/50 bg-red-950/10">
+        <div className="flex items-center gap-2 text-red-400 text-xs p-3 border border-red-900/50 bg-red-950/10 rounded-md">
           <XCircle className="h-4 w-4 flex-shrink-0" /> {parseError}
         </div>
       )}
@@ -338,7 +338,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900">
+        <div className="flex items-center gap-3 px-4 py-3 border border-zinc-800 bg-zinc-900 rounded-md">
           <Package className="h-4 w-4 text-zinc-400 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-zinc-200">Bundle loaded</p>
@@ -350,7 +350,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
         </div>
 
         {googleDependentAgents.length > 0 && googleStatus?.is_connected === false && (
-          <div className="flex items-start gap-3 p-4 border border-orange-900/50 bg-orange-950/10">
+          <div className="flex items-start gap-3 p-4 border border-orange-900/50 bg-orange-950/10 rounded-md">
             <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
             <div className="space-y-1.5">
               <p className="text-orange-400 text-xs font-bold uppercase tracking-wider">Google Workspace Not Connected</p>
@@ -378,7 +378,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
         )}
 
         {bundle.has_python_tools && (
-          <div className="flex items-start gap-3 p-4 border border-yellow-900/50 bg-yellow-950/10">
+          <div className="flex items-start gap-3 p-4 border border-yellow-900/50 bg-yellow-950/10 rounded-md">
             <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Python Tools Included</p>
@@ -389,7 +389,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
 
         {/* ── Models Info Panel ─────────────────────────────────────────── */}
         {hasModels ? (
-          <div className="border border-blue-900/40 bg-blue-950/10">
+          <div className="border border-blue-900/40 bg-blue-950/10 rounded-md">
             {/* Header row */}
             <div className="flex items-center gap-3 px-4 py-3">
               <Cpu className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
@@ -446,7 +446,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
           </div>
         ) : (
           /* No explicit models → neutral info */
-          <div className="flex items-start gap-3 p-3.5 border border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-start gap-3 p-3.5 border border-zinc-800 bg-zinc-900/40 rounded-md">
             <Cpu className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0 mt-0.5" />
             <p className="text-zinc-500 text-xs leading-relaxed">
               No explicit model overrides found — agents &amp; orchestration steps will use your global default model.
@@ -504,7 +504,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
 
         {/* Default-model active badge */}
         {useDefaultModels && hasModels && (
-          <div className="flex items-center gap-2 px-3 py-2 border border-blue-800/50 bg-blue-950/20">
+          <div className="flex items-center gap-2 px-3 py-2 border border-blue-800/50 bg-blue-950/20 rounded-md">
             <RotateCcw className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
             <p className="text-blue-400 text-xs">
               <span className="font-bold">Default model active</span> — {allModels.length} model override{allModels.length !== 1 ? "s" : ""} will be stripped on import.
@@ -537,7 +537,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
 
     return (
       <div className="space-y-6">
-        <div className="flex items-start gap-3 p-4 border border-blue-900/50 bg-blue-950/10">
+        <div className="flex items-start gap-3 p-4 border border-blue-900/50 bg-blue-950/10 rounded-md">
           <AlertCircle className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-blue-400 text-xs font-bold uppercase tracking-wider">Secret Values Required</p>
@@ -664,7 +664,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-3 px-4 py-3 border border-green-900/50 bg-green-950/10">
+        <div className="flex items-center gap-3 px-4 py-3 border border-green-900/50 bg-green-950/10 rounded-md">
           <CheckCircle2 className="h-4 w-4 text-green-400 flex-shrink-0" />
           <div>
             <p className="text-green-400 text-xs font-bold uppercase tracking-wider">Import Complete</p>
@@ -715,7 +715,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
                           href={item.auth_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs font-bold text-blue-400 border border-blue-700 px-2 py-0.5 hover:bg-blue-900/30 transition-colors mr-2"
+                          className="text-xs font-bold text-blue-400 border border-blue-700 px-2 py-0.5 hover:bg-blue-900/30 transition-colors mr-2 rounded-md"
                         >
                           Authorize ↗
                         </a>
@@ -730,7 +730,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
         </div>
 
         {results.mcp_servers?.some(m => m.status === "disconnected") && (
-          <div className="flex items-start gap-3 p-4 border border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-start gap-3 p-4 border border-zinc-800 bg-zinc-900/40 rounded-md">
             <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
             <p className="text-zinc-500 text-xs leading-relaxed">
               Some MCP servers could not connect automatically. Go to the{" "}
@@ -740,7 +740,7 @@ export function ImportView({ preloadedBundle, onReset, onImportSuccess, onNaviga
           </div>
         )}
         {results.mcp_servers?.some(m => m.status === "oauth_pending") && (
-          <div className="flex items-start gap-3 p-4 border border-blue-900/40 bg-blue-950/10">
+          <div className="flex items-start gap-3 p-4 border border-blue-900/40 bg-blue-950/10 rounded-md">
             <AlertCircle className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
             <p className="text-zinc-400 text-xs leading-relaxed">
               Some servers require OAuth authorization. Click the{" "}

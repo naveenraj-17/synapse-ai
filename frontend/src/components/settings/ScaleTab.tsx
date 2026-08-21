@@ -176,7 +176,7 @@ function CollapsibleSection({
                 className="w-full flex items-center justify-between p-4 hover:bg-zinc-900/50 transition-colors text-left"
             >
                 <div className="flex items-center gap-3">
-                    <div className="p-1.5 bg-zinc-900 border border-zinc-800 shrink-0">
+                    <div className="p-1.5 bg-zinc-900 border border-zinc-800 shrink-0 rounded-md">
                         <Icon className="h-3.5 w-3.5 text-zinc-400" />
                     </div>
                     <div>
@@ -211,12 +211,12 @@ const CodeBlock = ({ code }: { code: string }) => {
     };
     return (
         <div className="relative group">
-            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed whitespace-pre-wrap break-words">
+            <pre className="bg-zinc-950 border border-zinc-800 p-3 text-xs text-zinc-400 overflow-x-auto font-code leading-relaxed whitespace-pre-wrap break-words rounded-md">
                 {code}
             </pre>
             <button
                 onClick={copy}
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold border border-zinc-700"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-[10px] font-bold border border-zinc-700 rounded-md"
             >
                 {copied ? '✓ Copied' : 'Copy'}
             </button>
@@ -269,7 +269,7 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 modern-scrollbar">
 
                     {/* Intro banner */}
-                    <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300">
+                    <div className="flex items-start gap-3 px-4 py-3 bg-violet-950/30 border border-violet-800/40 text-xs text-violet-300 rounded-md">
                         <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
                         <span>
                             Scale mode turns Synapse into a <strong className="text-violet-200">distributed job queue</strong>. Your main Synapse instance manages definitions and the UI — workers pull jobs from Redis and execute them in parallel. All you need to get started is a <strong className="text-violet-200">Redis server</strong>.
@@ -281,14 +281,14 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                             In scale mode, Synapse splits into three roles. You always run exactly one <strong className="text-zinc-300">main instance</strong> (the combined image you already have). Workers and API servers are optional replicas.
                         </p>
                         <div className="space-y-2 text-xs font-mono">
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50">
+                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
                                 <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai  <span className="text-zinc-500 font-normal">(your existing install)</span></p>
                                 <p className="text-zinc-500">→ Hosts the UI and settings</p>
                                 <p className="text-zinc-500">→ Manages orchestrations, agents, tools</p>
                                 <p className="text-zinc-500">→ Enqueues jobs to Redis when V2 API is called</p>
                                 <p className="text-zinc-500">→ Streams SSE events back to clients from Redis</p>
                             </div>
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50">
+                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
                                 <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai-worker  <span className="text-zinc-500 font-normal">(scale out ×N)</span></p>
                                 <p className="text-zinc-500">→ Pulls jobs from Redis ARQ queue</p>
                                 <p className="text-zinc-500">→ Reads definitions from Postgres</p>
@@ -296,7 +296,7 @@ const ScaleDocsDrawer = ({ open, onClose }: { open: boolean; onClose: () => void
                                 <p className="text-zinc-500">→ Publishes step events back to Redis Streams</p>
                                 <p className="text-zinc-500">→ Health endpoint on :9000/health</p>
                             </div>
-                            <div className="border border-zinc-800 p-3 bg-zinc-900/50">
+                            <div className="border border-zinc-800 p-3 bg-zinc-900/50 rounded-md">
                                 <p className="text-zinc-200 font-bold mb-1">synapseorchai/synapse-ai-api-server  <span className="text-zinc-500 font-normal">(optional — scale API tier)</span></p>
                                 <p className="text-zinc-500">→ Same API as the main instance but no UI</p>
                                 <p className="text-zinc-500">→ Useful when you want to scale API replicas separately</p>
@@ -760,7 +760,7 @@ export function ScaleTab() {
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => setDocsOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors rounded-md"
                         >
                             <BookOpen className="h-3 w-3" />
                             Deploy Docs
@@ -781,7 +781,7 @@ export function ScaleTab() {
                         { label: 'Active Now', value: analytics?.available ? (analytics.status_counts?.running ?? 0) : (queueStats?.active ?? '—'), color: 'text-blue-400' },
                         { label: 'Success Rate', value: analytics?.available ? `${analytics.success_rate}%` : '—', color: (analytics?.success_rate ?? 0) >= 90 ? 'text-emerald-400' : 'text-amber-400' },
                     ].map(stat => (
-                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950">
+                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950 rounded-md">
                             <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
                             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">{stat.label}</p>
                         </div>
@@ -795,7 +795,7 @@ export function ScaleTab() {
                         { label: 'Cost Today', value: analytics?.available ? formatCost(analytics.total_cost_usd_today) : '—', color: 'text-zinc-100' },
                         { label: 'Cache Hit Rate', value: analytics?.available ? `${analytics.cache_hit_rate}%` : '—', color: 'text-purple-400' },
                     ].map(stat => (
-                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950">
+                        <div key={stat.label} className="border border-zinc-800 p-4 text-center bg-zinc-950 rounded-md">
                             <p className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
                             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">{stat.label}</p>
                         </div>
@@ -818,7 +818,7 @@ export function ScaleTab() {
                                 <input
                                     type="text"
                                     placeholder="run_abc_1234567890 or sess_xyz..."
-                                    className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm pl-8 pr-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                    className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm pl-8 pr-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSearch()}
@@ -844,7 +844,7 @@ export function ScaleTab() {
 
                         {/* Run detail result */}
                         {searchRunDetail && (
-                            <div className="mt-4 border border-zinc-700 bg-zinc-950 p-4">
+                            <div className="mt-4 border border-zinc-700 bg-zinc-950 p-4 rounded-md">
                                 <div className="flex items-start justify-between gap-4 mb-3">
                                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                                         <button
@@ -890,7 +890,7 @@ export function ScaleTab() {
                                         </div>
                                     )}
                                     {searchRunDetail.waiting_for_human && (
-                                        <div className="col-span-2 flex items-start gap-2 p-2 bg-amber-900/20 border border-amber-800/40 text-amber-400">
+                                        <div className="col-span-2 flex items-start gap-2 p-2 bg-amber-900/20 border border-amber-800/40 text-amber-400 rounded-md">
                                             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                                             <span className="text-[11px]">Waiting for human input{searchRunDetail.human_prompt ? `: ${searchRunDetail.human_prompt}` : ''}</span>
                                         </div>
@@ -922,7 +922,7 @@ export function ScaleTab() {
                                         {searchSessionRuns.map(run => (
                                             <div
                                                 key={run.run_id}
-                                                className="flex items-center justify-between border border-zinc-800 p-2.5 hover:bg-zinc-900/50 cursor-pointer transition-colors"
+                                                className="flex items-center justify-between border border-zinc-800 p-2.5 hover:bg-zinc-900/50 cursor-pointer transition-colors rounded-md"
                                                 onClick={() => { setSearchQuery(run.run_id); handleSearch(run.run_id); }}
                                             >
                                                 <div className="flex items-center gap-2 min-w-0">
@@ -1024,7 +1024,7 @@ export function ScaleTab() {
                                 { label: 'Failed', value: queueStats?.failed ?? '—', color: 'text-red-400' },
                                 { label: 'DLQ', value: queueStats?.dlq_count ?? '—', color: 'text-amber-400' },
                             ].map(stat => (
-                                <div key={stat.label} className="border border-zinc-800 p-3 text-center bg-zinc-950">
+                                <div key={stat.label} className="border border-zinc-800 p-3 text-center bg-zinc-950 rounded-md">
                                     <p className={`text-xl font-bold font-mono ${stat.color}`}>{stat.value}</p>
                                     <p className="text-[10px] uppercase tracking-wider text-zinc-600 mt-0.5">{stat.label}</p>
                                 </div>
@@ -1126,7 +1126,7 @@ export function ScaleTab() {
                         <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Redis URL</label>
                         <div className="flex gap-2">
                             <input type="text" placeholder="redis://localhost:6379/0"
-                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('redis_url')} />
                             <button onClick={testRedis} disabled={redisTesting || !config.redis_url}
                                 className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2">
@@ -1157,12 +1157,12 @@ export function ScaleTab() {
                     <div className="grid grid-cols-2 gap-4 pt-2">
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Queue Shards</label>
-                            <input type="number" min="1" max="64" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500" {...field('num_queue_shards')} />
+                            <input type="number" min="1" max="64" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('num_queue_shards')} />
                             <p className="text-[10px] text-zinc-600 mt-1">Use &gt;1 for Redis Cluster shard-aware routing.</p>
                         </div>
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Worker Concurrency</label>
-                            <input type="number" min="1" max="100" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500" {...field('worker_concurrency')} />
+                            <input type="number" min="1" max="100" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('worker_concurrency')} />
                             <p className="text-[10px] text-zinc-600 mt-1">Max parallel jobs per worker process.</p>
                         </div>
                     </div>
@@ -1178,7 +1178,7 @@ export function ScaleTab() {
                         <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Postgres URL (Scale)</label>
                         <div className="flex gap-2">
                             <input type="text" placeholder="postgresql://user:pass@host:5432/synapse"
-                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('scale_postgres_url')} />
                             <button onClick={testPostgres} disabled={pgTesting || !config.scale_postgres_url}
                                 className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition-colors flex items-center gap-2">
@@ -1218,20 +1218,20 @@ export function ScaleTab() {
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">S3 Bucket</label>
                             <input type="text" placeholder="my-synapse-bucket"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('s3_bucket')} />
                         </div>
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Region</label>
                             <input type="text" placeholder="us-east-1"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('s3_region')} />
                         </div>
                     </div>
                     <div>
                         <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Key Prefix</label>
                         <input type="text" placeholder="synapse"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                             {...field('s3_prefix')} />
                         <p className="text-[10px] text-zinc-600 mt-1">All objects are stored under this prefix.</p>
                     </div>
@@ -1239,13 +1239,13 @@ export function ScaleTab() {
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Access Key ID</label>
                             <input type="text" placeholder="AKIA... (optional)"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('s3_access_key_id')} />
                         </div>
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Secret Access Key</label>
                             <input type="password" placeholder="••••••••"
-                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                 {...field('s3_secret_access_key')} />
                         </div>
                     </div>
@@ -1254,7 +1254,7 @@ export function ScaleTab() {
                             Endpoint URL <span className="text-zinc-600 font-normal normal-case">(optional — for MinIO, Cloudflare R2, etc.)</span>
                         </label>
                         <input type="text" placeholder="https://account.r2.cloudflarestorage.com"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                             {...field('s3_endpoint_url')} />
                     </div>
                     <div className="flex items-center gap-3 pt-1">
@@ -1330,7 +1330,7 @@ export function ScaleTab() {
 
                     <div className="flex gap-2 mt-4 pt-4 border-t border-zinc-800">
                         <input type="text" placeholder="http://10.0.0.5:9000"
-                            className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                            className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                             value={newWorkerAddress} onChange={e => setNewWorkerAddress(e.target.value)} />
                         <button disabled={!newWorkerAddress}
                             onClick={() => {
@@ -1358,26 +1358,26 @@ export function ScaleTab() {
                     <div>
                         <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">OTLP Endpoint</label>
                         <input type="text" placeholder="http://jaeger:4317"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                             {...field('otlp_endpoint')} />
                         <p className="text-[10px] text-zinc-600 mt-1">Leave empty to disable tracing. When set, every run gets a distributed trace propagated through API server → Redis → Worker → Postgres.</p>
                     </div>
                     <div>
                         <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Metrics Token</label>
                         <input type="password" placeholder="Bearer token for /metrics endpoint"
-                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500"
+                            className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                             {...field('metrics_token')} />
                         <p className="text-[10px] text-zinc-600 mt-1">Prometheus scrapes <span className="font-mono text-zinc-400">GET /metrics</span> with this as a Bearer token.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Max Global Queue Depth</label>
-                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500" {...field('max_global_queue_depth')} />
+                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('max_global_queue_depth')} />
                             <p className="text-[10px] text-zinc-600 mt-1">Returns 503 when exceeded (backpressure).</p>
                         </div>
                         <div>
                             <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider block mb-1.5">Rate Limit (req/s per tenant)</label>
-                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500" {...field('rate_limit_per_tenant_rps')} />
+                            <input type="number" className="w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:border-zinc-500 rounded-md" {...field('rate_limit_per_tenant_rps')} />
                             <p className="text-[10px] text-zinc-600 mt-1">Returns 429 when exceeded.</p>
                         </div>
                     </div>

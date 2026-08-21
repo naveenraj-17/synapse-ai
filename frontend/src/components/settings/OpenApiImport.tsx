@@ -120,7 +120,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Spec (JSON or YAML)</label>
-                    <label className="px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-300 text-[10px] font-bold uppercase flex items-center gap-1.5 cursor-pointer hover:bg-zinc-700 hover:text-white transition-colors">
+                    <label className="px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-300 text-[10px] font-bold uppercase flex items-center gap-1.5 cursor-pointer hover:bg-zinc-700 hover:text-white transition-colors rounded-md">
                         <FileUp className="h-3.5 w-3.5" /> Upload file
                         <input type="file" accept=".json,.yaml,.yml,application/json,text/yaml" onChange={handleFile} className="hidden" />
                     </label>
@@ -129,7 +129,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                     value={specText}
                     onChange={e => { setSpecText(e.target.value); setPreview(null); }}
                     placeholder='{"openapi": "3.0.0", "servers": [...], "paths": {...}}'
-                    className="w-full h-40 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs font-mono p-3 focus:border-zinc-600 focus:outline-none resize-y"
+                    className="w-full h-40 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs font-mono p-3 focus:border-zinc-600 focus:outline-none resize-y rounded-md"
                 />
             </div>
 
@@ -141,7 +141,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                         value={baseUrl}
                         onChange={e => setBaseUrl(e.target.value)}
                         placeholder="https://api.example.com/v1"
-                        className="w-full mt-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none"
+                        className="w-full mt-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none rounded-md"
                     />
                 </div>
                 <div>
@@ -150,7 +150,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                         value={namePrefix}
                         onChange={e => setNamePrefix(e.target.value)}
                         placeholder="petstore"
-                        className="w-full mt-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none"
+                        className="w-full mt-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none rounded-md"
                     />
                 </div>
                 <div className="md:col-span-2">
@@ -160,20 +160,20 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                             value={authKey}
                             onChange={e => setAuthKey(e.target.value)}
                             placeholder="Authorization"
-                            className="w-1/3 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none"
+                            className="w-1/3 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none rounded-md"
                         />
                         <input
                             value={authValue}
                             onChange={e => setAuthValue(e.target.value)}
                             placeholder="Bearer <token>"
-                            className="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none"
+                            className="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs p-2 focus:border-zinc-600 focus:outline-none rounded-md"
                         />
                     </div>
                 </div>
             </div>
 
             {error && (
-                <div className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 px-3 py-2">{error}</div>
+                <div className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 px-3 py-2 rounded-md">{error}</div>
             )}
 
             {/* Preview action */}
@@ -181,7 +181,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                 <button
                     onClick={doPreview}
                     disabled={loading}
-                    className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-50"
+                    className="px-3 py-2 bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase flex items-center gap-2 hover:bg-zinc-700 hover:text-white transition-colors disabled:opacity-50 rounded-md"
                 >
                     {loading && !preview ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     Preview tools
@@ -227,7 +227,7 @@ export const OpenApiImport = ({ onClose, onImported }: OpenApiImportProps) => {
                         <button
                             onClick={doImport}
                             disabled={loading || selectedCount === 0}
-                            className="px-4 py-2 bg-emerald-800/80 border border-emerald-700 text-white font-bold text-xs uppercase flex items-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 bg-emerald-800/80 border border-emerald-700 text-white font-bold text-xs uppercase flex items-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-50 rounded-md"
                         >
                             {loading && preview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Import className="h-4 w-4" />}
                             Import {selectedCount || ''} tool{selectedCount === 1 ? '' : 's'}

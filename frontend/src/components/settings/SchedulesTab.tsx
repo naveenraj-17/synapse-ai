@@ -357,7 +357,7 @@ export const SchedulesTab = () => {
             {toast && (
                 <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 text-sm shadow-lg ${
                     toast.ok ? 'bg-emerald-900/90 text-emerald-200 border border-emerald-700' : 'bg-red-900/90 text-red-200 border border-red-700'
-                }`}>
+                } rounded-md`}>
                     {toast.ok ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                     {toast.msg}
                 </div>
@@ -496,7 +496,7 @@ export const SchedulesTab = () => {
                         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
 
                             {/* Instructions */}
-                            <div className="border border-zinc-800 bg-zinc-950">
+                            <div className="border border-zinc-800 bg-zinc-950 rounded-md">
                                 <button
                                     onClick={() => setShowInstructions(v => !v)}
                                     className="w-full flex items-center justify-between px-4 py-3 text-xs text-zinc-400 hover:text-white transition-colors"
@@ -546,7 +546,7 @@ export const SchedulesTab = () => {
                                     value={form.name}
                                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                                     placeholder="e.g. Daily Sales Report"
-                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 rounded-md"
                                 />
                             </div>
 
@@ -557,7 +557,7 @@ export const SchedulesTab = () => {
                                     value={form.description}
                                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                                     placeholder="Optional short description"
-                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 rounded-md"
                                 />
                             </div>
 
@@ -573,7 +573,7 @@ export const SchedulesTab = () => {
                                                 form.target_type === t
                                                     ? 'border-white bg-white text-black'
                                                     : 'border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
-                                            }`}
+                                            } rounded-md`}
                                         >
                                             {t === 'agent' ? <Bot className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
                                             {t === 'agent' ? 'Agent' : 'Orchestration'}
@@ -608,7 +608,7 @@ export const SchedulesTab = () => {
                                     onChange={e => setForm(f => ({ ...f, prompt: e.target.value }))}
                                     placeholder="e.g. Generate a daily summary of yesterday's sales data and highlight any anomalies."
                                     rows={4}
-                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                                    className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none rounded-md"
                                 />
                             </div>
 
@@ -624,7 +624,7 @@ export const SchedulesTab = () => {
                                                 form.schedule_type === t
                                                     ? 'border-white bg-white text-black'
                                                     : 'border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
-                                            }`}
+                                            } rounded-md`}
                                         >
                                             <Clock className="h-3.5 w-3.5" />
                                             {t === 'interval' ? 'Interval' : 'Fixed Time (Cron)'}
@@ -635,7 +635,7 @@ export const SchedulesTab = () => {
 
                             {/* Interval config */}
                             {form.schedule_type === 'interval' && (
-                                <div className="bg-zinc-900/60 border border-zinc-800 p-4 space-y-3">
+                                <div className="bg-zinc-900/60 border border-zinc-800 p-4 space-y-3 rounded-md">
                                     <div className="flex items-center gap-3">
                                         <span className="text-xs text-zinc-400 shrink-0">Run every</span>
                                         <input
@@ -643,7 +643,7 @@ export const SchedulesTab = () => {
                                             min={1}
                                             value={form.interval_value ?? 30}
                                             onChange={e => setForm(f => ({ ...f, interval_value: parseInt(e.target.value) || 1 }))}
-                                            className="w-20 bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-zinc-500"
+                                            className="w-20 bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-zinc-500 rounded-md"
                                         />
                                         <Select
                                             value={form.interval_unit ?? 'minutes'}
@@ -666,7 +666,7 @@ export const SchedulesTab = () => {
 
                             {/* Cron config */}
                             {form.schedule_type === 'cron' && (
-                                <div className="bg-zinc-900/60 border border-zinc-800 p-4 space-y-4">
+                                <div className="bg-zinc-900/60 border border-zinc-800 p-4 space-y-4 rounded-md">
                                     {/* Preset picker */}
                                     <div>
                                         <label className="block text-xs text-zinc-500 mb-1.5">Quick preset</label>
@@ -705,7 +705,7 @@ export const SchedulesTab = () => {
                                             value={form.cron_expression ?? ''}
                                             onChange={e => setForm(f => ({ ...f, cron_expression: e.target.value }))}
                                             placeholder="0 9 * * *"
-                                            className="w-full bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-zinc-500"
+                                            className="w-full bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-zinc-500 rounded-md"
                                         />
                                         {form.cron_expression && (
                                             <p className="text-xs text-emerald-400 mt-1">{describeCron(form.cron_expression)}</p>

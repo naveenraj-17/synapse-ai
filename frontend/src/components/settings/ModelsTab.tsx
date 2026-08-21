@@ -317,7 +317,7 @@ export const ModelsTab = ({
                             <div key={key} className={`border transition-all duration-200 ${providerData.available
                                 ? 'border-zinc-700 bg-zinc-900/50'
                                 : 'border-zinc-800/50 bg-zinc-950'
-                                }`}>
+                                } rounded-md`}>
                                 {/* Card Header */}
                                 <button
                                     onClick={() => {
@@ -365,7 +365,7 @@ export const ModelsTab = ({
                                                         type={visibleKeys[key] ? 'text' : 'password'}
                                                         value={getKeyValue(key)}
                                                         onChange={e => setKeyValue(key, e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8"
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md"
                                                         placeholder={meta.keyPlaceholder}
                                                     />
                                                     <button type="button" onClick={() => toggleKeyVisible(key)}
@@ -398,7 +398,7 @@ export const ModelsTab = ({
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Bedrock API Key</label>
                                                     <div className="relative">
                                                         <input type={visibleKeys['bedrock'] ? 'text' : 'password'} value={bedrockApiKey} onChange={e => setBedrockApiKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8" placeholder="ABSK... or bedrock-api-key..." />
+                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="ABSK... or bedrock-api-key..." />
                                                         <button type="button" onClick={() => toggleKeyVisible('bedrock')}
                                                             className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                                                             {visibleKeys['bedrock'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -422,7 +422,7 @@ export const ModelsTab = ({
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">AWS Region</label>
                                                     <input type="text" value={awsRegion} onChange={e => setAwsRegion(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="us-east-1" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="us-east-1" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Inference Profile (Optional)</label>
@@ -445,13 +445,13 @@ export const ModelsTab = ({
                                                     />
                                                 </div>
                                                 {inferenceProfilesError && (
-                                                    <div className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/20 text-[10px] text-red-400">
+                                                    <div className="flex items-start gap-2 p-2.5 bg-red-500/5 border border-red-500/20 text-[10px] text-red-400 rounded-md">
                                                         <Info className="w-3 h-3 mt-0.5 shrink-0" />
                                                         <span className="break-all">{inferenceProfilesError}</span>
                                                     </div>
                                                 )}
                                                 {!inferenceProfilesError && providerData.available && !bedrockInferenceProfile && (
-                                                    <div className="flex items-start gap-2 p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-400">
+                                                    <div className="flex items-start gap-2 p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-400 rounded-md">
                                                         <Info className="w-3 h-3 mt-0.5 shrink-0" />
                                                         <span>No inference profile selected. Please select an inference profile above to use AWS Bedrock.</span>
                                                     </div>
@@ -466,7 +466,7 @@ export const ModelsTab = ({
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">API Key</label>
                                                     <div className="relative">
                                                         <input type={visibleKeys['openai_compatible'] ? 'text' : 'password'} value={openaiCompatibleKey} onChange={e => setOpenaiCompatibleKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8" placeholder="sk-..." />
+                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="sk-..." />
                                                         <button type="button" onClick={() => toggleKeyVisible('openai_compatible')}
                                                             className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                                                             {visibleKeys['openai_compatible'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -476,19 +476,19 @@ export const ModelsTab = ({
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
                                                     <input type="text" value={openaiCompatibleBaseUrl} onChange={e => setOpenaiCompatibleBaseUrl(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="https://openrouter.ai/api" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="https://openrouter.ai/api" />
                                                     <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
                                                     <input type="text" value={openaiCompatibleModels} onChange={e => setOpenaiCompatibleModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. meta-llama/llama-3-70b-instruct, google/gemma-2-27b-it" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. meta-llama/llama-3-70b-instruct, google/gemma-2-27b-it" />
                                                     <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
                                                     <input type="text" value={openaiCompatibleEmbedModels} onChange={e => setOpenaiCompatibleEmbedModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. hf:nomic-ai/nomic-embed-text-v1.5" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. hf:nomic-ai/nomic-embed-text-v1.5" />
                                                     <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
                                                 </div>
                                             </div>
@@ -501,7 +501,7 @@ export const ModelsTab = ({
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">API Key (optional)</label>
                                                     <div className="relative">
                                                         <input type={visibleKeys['local_compatible'] ? 'text' : 'password'} value={localCompatibleKey} onChange={e => setLocalCompatibleKey(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8" placeholder="Leave blank if not required" />
+                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="Leave blank if not required" />
                                                         <button type="button" onClick={() => toggleKeyVisible('local_compatible')}
                                                             className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                                                             {visibleKeys['local_compatible'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -511,19 +511,19 @@ export const ModelsTab = ({
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Base URL</label>
                                                     <input type="text" value={localCompatibleBaseUrl} onChange={e => setLocalCompatibleBaseUrl(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="http://localhost:8000" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="http://localhost:8000" />
                                                     <p className="text-[10px] text-zinc-600">The /v1 path is appended automatically. Do not include /v1 in the URL.</p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Model Names (comma-separated)</label>
                                                     <input type="text" value={localCompatibleModels} onChange={e => setLocalCompatibleModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. llama-3-70b, mistral-7b" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. llama-3-70b, mistral-7b" />
                                                     <p className="text-[10px] text-zinc-600">If the /v1/models endpoint is available, models will be fetched automatically. Otherwise, list them here.</p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Embedding Model Names (comma-separated)</label>
                                                     <input type="text" value={localCompatibleEmbedModels} onChange={e => setLocalCompatibleEmbedModels(e.target.value)}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder="e.g. bge-m3" />
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder="e.g. bge-m3" />
                                                     <p className="text-[10px] text-zinc-600">Models listed here appear in the embedding model dropdown. Models with &quot;embed&quot; in the name are also auto-detected from /v1/models.</p>
                                                 </div>
                                             </div>
@@ -532,14 +532,14 @@ export const ModelsTab = ({
                                         {/* HuggingFace fields */}
                                         {key === 'huggingface' && (
                                             <div className="space-y-3">
-                                                <div className="p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-300 leading-relaxed">
+                                                <div className="p-2.5 bg-amber-500/5 border border-amber-500/20 text-[10px] text-amber-300 leading-relaxed rounded-md">
                                                     <strong>Requires torch + transformers on the host.</strong> Models load in the backend process and stay in memory. Expect 16-40 GB VRAM for 7B-class models. Without a GPU, inference runs on CPU and will be slow.
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Access Token (optional)</label>
                                                     <div className="relative">
                                                         <input type={visibleKeys['huggingface'] ? 'text' : 'password'} value={huggingfaceToken} onChange={e => setHuggingfaceToken(e.target.value)}
-                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8" placeholder="hf_... (required for gated models like Llama, Gemma)" />
+                                                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors pr-8 rounded-md" placeholder="hf_... (required for gated models like Llama, Gemma)" />
                                                         <button type="button" onClick={() => toggleKeyVisible('huggingface')}
                                                             className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                                                             {visibleKeys['huggingface'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -550,7 +550,7 @@ export const ModelsTab = ({
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] uppercase font-bold text-zinc-500">Model IDs (one per line or comma-separated)</label>
                                                     <textarea value={huggingfaceModels} onChange={e => setHuggingfaceModels(e.target.value)} rows={4}
-                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors font-mono"
+                                                        className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                                                         placeholder={"Qwen/Qwen2.5-7B-Instruct\nmeta-llama/Llama-3.1-8B-Instruct\nmistralai/Mistral-7B-Instruct-v0.3"}
                                                     />
                                                     <p className="text-[10px] text-zinc-600">Each ID becomes a selectable <code className="font-code text-zinc-400">hf.&lt;org&gt;/&lt;model&gt;</code> model. First call to a model pays a 20-60s load cost, then stays warm in memory.</p>
@@ -588,7 +588,7 @@ export const ModelsTab = ({
                                                         : `No CLI binary found in PATH for ${meta.label}.`
                                                     }
                                                 </div>
-                                                <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 text-[10px] text-violet-300 leading-relaxed">
+                                                <div className="p-2.5 bg-violet-500/5 border border-violet-500/20 text-[10px] text-violet-300 leading-relaxed rounded-md">
                                                     <strong>No API key needed</strong> — uses your existing CLI session. Run the CLI manually first to authenticate.
                                                 </div>
                                                 <div className="flex flex-col gap-1">
@@ -626,7 +626,7 @@ export const ModelsTab = ({
                                                         <div className="space-y-1">
                                                             <label className="text-[10px] uppercase font-bold text-zinc-500">Custom Model Names (comma-separated)</label>
                                                             <input type="text" value={cfg.value} onChange={e => cfg.set(e.target.value)}
-                                                                className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors" placeholder={cfg.placeholder} />
+                                                                className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-white focus:border-white focus:outline-none transition-colors rounded-md" placeholder={cfg.placeholder} />
                                                             <p className="text-[10px] text-zinc-600">Each name is passed to the CLI's <code className="font-code text-zinc-400">-m</code> flag and becomes a selectable <code className="font-code text-zinc-400">{cfg.prefix}.&lt;name&gt;</code> model. Use this when the CLI's default model isn't available to your account.</p>
                                                         </div>
                                                     );

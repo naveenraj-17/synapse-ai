@@ -157,7 +157,7 @@ export function GeneralTab({
                     type="text"
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
+                    className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
                     placeholder="Enter Agent Name"
                 />
                 <p className="text-xs text-zinc-600">This name identifies your agent across the system.</p>
@@ -194,7 +194,7 @@ export function GeneralTab({
                                 setVaultThreshold(v);
                                 setVaultDraft(String(v));
                             }}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
                             min={1}
                         />
                         <p className="text-xs text-zinc-600">Responses longer than this many characters will be saved to a file.</p>
@@ -235,7 +235,7 @@ export function GeneralTab({
                                 setAutoCompactThreshold(v);
                                 setCompactDraft(String(v));
                             }}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-medium rounded-md"
                             min={10000}
                         />
                         <p className="text-xs text-zinc-600">
@@ -264,7 +264,7 @@ export function GeneralTab({
                     </button>
                 </div>
                 {allowDbWrite && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs rounded-md">
                         <strong>Write mode active.</strong> Agents MUST ask for explicit user confirmation before running any INSERT, UPDATE, DELETE, DROP, or CREATE queries. This is enforced in the system prompt.
                     </div>
                 )}
@@ -301,7 +301,7 @@ export function GeneralTab({
 
                 {/* No psql found */}
                 {embedCheckState?.issue === 'no_psql' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
                         <p><strong>PostgreSQL not found.</strong> Install it to enable code indexing.</p>
                         <ul className="space-y-0.5 text-amber-300/80">
                             <li><strong>Ubuntu/Debian:</strong> <code className="font-code bg-black/30 px-1">sudo apt install postgresql postgresql-contrib</code></li>
@@ -311,7 +311,7 @@ export function GeneralTab({
                         <p className="text-amber-300/60">After installing, also install pgvector: <code className="font-code bg-black/30 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) or <code className="font-code bg-black/30 px-1">brew install pgvector</code> (macOS).</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
+                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"
                         >
                             Check again
                         </button>
@@ -320,7 +320,7 @@ export function GeneralTab({
 
                 {/* Existing URL configured but connection is failing */}
                 {embedCheckState?.issue === 'existing_url_broken' && (
-                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3">
+                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3 rounded-md">
                         <div className="space-y-1">
                             <p className="text-zinc-300 font-semibold">Existing connection is failing</p>
                             <p className="text-zinc-500 font-mono break-all">{embedCheckState.detail}</p>
@@ -329,23 +329,23 @@ export function GeneralTab({
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                                 <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Host</label>
-                                <input type="text" value={dbForm.host} onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs" />
+                                <input type="text" value={dbForm.host} onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Port</label>
-                                <input type="text" value={dbForm.port} onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs" />
+                                <input type="text" value={dbForm.port} onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Username</label>
-                                <input type="text" value={dbForm.username} onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs" autoComplete="off" />
+                                <input type="text" value={dbForm.username} onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" autoComplete="off" />
                             </div>
                             <div className="space-y-1">
                                 <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Password</label>
-                                <input type="password" value={dbForm.password} onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs" autoComplete="new-password" />
+                                <input type="password" value={dbForm.password} onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" autoComplete="new-password" />
                             </div>
                             <div className="col-span-2 space-y-1">
                                 <label className="text-zinc-500 uppercase tracking-wider text-[10px] font-bold">Database Name</label>
-                                <input type="text" value={dbForm.dbName} onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs" />
+                                <input type="text" value={dbForm.dbName} onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))} className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md" />
                             </div>
                         </div>
                         {setupError && <p className="text-red-400 font-mono text-[11px]">{setupError}</p>}
@@ -361,14 +361,14 @@ export function GeneralTab({
 
                 {/* pgvector missing */}
                 {embedCheckState?.issue === 'no_pgvector' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-2 rounded-md">
                         <p><strong>pgvector extension not installed.</strong> PostgreSQL is running but the vector extension is missing.</p>
                         <p>Connect to your database and run:</p>
                         <code className="block bg-black/40 px-2 py-1.5 font-code text-white/80">CREATE EXTENSION vector;</code>
                         <p className="text-amber-300/60">Or install the OS package first: <code className="font-code bg-black/30 px-1">sudo apt install postgresql-pgvector</code> (Ubuntu) / <code className="font-code bg-black/30 px-1">brew install pgvector</code> (macOS), then run the SQL above.</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
+                            className="mt-1 px-3 py-1 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors rounded-md"
                         >
                             Check again
                         </button>
@@ -377,7 +377,7 @@ export function GeneralTab({
 
                 {/* No DB URL configured — show fresh setup form */}
                 {embedCheckState?.issue === 'no_db' && (
-                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3">
+                    <div className="p-3 bg-zinc-800/60 border border-zinc-700 text-xs space-y-3 rounded-md">
                         <div className="space-y-1">
                             <p className="text-zinc-300 font-semibold">Set up a PostgreSQL database for code indexing</p>
                             <p className="text-zinc-500">No database configured yet. Enter your PostgreSQL credentials and we'll create the database and enable pgvector.</p>
@@ -389,7 +389,7 @@ export function GeneralTab({
                                     type="text"
                                     value={dbForm.host}
                                     onChange={e => setDbForm(f => ({ ...f, host: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs"
+                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -398,7 +398,7 @@ export function GeneralTab({
                                     type="text"
                                     value={dbForm.port}
                                     onChange={e => setDbForm(f => ({ ...f, port: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs"
+                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -407,7 +407,7 @@ export function GeneralTab({
                                     type="text"
                                     value={dbForm.username}
                                     onChange={e => setDbForm(f => ({ ...f, username: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs"
+                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
                                     autoComplete="off"
                                 />
                             </div>
@@ -417,7 +417,7 @@ export function GeneralTab({
                                     type="password"
                                     value={dbForm.password}
                                     onChange={e => setDbForm(f => ({ ...f, password: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs"
+                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
                                     autoComplete="new-password"
                                 />
                             </div>
@@ -427,7 +427,7 @@ export function GeneralTab({
                                     type="text"
                                     value={dbForm.dbName}
                                     onChange={e => setDbForm(f => ({ ...f, dbName: e.target.value }))}
-                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs"
+                                    className="w-full bg-zinc-900 border border-zinc-700 p-2 text-white focus:border-white focus:outline-none font-mono text-xs rounded-md"
                                 />
                             </div>
                         </div>
@@ -455,11 +455,11 @@ export function GeneralTab({
 
                 {/* Generic connection error */}
                 {embedCheckState?.issue === 'connection_error' && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs space-y-2">
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs space-y-2 rounded-md">
                         <p><strong>Check failed.</strong> {embedCheckState.detail}</p>
                         <button
                             onClick={runEmbedCheck}
-                            className="px-3 py-1 text-xs font-bold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors"
+                            className="px-3 py-1 text-xs font-bold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors rounded-md"
                         >
                             Try again
                         </button>
@@ -477,7 +477,7 @@ export function GeneralTab({
                 {bashAllowedDirs.length > 0 && (
                     <div className="space-y-1">
                         {bashAllowedDirs.map((dir, i) => (
-                            <div key={i} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2">
+                            <div key={i} className="flex items-center justify-between bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-md">
                                 <span className="text-xs font-mono text-zinc-300 truncate">{dir}</span>
                                 <button
                                     onClick={() => setBashAllowedDirs(bashAllowedDirs.filter((_, j) => j !== i))}
@@ -501,7 +501,7 @@ export function GeneralTab({
                             }
                         }}
                         placeholder="/path/to/directory"
-                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-mono"
+                        className="flex-1 bg-zinc-900 border border-zinc-800 p-2.5 text-sm focus:border-white focus:outline-none transition-colors text-white placeholder:text-zinc-700 font-mono rounded-md"
                     />
                     <button
                         onClick={() => {
@@ -542,7 +542,7 @@ export function GeneralTab({
                     </button>
                 </div>
                 {transformRuntime === 'host' && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-start gap-2">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-start gap-2 rounded-md">
                         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                         <div>
                             <strong>Host mode active.</strong> Any Python in any Transform step now runs unsandboxed with full backend permissions. Only use on self-hosted instances you control.
@@ -617,7 +617,7 @@ export function GeneralTab({
 
                 {/* Configured state: show summary + actions */}
                 {loginEnabled && !showLoginForm && loginUsername && (
-                    <div className="p-3 bg-zinc-900 border border-zinc-800 space-y-2">
+                    <div className="p-3 bg-zinc-900 border border-zinc-800 space-y-2 rounded-md">
                         <p className="text-xs text-zinc-400">
                             Login enabled for user: <span className="text-white font-mono">{loginUsername}</span>
                         </p>
@@ -640,7 +640,7 @@ export function GeneralTab({
 
                 {/* Credentials form */}
                 {loginEnabled && (showLoginForm || !loginUsername) && (
-                    <div className="p-4 bg-zinc-900 border border-zinc-800 space-y-3">
+                    <div className="p-4 bg-zinc-900 border border-zinc-800 space-y-3 rounded-md">
                         <p className="text-xs font-bold text-zinc-300">
                             {loginUsername ? 'Update Credentials' : 'Set Login Credentials'}
                         </p>
@@ -652,7 +652,7 @@ export function GeneralTab({
                                 value={loginUsername}
                                 onChange={e => setLoginUsername(e.target.value)}
                                 autoComplete="off"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white"
+                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
                                 placeholder="admin"
                             />
                         </div>
@@ -666,7 +666,7 @@ export function GeneralTab({
                                 value={loginPassword}
                                 onChange={e => setLoginPassword(e.target.value)}
                                 autoComplete="new-password"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white"
+                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
                                 placeholder={loginUsername ? 'Leave blank to keep current' : 'Min. 8 characters'}
                             />
                         </div>
@@ -678,7 +678,7 @@ export function GeneralTab({
                                 value={loginConfirmPassword}
                                 onChange={e => setLoginConfirmPassword(e.target.value)}
                                 autoComplete="new-password"
-                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white"
+                                className="w-full bg-zinc-950 border border-zinc-700 p-2 text-sm focus:border-white focus:outline-none text-white rounded-md"
                             />
                         </div>
 

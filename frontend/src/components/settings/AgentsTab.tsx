@@ -299,7 +299,7 @@ export const AgentsTab = ({
                                 setDraftAgent(newAgent);
                                 setSelectedAgentId(newAgent.id);
                             }}
-                            className="p-1.5 hover:bg-zinc-800 text-white transition-colors border border-dashed border-zinc-600 hover:border-white"
+                            className="p-1.5 hover:bg-zinc-800 text-white transition-colors border border-dashed border-zinc-600 hover:border-white rounded-md"
                             title="Create New Agent"
                         >
                             <Plus className="h-4 w-4" />
@@ -308,7 +308,7 @@ export const AgentsTab = ({
                 </div>
 
                 {aiBuilderOpen && (
-                    <div className="mb-3 p-3 border border-dashed border-purple-800 bg-purple-950/20 space-y-2">
+                    <div className="mb-3 p-3 border border-dashed border-purple-800 bg-purple-950/20 space-y-2 rounded-md">
                         <p className="text-[9px] text-purple-400 font-bold uppercase">Build with AI</p>
                         <textarea
                             value={aiBuilderDesc}
@@ -316,7 +316,7 @@ export const AgentsTab = ({
                             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); buildAgentWithAI(); } }}
                             placeholder="Describe what this agent should do... e.g. 'A customer support agent that searches our knowledge base'"
                             rows={3}
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 resize-none"
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 resize-none rounded-md"
                         />
                         <button
                             onClick={buildAgentWithAI}
@@ -362,7 +362,7 @@ export const AgentsTab = ({
                             ${selectedAgentId === a.id
                                     ? 'bg-surface-2 border-accent shadow-lg'
                                     : 'bg-surface border-border hover:border-border-strong'
-                                }`}
+                                } rounded-md`}
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold
@@ -475,7 +475,7 @@ export const AgentsTab = ({
                                                 type="text"
                                                 value={draftAgent.name}
                                                 onChange={e => setDraftAgent({ ...draftAgent, name: e.target.value })}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none rounded-md"
                                             />
                                         </div>
                                         <div className="space-y-1">
@@ -484,7 +484,7 @@ export const AgentsTab = ({
                                                 type="text"
                                                 value={draftAgent.description}
                                                 onChange={e => setDraftAgent({ ...draftAgent, description: e.target.value })}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none rounded-md"
                                             />
                                         </div>
                                         <div className="space-y-1">
@@ -544,7 +544,7 @@ export const AgentsTab = ({
                                                 max={200}
                                                 value={draftAgent.max_turns ?? (draftAgent.type === 'code' ? 50 : 30)}
                                                 onChange={e => setDraftAgent({ ...draftAgent, max_turns: parseInt(e.target.value) || 30 })}
-                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none"
+                                                className="w-full bg-zinc-950 border border-zinc-800 p-3 text-xs text-white focus:border-white focus:outline-none rounded-md"
                                             />
                                             <p className="text-[9px] text-zinc-500 mt-1">Max reasoning turns per request. Orchestration steps override this value.</p>
                                         </div>
@@ -553,7 +553,7 @@ export const AgentsTab = ({
                                     {draftAgent.type === 'code' && (
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Repositories</label>
-                                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
+                                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px] rounded-md">
                                                 {repos.length === 0 && <span className="text-xs text-zinc-500">No repositories indexed yet.</span>}
                                                 {repos.map(repo => {
                                                     const isLinked = draftAgent.repos?.includes(repo.id);
@@ -571,7 +571,7 @@ export const AgentsTab = ({
                                                             className={`px-3 py-1.5 text-xs font-bold border transition-colors ${isLinked
                                                                 ? 'bg-white text-black border-white'
                                                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
-                                                                }`}
+                                                                } rounded-md`}
                                                         >
                                                             {repo.name} {isLinked && '✓'}
                                                         </button>
@@ -585,7 +585,7 @@ export const AgentsTab = ({
                                     {draftAgent.type === 'code' && (
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-zinc-500 uppercase">Linked Databases</label>
-                                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px]">
+                                            <div className="bg-zinc-950 border border-zinc-800 p-3 flex flex-wrap gap-2 min-h-[50px] rounded-md">
                                                 {dbConfigs.length === 0 && <span className="text-xs text-zinc-500">No databases configured yet.</span>}
                                                 {dbConfigs.map((db: any) => {
                                                     const isLinked = draftAgent.db_configs?.includes(db.id);
@@ -603,7 +603,7 @@ export const AgentsTab = ({
                                                             className={`px-3 py-1.5 text-xs font-bold border transition-colors ${isLinked
                                                                 ? 'bg-white text-black border-white'
                                                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-500'
-                                                                }`}
+                                                                } rounded-md`}
                                                         >
                                                             {db.name} <span className="opacity-50">{db.db_type}</span> {isLinked && '✓'}
                                                         </button>
@@ -641,10 +641,10 @@ export const AgentsTab = ({
                                                         <div
                                                             onClick={() => setDraftAgent({ ...draftAgent, delegate_agent_ids: [] })}
                                                             className={`p-3 border cursor-pointer transition-all flex items-center gap-3
-                                                                ${allSelected ? 'bg-surface-2 border-border-strong' : 'bg-surface border-border hover:border-border-strong'}`}
+                                                                ${allSelected ? 'bg-surface-2 border-border-strong' : 'bg-surface border-border hover:border-border-strong'} rounded-md`}
                                                         >
                                                             <div className={`w-3 h-3 border flex-shrink-0 flex items-center justify-center
-                                                                ${allSelected ? 'bg-green-500 border-green-500' : 'border-zinc-600'}`}
+                                                                ${allSelected ? 'bg-green-500 border-green-500' : 'border-zinc-600'} rounded-md`}
                                                             />
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="text-xs font-bold text-white">All Agents</div>
@@ -670,11 +670,11 @@ export const AgentsTab = ({
                                                                             setDraftAgent({ ...draftAgent, delegate_agent_ids: newIds });
                                                                         }}
                                                                         className={`p-3 border cursor-pointer transition-all
-                                                                            ${isSelected ? 'bg-surface-2 border-border-strong' : allSelected ? 'bg-surface/60 border-border opacity-60' : 'bg-surface border-border hover:border-border-strong'}`}
+                                                                            ${isSelected ? 'bg-surface-2 border-border-strong' : allSelected ? 'bg-surface/60 border-border opacity-60' : 'bg-surface border-border hover:border-border-strong'} rounded-md`}
                                                                     >
                                                                         <div className="flex items-center gap-2">
                                                                             <div className={`w-3 h-3 border flex-shrink-0
-                                                                                ${isSelected ? 'bg-green-500 border-green-500' : 'border-zinc-600'}`}
+                                                                                ${isSelected ? 'bg-green-500 border-green-500' : 'border-zinc-600'} rounded-md`}
                                                                             />
                                                                             <div className="flex-1 min-w-0">
                                                                                 <div className="text-xs font-bold text-white truncate">{a.name}</div>
@@ -697,7 +697,7 @@ export const AgentsTab = ({
                                             /* ── Skeleton loader ── */
                                             <div className="grid grid-cols-2 gap-4">
                                                 {Array.from({ length: 8 }).map((_, i) => (
-                                                    <div key={i} className="border border-border bg-surface p-4 space-y-2 animate-pulse">
+                                                    <div key={i} className="border border-border bg-surface p-4 space-y-2 animate-pulse rounded-md">
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-3 h-3 rounded-sm bg-zinc-800" />
                                                             <div className="h-2.5 bg-zinc-800 rounded-md w-24" />
@@ -736,7 +736,7 @@ export const AgentsTab = ({
                                                                             : someEnabled
                                                                                 ? 'bg-surface-2/60 border-border-strong'
                                                                                 : 'bg-surface border-border opacity-60'
-                                                                    }`}
+                                                                    } rounded-md`}
                                                             >
                                                                 <div className={`p-4 flex items-center gap-2 transition-colors ${isAutoGroup ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-800/30'}`}
                                                                     onClick={() => {
@@ -764,7 +764,7 @@ export const AgentsTab = ({
                                                                                     : someEnabled
                                                                                         ? 'bg-yellow-500 border-yellow-500'
                                                                                         : 'border-zinc-600'
-                                                                                }`}
+                                                                                } rounded-md`}
                                                                         >
                                                                             {someEnabled && <div className="w-1.5 h-0.5 bg-white"></div>}
                                                                         </div>
@@ -809,7 +809,7 @@ export const AgentsTab = ({
                                                                                     ${isToolEnabled
                                                                                                 ? 'bg-green-500 border-green-500'
                                                                                                 : 'border-zinc-600'
-                                                                                            }`}
+                                                                                            } rounded-md`}
                                                                                         ></div>
                                                                                     )}
                                                                                     <div className="min-w-0 flex-1">
@@ -844,7 +844,7 @@ export const AgentsTab = ({
                                                 onChange={e => setPromptDescription(e.target.value)}
                                                 onKeyDown={e => e.key === 'Enter' && !isGenerating && generatePrompt()}
                                                 placeholder="Describe what this agent should do... e.g. 'A customer support agent for a SaaS product'"
-                                                className="flex-1 bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600"
+                                                className="flex-1 bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none placeholder:text-zinc-600 rounded-md"
                                             />
                                             <button
                                                 onClick={generatePrompt}
@@ -874,14 +874,14 @@ export const AgentsTab = ({
                                             </button>
                                         </div>
                                         {showPreview ? (
-                                            <div className="w-full flex-1 min-h-[200px] max-h-[500px] overflow-y-auto bg-zinc-950 border border-zinc-800 p-4 text-sm text-zinc-300 leading-relaxed">
+                                            <div className="w-full flex-1 min-h-[200px] max-h-[500px] overflow-y-auto bg-zinc-950 border border-zinc-800 p-4 text-sm text-zinc-300 leading-relaxed rounded-md">
                                                 {renderTextContent(draftAgent.system_prompt || '*No system prompt yet.*')}
                                             </div>
                                         ) : (
                                             <VaultTextarea
                                                 value={draftAgent.system_prompt}
                                                 onChange={e => setDraftAgent({ ...draftAgent, system_prompt: e.target.value })}
-                                                className="w-full flex-1 min-h-[200px] bg-zinc-950 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none leading-relaxed"
+                                                className="w-full flex-1 min-h-[200px] bg-zinc-950 border border-zinc-800 p-3 text-xs font-mono text-zinc-300 focus:border-white focus:outline-none resize-none leading-relaxed rounded-md"
                                                 placeholder="You are a helpful assistant. Type @ to reference a vault file..."
                                             />
                                         )}
@@ -906,7 +906,7 @@ export const AgentsTab = ({
                                             {agentChannels.map((ch: any) => {
                                                 const EMOJI: Record<string, string> = { telegram: '✈️', discord: '🎮', slack: '💬', teams: '📘', whatsapp: '📱' };
                                                 return (
-                                                    <div key={ch.id} className="flex items-center gap-3 p-3 border border-zinc-800 bg-zinc-950">
+                                                    <div key={ch.id} className="flex items-center gap-3 p-3 border border-zinc-800 bg-zinc-950 rounded-md">
                                                         <span className="text-lg">{EMOJI[ch.platform] ?? '🤖'}</span>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="text-xs font-bold text-white">{ch.name}</div>

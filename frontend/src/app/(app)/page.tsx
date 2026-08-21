@@ -202,7 +202,7 @@ function AssistantBubble({ msg, agentName }: { msg: Message; agentName: string }
         msg.intent ? "pt-6" : "pt-4"
       )}>
         {msg.intent && (
-          <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono">
+          <div className="absolute -top-3 left-2 bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 font-mono rounded-md">
             {agentName}
           </div>
         )}
@@ -1324,12 +1324,12 @@ export default function Home() {
     if (msg.msgType === 'human_input_required') {
       return (
         <div key={idx} className="flex gap-4 max-w-4xl">
-          <div className="h-8 w-8 shrink-0 flex items-center justify-center border border-amber-700/50 bg-amber-950/30 text-amber-400">
+          <div className="h-8 w-8 shrink-0 flex items-center justify-center border border-amber-700/50 bg-amber-950/30 text-amber-400 rounded-md">
             <User className="h-4 w-4" />
           </div>
           <div className="flex flex-col flex-1 min-w-0 gap-3">
-            <div className="p-4 text-[15px] leading-7 border border-amber-900/40 bg-amber-950/10 relative font-sans">
-              <div className="absolute -top-3 left-2 bg-zinc-950 border border-amber-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-500 font-mono">
+            <div className="p-4 text-[15px] leading-7 border border-amber-900/40 bg-amber-950/10 relative font-sans rounded-md">
+              <div className="absolute -top-3 left-2 bg-zinc-950 border border-amber-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-500 font-mono rounded-md">
                 Human Input Required
               </div>
               <div className="prose prose-invert max-w-none text-zinc-100 font-normal mb-4">
@@ -1370,7 +1370,7 @@ export default function Home() {
         )}>
           {msg.role === 'user' ? (
             /* ── User bubble ── */
-            <div className="p-4 bg-zinc-900 border border-zinc-800 text-zinc-100 text-[15px] leading-7 relative font-sans self-end max-w-[80%]">
+            <div className="p-4 bg-zinc-900 border border-zinc-800 text-zinc-100 text-[15px] leading-7 relative font-sans self-end max-w-[80%] rounded-md">
               <div className="prose prose-invert max-w-none text-zinc-100 font-normal">
                 {renderTextContent(msg.content)}
               </div>
@@ -1397,7 +1397,7 @@ export default function Home() {
           {msg.role === 'assistant' && (
             <div className="w-full mt-2 pl-1">
               {msg.intent === 'render_local_file' && (
-                <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto text-zinc-300">
+                <div className="mt-4 p-4 bg-zinc-950 border border-zinc-800 font-mono text-xs whitespace-pre-wrap max-h-96 overflow-auto text-zinc-300 rounded-md">
                   {msg.data.content}
                 </div>
               )}
@@ -1566,7 +1566,7 @@ export default function Home() {
                 <span className="text-xs font-bold text-zinc-400 tracking-widest uppercase group-hover:text-zinc-200 transition-colors">AGENTS</span>
 
                 {/* Dropdown on Hover */}
-                <div className="absolute right-0 top-full mt-0 w-64 bg-zinc-950 border border-zinc-800 p-2 shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all pointer-events-none group-hover:pointer-events-auto z-50 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                <div className="absolute right-0 top-full mt-0 w-64 bg-zinc-950 border border-zinc-800 p-2 shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all pointer-events-none group-hover:pointer-events-auto z-50 max-h-[60vh] overflow-y-auto custom-scrollbar rounded-md">
                   <div className="space-y-1">
                     {(() => {
                       // Hide native-builder machinery agents (ids prefixed `agent_native_builder`);
@@ -1697,7 +1697,7 @@ export default function Home() {
           <div className="w-full md:max-w-5xl mx-auto">
             {/* Image Preview Strip */}
             {attachedImages.length > 0 && (
-              <div className="flex items-center gap-3 mb-3 p-3 border border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md overflow-x-auto shadow-2xl">
+              <div className="flex items-center gap-3 mb-3 p-3 border border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md overflow-x-auto shadow-2xl rounded-md">
                 {attachedImages.map((img, idx) => (
                   <div key={idx} className="relative group shrink-0">
                     <img
@@ -1720,7 +1720,7 @@ export default function Home() {
             )}
             <form
               onSubmit={handleSubmit}
-              className="flex items-end gap-1.5 border border-border-strong bg-surface shadow-2xl focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--ring)] transition-all p-1.5"
+              className="flex items-end gap-1.5 border border-border-strong bg-surface shadow-2xl focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--ring)] transition-all p-1.5 rounded-md"
               onDrop={(e) => {
                 e.preventDefault();
                 const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
@@ -1817,7 +1817,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && attachedImages.length === 0)}
-                className="px-4 py-2 bg-white text-black font-semibold text-[11px] uppercase tracking-wider border border-transparent hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all self-end mb-1 shrink-0 flex items-center justify-center"
+                className="px-4 py-2 bg-white text-black font-semibold text-[11px] uppercase tracking-wider border border-transparent hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all self-end mb-1 shrink-0 flex items-center justify-center rounded-md"
               >
                 <span className="hidden md:inline">Execute</span>
                 <Send className="h-4 w-4 md:hidden" />

@@ -221,7 +221,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             <div className="space-y-8">
                 {toast && <ToastNotification show={toast.show} message={toast.message} type={toast.type} />}
                 {embedCode && !embeddingModel && (
-                    <div className="flex items-start gap-3 p-3 bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+                    <div className="flex items-start gap-3 p-3 bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400 rounded-md">
                         <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                         <span>
                             No embedding model configured. Indexing requires an embedding model.{' '}
@@ -246,7 +246,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                             type="text"
                             value={draftRepo.name || ''}
                             onChange={e => setDraftRepo({ ...draftRepo, name: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                             placeholder="e.g. Frontend App"
                             autoComplete="off"
                         />
@@ -257,7 +257,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                             type="text"
                             value={draftRepo.path || ''}
                             onChange={e => setDraftRepo({ ...draftRepo, path: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                             placeholder="/home/user/projects/app"
                             autoComplete="off"
                         />
@@ -267,7 +267,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                         <textarea
                             value={draftRepo.description || ''}
                             onChange={e => setDraftRepo({ ...draftRepo, description: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px]"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px] rounded-md"
                             placeholder="Help the LLM understand what this repo contains…"
                         />
                     </div>
@@ -292,11 +292,11 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2">
                                     <label className="text-xs uppercase font-bold text-zinc-500 tracking-wider">Extra Excluded Patterns</label>
-                                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">one per line</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono rounded-md">one per line</span>
                                 </div>
 
                                 {/* Pattern-matching explainer */}
-                                <div className="flex gap-2 p-3 bg-amber-500/5 border border-amber-500/15 text-xs text-amber-300">
+                                <div className="flex gap-2 p-3 bg-amber-500/5 border border-amber-500/15 text-xs text-amber-300 rounded-md">
                                     <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                                     <div className="space-y-1">
                                         <p><span className="font-mono text-white">data</span> → excludes <em>every</em> directory named <span className="font-mono">data</span> (backend/data AND frontend/data)</p>
@@ -308,7 +308,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                 <textarea
                                     value={excludedText}
                                     onChange={e => setExcludedText(e.target.value)}
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px]"
+                                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px] rounded-md"
                                     placeholder={`.*\nbackend/data\nfixtures`}
                                 />
 
@@ -322,7 +322,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                     Always excluded automatically ({BASE_EXCLUDED.length} base patterns)
                                 </button>
                                 {showBasePatterns && (
-                                    <div className="flex flex-wrap gap-1 p-3 bg-zinc-950 border border-zinc-800">
+                                    <div className="flex flex-wrap gap-1 p-3 bg-zinc-950 border border-zinc-800 rounded-md">
                                         {BASE_EXCLUDED.map(p => (
                                             <span key={p} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 font-mono">{p}</span>
                                         ))}
@@ -336,7 +336,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                                 <textarea
                                     value={includedText}
                                     onChange={e => setIncludedText(e.target.value)}
-                                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[60px]"
+                                    className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[60px] rounded-md"
                                     placeholder={`*.py\n*.ts\n*.tsx\n*.md`}
                                 />
                                 <p className="text-xs text-zinc-600">Only files matching these globs will be indexed. Leave blank to use defaults.</p>
@@ -388,7 +388,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
             </div>
 
             {repos.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-zinc-800 bg-zinc-900/50">
+                <div className="text-center py-12 border border-dashed border-zinc-800 bg-zinc-900/50 rounded-md">
                     <FolderGit2 className="w-8 h-8 mx-auto text-zinc-600 mb-3" />
                     <h3 className="text-sm font-bold text-zinc-100">No repositories indexed</h3>
                     <p className="text-sm text-zinc-500 mt-1 mb-6">
@@ -409,7 +409,7 @@ export function ReposTab({ embeddingModel, embedCode }: ReposTabProps) {
                         return (
                             <div
                                 key={repo.id}
-                                className="p-4 border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 transition-colors cursor-pointer group"
+                                className="p-4 border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 transition-colors cursor-pointer group rounded-md"
                                 onClick={() => setDraftRepo(repo)}
                             >
                                 <div className="flex justify-between items-start mb-2">

@@ -38,7 +38,7 @@
    * that are actually circular — status dots, avatars, count bubbles and switch
    * tracks — which stay round in either mode.
    * -------------------------------------------------------------------- */
-  --ui-radius: 0px;
+  --ui-radius: 8px;
 
   /* ── Surfaces, text, borders ─────────────────────────────────────────── */
   --bg: #09090b;            /* zinc-950 */
@@ -427,6 +427,26 @@ body {
   select:disabled,
   textarea:disabled {
     cursor: not-allowed;
+  }
+
+  /*
+   * Controls follow --ui-radius by default.
+   *
+   * Most of this app's markup predates the design system and simply never
+   * declared a corner: ~279 `<button>` and ~149 `<input>` carry a border and a
+   * background and no `rounded-*` at all. That is invisible while the knob is
+   * 0px — everything agrees by accident — and the moment it moves, only the
+   * handful of elements that *do* carry a radius class round, which reads as
+   * the app being half-finished.
+   *
+   * A base-layer default fixes all of them at once, and any explicit
+   * `rounded-*` utility still wins, because utilities sort after base.
+   */
+  button,
+  input,
+  textarea,
+  select {
+    border-radius: var(--ui-radius);
   }
 }
 

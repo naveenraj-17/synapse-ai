@@ -61,7 +61,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                             autoComplete="username"
                             className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2.5 text-sm
                                        focus:border-zinc-500 focus:outline-none transition-colors
-                                       text-white placeholder:text-zinc-700"
+                                       text-white placeholder:text-zinc-700 rounded-md"
                             placeholder="Enter username"
                         />
                     </div>
@@ -78,7 +78,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
                             autoComplete="current-password"
                             className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2.5 text-sm
                                        focus:border-zinc-500 focus:outline-none transition-colors
-                                       text-white placeholder:text-zinc-700"
+                                       text-white placeholder:text-zinc-700 rounded-md"
                             placeholder="Enter password"
                         />
                     </div>

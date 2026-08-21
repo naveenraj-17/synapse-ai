@@ -323,7 +323,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 <textarea
                     value={schemaStr}
                     onChange={e => handleSchemaChange(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none min-h-[140px]"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 text-[10px] font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none min-h-[140px] rounded-md"
                     placeholder='{"type": "object", "properties": {"query": {"type": "string", "description": "The input query"}}}'
                 />
                 {schemaError && (
@@ -350,7 +350,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                             value={testArgs}
                             onChange={e => setTestArgs(e.target.value)}
                             rows={2}
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none"
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs font-mono text-zinc-300 focus:border-violet-600 focus:outline-none resize-none rounded-md"
                             placeholder='{"query": "hello world"}'
                         />
                     </div>
@@ -367,7 +367,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                 </div>
 
                 {testError && (
-                    <div className="flex items-center gap-2 p-2 bg-red-950/40 border border-red-800 text-red-400 text-[11px]">
+                    <div className="flex items-center gap-2 p-2 bg-red-950/40 border border-red-800 text-red-400 text-[11px] rounded-md">
                         <AlertCircle className="h-4 w-4 shrink-0" />
                         {testError}
                     </div>
@@ -389,7 +389,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                         {testResult.stdout && (
                             <div className="space-y-1">
                                 <p className="text-[9px] uppercase tracking-wider text-zinc-500">stdout</p>
-                                <pre className="p-3 bg-zinc-950 border border-zinc-800 text-[11px] font-code text-green-300 overflow-auto max-h-48 whitespace-pre-wrap">
+                                <pre className="p-3 bg-zinc-950 border border-zinc-800 text-[11px] font-code text-green-300 overflow-auto max-h-48 whitespace-pre-wrap rounded-md">
                                     {testResult.stdout}
                                 </pre>
                             </div>
@@ -398,7 +398,7 @@ export function PythonToolEditor({ draft, onChange }: PythonToolEditorProps) {
                         {testResult.stderr && (
                             <div className="space-y-1">
                                 <p className="text-[9px] uppercase tracking-wider text-zinc-500">stderr</p>
-                                <pre className="p-3 bg-zinc-950 border border-red-900/40 text-[11px] font-code text-red-300 overflow-auto max-h-32 whitespace-pre-wrap">
+                                <pre className="p-3 bg-zinc-950 border border-red-900/40 text-[11px] font-code text-red-300 overflow-auto max-h-32 whitespace-pre-wrap rounded-md">
                                     {testResult.stderr}
                                 </pre>
                             </div>

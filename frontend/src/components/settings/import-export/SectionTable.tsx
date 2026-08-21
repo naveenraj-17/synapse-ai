@@ -57,7 +57,7 @@ export function SectionTable<T>({
                 <div
                   className={`mt-0.5 h-4 w-4 flex-shrink-0 flex items-center justify-center border transition-colors ${
                     isSelected ? "bg-white border-white" : "bg-zinc-950 border-zinc-700"
-                  }`}
+                  } rounded-md`}
                 >
                   {isSelected && (
                     <svg className="h-2.5 w-2.5 text-black" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -69,7 +69,7 @@ export function SectionTable<T>({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-zinc-200">{getLabel(item)}</span>
                     {isLocked && (
-                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 text-zinc-500 tracking-wider">
+                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 text-zinc-500 tracking-wider rounded-md">
                         auto
                       </span>
                     )}

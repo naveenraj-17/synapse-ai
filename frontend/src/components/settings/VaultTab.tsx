@@ -176,21 +176,21 @@ function CreateDialog({
                             <button
                                 type="button"
                                 onClick={() => setFileType('md')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'md' ? 'border-blue-500 bg-blue-950/40 text-blue-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'md' ? 'border-blue-500 bg-blue-950/40 text-blue-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'} rounded-md`}
                             >
                                 <FileText className="h-3.5 w-3.5" /> Markdown
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setFileType('json')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'json' ? 'border-amber-500 bg-amber-950/40 text-amber-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'json' ? 'border-amber-500 bg-amber-950/40 text-amber-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'} rounded-md`}
                             >
                                 <FileJson className="h-3.5 w-3.5" /> JSON
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setFileType('txt')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'txt' ? 'border-zinc-400 bg-zinc-800/60 text-zinc-200' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold border transition-colors ${fileType === 'txt' ? 'border-zinc-400 bg-zinc-800/60 text-zinc-200' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'} rounded-md`}
                             >
                                 <AlignLeft className="h-3.5 w-3.5" /> Text
                             </button>
@@ -207,7 +207,7 @@ function CreateDialog({
                             value={name}
                             onChange={e => setName(e.target.value)}
                             placeholder={type === 'file' ? `my-document.${fileType}` : 'my-folder'}
-                            className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-white font-mono focus:border-white focus:outline-none"
+                            className="w-full bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-white font-mono focus:border-white focus:outline-none rounded-md"
                         />
                         {type === 'file' && (
                             <p className="text-[9px] text-zinc-600">
@@ -290,7 +290,7 @@ function JsonEditor({ value, onChange }: { value: string; onChange: (v: string) 
                 value={value}
                 onChange={handleChange}
                 spellCheck={false}
-                className={`flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0 ${error ? 'border-b-2 border-red-600/60' : ''}`}
+                className={`flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0 ${error ? 'border-b-2 border-red-600/60' : ''} rounded-md`}
                 style={{ fontFamily: 'monospace' }}
             />
             {error && (
@@ -339,7 +339,7 @@ function MarkdownEditor({
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     spellCheck={false}
-                    className="flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0"
+                    className="flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0 rounded-md"
                     style={{ fontFamily: 'monospace' }}
                     placeholder="# Title&#10;&#10;Start writing..."
                 />
@@ -363,7 +363,7 @@ function PlainTextEditor({ value, onChange }: { value: string; onChange: (v: str
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 spellCheck={false}
-                className="flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0"
+                className="flex-1 min-h-0 w-full bg-zinc-950 p-4 text-xs font-mono text-zinc-200 focus:outline-none resize-none leading-relaxed border-0 rounded-md"
                 style={{ fontFamily: 'monospace' }}
                 placeholder="Start typing..."
             />
@@ -526,13 +526,13 @@ export function VaultTab() {
                         <span className="text-[10px] text-zinc-600">View:</span>
                         <button
                             onClick={() => { setStorageSource('s3'); setSelectedNode(null); setFileContent(''); setSavedContent(''); }}
-                            className={`px-2 py-0.5 text-[10px] font-bold border transition-colors ${storageSource === 's3' ? 'border-sky-500 bg-sky-950/40 text-sky-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'}`}
+                            className={`px-2 py-0.5 text-[10px] font-bold border transition-colors ${storageSource === 's3' ? 'border-sky-500 bg-sky-950/40 text-sky-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'} rounded-md`}
                         >
                             S3
                         </button>
                         <button
                             onClick={() => { setStorageSource('local'); setSelectedNode(null); setFileContent(''); setSavedContent(''); }}
-                            className={`px-2 py-0.5 text-[10px] font-bold border transition-colors ${storageSource === 'local' ? 'border-amber-500 bg-amber-950/40 text-amber-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'}`}
+                            className={`px-2 py-0.5 text-[10px] font-bold border transition-colors ${storageSource === 'local' ? 'border-amber-500 bg-amber-950/40 text-amber-400' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'} rounded-md`}
                         >
                             Local
                         </button>

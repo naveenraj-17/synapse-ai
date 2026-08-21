@@ -144,7 +144,7 @@ export function DBsTab() {
                                 type="text"
                                 value={draftConfig.name || ''}
                                 onChange={(e) => setDraftConfig({ ...draftConfig, name: e.target.value })}
-                                className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                                className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                                 placeholder="e.g. Production DB"
                                 autoComplete="off"
                             />
@@ -165,7 +165,7 @@ export function DBsTab() {
                             type="text"
                             value={draftConfig.connection_string || ''}
                             onChange={(e) => setDraftConfig({ ...draftConfig, connection_string: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono rounded-md"
                             placeholder="postgresql://user:password@host:5432/dbname"
                             autoComplete="off"
                         />
@@ -176,7 +176,7 @@ export function DBsTab() {
                         <textarea
                             value={draftConfig.description || ''}
                             onChange={(e) => setDraftConfig({ ...draftConfig, description: e.target.value })}
-                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px]"
+                            className="w-full bg-zinc-900 border border-zinc-800 p-3 text-sm text-white focus:border-white focus:outline-none transition-colors font-mono min-h-[80px] rounded-md"
                             placeholder="Help the agent understand what this database contains and how it relates to the codebase..."
                         />
                     </div>
@@ -219,7 +219,7 @@ export function DBsTab() {
             </div>
 
             {configs.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-zinc-800 bg-zinc-900/50">
+                <div className="text-center py-12 border border-dashed border-zinc-800 bg-zinc-900/50 rounded-md">
                     <Database className="w-8 h-8 mx-auto text-zinc-600 mb-3" />
                     <h3 className="text-sm font-bold text-zinc-100">No databases configured</h3>
                     <p className="text-sm text-zinc-500 mt-1 mb-6">Add a database connection to enable schema context for code agents.</p>
@@ -235,7 +235,7 @@ export function DBsTab() {
                     {configs.map((config) => (
                         <div
                             key={config.id}
-                            className="p-4 border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 transition-colors cursor-pointer group"
+                            className="p-4 border border-zinc-800 bg-zinc-900/50 hover:border-zinc-600 transition-colors cursor-pointer group rounded-md"
                             onClick={() => setDraftConfig(config)}
                         >
                             <div className="flex justify-between items-start mb-2">
