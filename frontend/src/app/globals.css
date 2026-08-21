@@ -23,22 +23,28 @@
   --code-font: var(--font-geist-mono);
 
   /* ── Corner radius: one knob ─────────────────────────────────────────────
-   * 0px is sharp. Set it to 6px and the entire app becomes rounded — every
-   * button, input, card, dialog, popup and badge — because the whole `rounded-*`
-   * scale below is derived from this and nothing hard-codes a corner.
+   * Set this and the entire app follows — every button, input, card, dialog,
+   * popup and badge — because the whole `rounded-*` scale below is derived
+   * from it and nothing hard-codes a corner.
    *
-   * Sharp is the current choice. Radius is the weakest carrier of personality
-   * anyway: a product reads as itself through density, type, contrast and
-   * restraint, not its corners. What sharp does carry is *register* — precise
-   * and technical, which is what a tool with a terminal composer and a log
-   * viewer is. Rounded would not cost the personality; it would move the
-   * register toward consumer software.
+   * 4px, settled after trying 0 and 8. Radius is the weakest carrier of
+   * personality: a product reads as itself through density, type, contrast and
+   * restraint, not its corners. What radius does carry is *register*. 0 was
+   * precise and technical — right for a terminal composer and a log viewer,
+   * but it read as unfinished next to the kit's own primitives. 8 moved the
+   * register toward consumer software. 4 is a hairline: enough to say the
+   * corner was chosen, not enough to soften what the tool is.
+   *
+   * Verifying a change here means MOVING it and re-measuring. "Everything is
+   * Npx" cannot distinguish *follows the token* from *has no radius at all* —
+   * the two are identical until the knob moves. That is how a broken knob
+   * shipped for a commit.
    *
    * `rounded-full` deliberately does NOT follow this. It is reserved for things
    * that are actually circular — status dots, avatars, count bubbles and switch
    * tracks — which stay round in either mode.
    * -------------------------------------------------------------------- */
-  --ui-radius: 8px;
+  --ui-radius: 4px;
 
   /* ── Surfaces, text, borders ─────────────────────────────────────────── */
   --bg: #09090b;            /* zinc-950 */
