@@ -352,9 +352,10 @@ def _get_native_mcp_servers(
         #
         # The arithmetic is worth knowing: this is one extra subprocess per tool
         # per live pool entry. In the shipped single-tenant product that is the
-        # same count as before. On a cloud worker `sql` and `code_vault_search`
-        # are already excluded, and D8 drops `bash` and `vault_sandbox`, which
-        # leaves `file_reader` — one process, plus the Filesystem server below.
+        # same count as before. On a cloud worker `code_vault_search` is
+        # excluded and D8 drops `bash` and `vault_sandbox`, which leaves
+        # `file_reader` and `sql` — two processes, plus the Filesystem server
+        # below.
         from core.tenancy import get_tenant
 
         tenant_env = dict(tool_env)

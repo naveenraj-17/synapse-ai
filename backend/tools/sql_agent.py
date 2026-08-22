@@ -6,6 +6,7 @@ from mcp.server.stdio import stdio_server
 import asyncio
 import json
 import os
+import re
 from sqlalchemy import create_engine, inspect, text
 from core.config import load_settings
 
@@ -15,16 +16,81 @@ app = Server("sql-mcp-server")
 # Per-db_id engine cache: db_id -> (engine, inspector)
 _engines: dict[str, tuple] = {}
 
-# Mutation keywords that indicate a write operation
+# Keywords that can modify something. Checked anywhere in the statement, not
+# only at the front — see _is_write_query.
 _WRITE_KEYWORDS = {
     "insert", "update", "delete", "drop", "create", "alter",
     "truncate", "replace", "merge", "upsert", "grant", "revoke",
+    # Statements that mutate without being obviously a write. `copy ... from`
+    # loads a file into a table; `do` runs a procedural block; `call` runs a
+    # procedure; `set` changes session state a later statement can rely on.
+    "copy", "do", "call", "set", "lock", "vacuum", "reindex", "refresh",
+    "comment", "rename", "attach", "detach", "pragma",
 }
+
+_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _strip_comments_and_literals(sql: str) -> str:
+    """Blank out comments and quoted text so keyword scanning is not fooled.
+
+    Without this, `WHERE status = 'delete me'` looks like a delete, and
+    `-- drop table x` in a comment does too. Replaced with spaces rather than
+    removed so offsets and word boundaries survive.
+    """
+    out = []
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        two = sql[i:i + 2]
+        if two == "--":
+            end = sql.find("\n", i)
+            i = n if end == -1 else end
+        elif two == "/*":
+            end = sql.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+        elif ch in "'\"":
+            quote = ch
+            i += 1
+            while i < n:
+                if sql[i] == quote:
+                    # Doubled quote is an escaped quote, not the end.
+                    if i + 1 < n and sql[i + 1] == quote:
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            out.append(" ")
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _statement_count(query: str) -> int:
+    """How many statements this is, ignoring a trailing semicolon."""
+    cleaned = _strip_comments_and_literals(query)
+    return len([part for part in cleaned.split(";") if part.strip()])
 
 
 def _is_write_query(query: str) -> bool:
-    first_word = query.strip().split()[0].lower() if query.strip() else ""
-    return first_word in _WRITE_KEYWORDS
+    """True if the query could modify anything.
+
+    **Scans the whole statement, not just its first word.** The first-word
+    version passed `WITH x AS (SELECT 1) DELETE FROM t` as a read, because the
+    first word is `with` — so a read-only connection would happily run the
+    delete. It also passed `SELECT 1; DROP TABLE t` on any driver that allows
+    multiple statements.
+
+    Deliberately conservative: a keyword anywhere in the cleaned statement
+    counts. That can refuse an exotic read whose identifier happens to be a bare
+    keyword, which is the right direction for a gate whose other failure mode is
+    an unauthorised write. Comments and string literals are blanked first, so
+    ordinary data containing the word "delete" does not trip it.
+    """
+    cleaned = _strip_comments_and_literals(query).lower()
+    return any(word in _WRITE_KEYWORDS for word in _WORD_RE.findall(cleaned))
 
 
 async def _load_db_configs() -> list[dict]:
@@ -170,6 +236,19 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
 
         elif name == "run_sql_query":
             query = arguments.get("query", "").strip()
+
+            # Refused whatever the write setting says. One statement per call
+            # is all any caller needs, and a second one is the shape an
+            # injection takes — `SELECT 1; DROP TABLE t` reads as a select to
+            # anything that only inspects the start.
+            if _statement_count(query) > 1:
+                return [types.TextContent(
+                    type="text",
+                    text=(
+                        "BLOCKED: send one statement per call. "
+                        "Multiple statements separated by ';' are not accepted."
+                    )
+                )]
 
             if _is_write_query(query):
                 settings = load_settings()

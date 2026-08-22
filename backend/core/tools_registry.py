@@ -42,8 +42,18 @@ TENANT_SCOPED_TOOLS: set[str] = {
 }
 
 # Tools safe for headless worker processes.
-# Excluded from workers: sql (needs DB config injection), personal_details (UI-only),
-# code_vault_search (large index, memory-heavy in workers).
+# Excluded from workers: personal_details (UI-only), code_vault_search (large
+# index, memory-heavy in workers).
+#
+# `sql` was excluded too, with the reason "needs DB config injection". That was
+# true when a worker had no way to know whose database configs to read — and it
+# stopped being true in the tenancy refactor: `tools/sql_agent.py::_load_db_configs`
+# reads `collections.load("db_configs")` through the store, `sql` is in
+# TENANT_SCOPED_TOOLS below, and `core/tool_server.py::bootstrap` tells each
+# subprocess which tenant it serves. Nothing is injected; it resolves its own.
+#
+# The cost is the one `core/scale/worker_server_module.py` names: one more
+# subprocess per tool per live pool entry.
 WORKER_NATIVE_TOOLS: set[str] = {
     "time",
     "collect_data",
@@ -53,6 +63,7 @@ WORKER_NATIVE_TOOLS: set[str] = {
     "web_scraper",
     "bash",
     "file_reader",
+    "sql",
 }
 
 # npx-based MCP servers available to workers.
