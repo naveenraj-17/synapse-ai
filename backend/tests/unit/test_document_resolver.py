@@ -22,7 +22,9 @@ def _no_resolver():
 class TestTheDefaultIsNothing:
     async def test_a_document_is_returned_as_written(self) -> None:
         """The shipped product reads exactly what it wrote."""
-        document = {"connection_string": "postgresql://u:p@h/db"}
+        # No inline credentials: the repo's secret scanner reads fixtures too,
+        # and a fixture that trips it is one someone later bypasses the hook for.
+        document = {"connection_string": "postgresql://example.invalid/analytics"}
         assert await collections._resolved(document) is document
 
     async def test_a_non_dict_is_left_alone(self) -> None:
