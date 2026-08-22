@@ -22,18 +22,34 @@ export function Checkbox({
   checked,
   onChange,
   label,
+  id,
   disabled,
   className,
 }: {
   checked: CheckedState;
   onChange: (checked: boolean) => void;
-  /** Required: an unlabelled checkbox in a table row is unusable by screen reader. */
+  /**
+   * Required: an unlabelled checkbox in a table row is unusable by screen
+   * reader. This renders no text — it becomes the control's `aria-label`.
+   * Where a *visible* label is wanted, write it next to the control and tie
+   * the two together with `id`.
+   */
   label: string;
+  /**
+   * Names the control so a visible `<label htmlFor>` can point at it, which
+   * also makes that text a click target for the box.
+   *
+   * Same gap `Label` had before it learned `htmlFor`: without this, a checkbox
+   * with a caption beside it is two unrelated elements that merely look
+   * associated, and the caption is dead to both the pointer and the keyboard.
+   */
+  id?: string;
   disabled?: boolean;
   className?: string;
 }) {
   return (
     <RCheckbox.Root
+      id={id}
       checked={checked}
       onCheckedChange={(next) => onChange(next === true)}
       disabled={disabled}
