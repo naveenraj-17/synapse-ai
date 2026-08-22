@@ -422,12 +422,30 @@ body {
   outline: none;
 }
 
-/* Every border is semantic unless a component says otherwise. */
-* {
-  border-color: var(--border);
-}
-
 @layer base {
+  /*
+   * Every border is semantic unless a component says otherwise.
+   *
+   * Layered, and the layer is the whole point. Unlayered CSS beats every layer
+   * in the cascade regardless of specificity, and Tailwind v4 puts every
+   * utility in `@layer utilities` — so while this rule sat outside a layer it
+   * outranked all of them and every border-colour utility in the app was
+   * inert. Measured in the running app before the fix: `border-transparent`,
+   * `border-danger` and `border-border-strong` all computed to `--border`.
+   * Nothing looked broken, because every border was the same colour, which is
+   * exactly what a working border looks like.
+   *
+   * Inside `base` it does the job it was written for: a default for markup
+   * that carries no border-colour utility, losing to any markup that does.
+   *
+   * Do NOT lift this back out. The unlayered `:focus-visible` rule above is
+   * deliberate and is NOT the same case — it is load-bearing for 86 legacy
+   * `focus:outline-none` call sites. See its comment.
+   */
+  * {
+    border-color: var(--border);
+  }
+
   /*
    * Tailwind v3's Preflight carried `button, [role="button"] { cursor: pointer }`.
    * v4 dropped it to defer to the browser, whose default for a button is an

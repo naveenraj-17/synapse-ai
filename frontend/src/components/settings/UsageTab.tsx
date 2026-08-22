@@ -522,7 +522,7 @@ function TurnTable({ logs, showAgentDividers = false }: { logs: IndexedLog[]; sh
                                             </td>
                                         </tr>
                                     )}
-                                    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors rounded-md">
+                                    <tr className="border-b border-border last:border-0 hover:bg-white/[0.02] transition-colors rounded-md">
                                         <td className="py-2.5 pr-3 pl-3 text-zinc-600 tabular-nums">{i + 1}</td>
                                         <td className="py-2.5 pr-3 text-zinc-500 whitespace-nowrap tabular-nums">{fmtTime(log.timestamp)}</td>
                                         <td className="py-2.5 pr-3 font-mono max-w-[140px]">
