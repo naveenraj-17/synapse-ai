@@ -139,6 +139,18 @@ export function LinkButton({
  * `label` is required and not optional-with-a-default: an icon-only control
  * with no accessible name is announced as "button", which in a table of them
  * means a screen reader user hears the same word six times per row.
+ *
+ * **And it is shown on hover, not only announced.** `aria-label` served the
+ * screen-reader case and left everyone else guessing at a row of three
+ * unlabelled glyphs. `title` carries the same string, so the two cannot drift.
+ *
+ * Deliberately the native tooltip and not `Hint`, which was tried and reverted:
+ * `Hint` has to wrap its child in a focusable `inline-flex` span — that is what
+ * lets it explain a *disabled* control, whose `pointer-events: none` would
+ * otherwise swallow the hover. Around an enabled icon button that wrapper buys
+ * nothing and costs a layout box and a second tab stop on every one of them,
+ * which is visible as soon as several sit in a rail. A caller that needs the
+ * disabled case can still wrap in `Hint` itself.
  */
 export function IconButton({
   label,
@@ -157,6 +169,8 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
+      // Before the spread, so an explicit `title` still wins.
+      title={label}
       {...props}
       className={cn(
         buttonStyles({ variant: "ghost", size, iconOnly: true }),
