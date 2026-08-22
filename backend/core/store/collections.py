@@ -14,12 +14,56 @@ not silently drop each other's rows for collections that grow.
 
 Singletons — personal details is one document, not a list — use `load_one` /
 `save_one`, which store it under an empty key.
+
+Stored references
+-----------------
+An embedder may keep a credential outside this table and store a *reference* to
+it in the document — the value in the JSONB is an address, not a secret. Those
+documents are read by code that expects the real value (`tools/sql_agent.py`
+hands `connection_string` straight to `create_engine`), so the swap has to
+happen on the way out of the store rather than at every call site.
+
+`set_document_resolver()` is that seam. Nothing is registered by default, so the
+shipped product reads exactly what it wrote. It is the sixth registration
+alongside `set_store`, `set_resource_provider`, `set_job_tenant_resolver`,
+`set_api_key_provider`, `set_settings_provider` and `set_blob_store` — same
+shape, same reason: the engine describes the hole and the embedder fills it.
 """
 from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import delete, select
 
 from core.tenancy import get_tenant
+
+#: Installed by an embedder that stores credentials outside this table.
+_document_resolver: Callable[[dict], Awaitable[dict]] | None = None
+
+
+def set_document_resolver(resolver: Callable[[dict], Awaitable[dict]] | None) -> None:
+    """Install a transform applied to every document read from this table.
+
+    Takes one document, returns it with any stored references replaced by their
+    values. Called on the read path only: `save` writes what it is given, so the
+    embedder is responsible for putting references in rather than secrets.
+    """
+    global _document_resolver
+    _document_resolver = resolver
+
+
+async def _resolved(document: Any) -> Any:
+    """One document, through the resolver if there is one.
+
+    A resolver that raises is allowed to: a reference that cannot be resolved
+    means a credential is missing, and returning the document with the address
+    still in it would hand `create_engine` a `synsec://` URL and produce a
+    confusing driver error instead of a clear one.
+    """
+    if _document_resolver is None or not isinstance(document, dict):
+        return document
+    return await _document_resolver(document)
 
 
 async def load(name: str) -> list[dict]:
@@ -38,7 +82,7 @@ async def load(name: str) -> list[dict]:
                 .order_by(CollectionDB.created_at, CollectionDB.key)
             )
         ).scalars().all()
-    return [r.value for r in rows]
+    return [await _resolved(r.value) for r in rows]
 
 
 async def save(name: str, items: list[dict], key_field: str = "id") -> None:
@@ -96,7 +140,7 @@ async def load_one(name: str, default: dict | None = None) -> dict:
         ).scalar_one_or_none()
     if row is None:
         return dict(default or {})
-    return row.value
+    return await _resolved(row.value)
 
 
 async def save_one(name: str, document: dict) -> None:

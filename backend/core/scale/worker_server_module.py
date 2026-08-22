@@ -360,6 +360,15 @@ def _get_native_mcp_servers(
 
         tenant_env = dict(tool_env)
         tenant_env["SYNAPSE_TENANT_ID"] = get_tenant()
+
+        # Passed through explicitly rather than left to `os.environ.copy()`
+        # above. It would be inherited either way, and that is the problem: a
+        # mechanism that works by accident of inheritance is invisible here,
+        # where the decision to hand it to a child actually lives. See
+        # `core/tool_server.py` for what it names and why it exists.
+        resolver = os.getenv("SYNAPSE_DOCUMENT_RESOLVER", "").strip()
+        if resolver:
+            tenant_env["SYNAPSE_DOCUMENT_RESOLVER"] = resolver
         for name in sorted(WORKER_NATIVE_TOOLS & TENANT_SCOPED_TOOLS):
             _python_tool(name, tenant_env)
 

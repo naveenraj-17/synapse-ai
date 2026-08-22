@@ -28,17 +28,33 @@ from core import tenancy, tool_server
 
 _BACKEND = pathlib.Path(__file__).resolve().parent.parent.parent
 
-_VAR = "SYNAPSE_TENANT_ID"
-
-#: The one module permitted to *read* SYNAPSE_TENANT_ID. Same arrangement as
-#: core/store/importer.py and SYNAPSE_DATA_DIR: named here so a second entry is
-#: a conversation rather than a silent widening.
-_READERS = {"core/tool_server.py"}
-
-#: The one module permitted to *write* it, into the environment of a tool server
-#: it is spawning. Writing is the other half of the same mechanism and a
-#: different permission: it labels a child, it does not change this process.
-_WRITERS = {"core/scale/worker_server_module.py"}
+#: Every variable a tool subprocess is configured with, and who may touch it.
+#:
+#: Named here so a third entry is a conversation rather than a silent widening —
+#: the same arrangement as `core/store/importer.py` and SYNAPSE_DATA_DIR.
+#:
+#: `SYNAPSE_DOCUMENT_RESOLVER` names an import path installed as the store's
+#: document resolver. It exists because a tool subprocess reads the store
+#: itself, so an embedder keeping credentials outside `collections` cannot swap
+#: references in the parent. It names code to import, which sounds worse than it
+#: is: whatever can set it can already run code in the process it is spawning.
+_TOOL_VARS = {
+    #: Read by the module that tells a subprocess which tenant it serves;
+    #: written where that subprocess is spawned. Writing is a different
+    #: permission from reading — it labels a child, it does not change this
+    #: process.
+    "SYNAPSE_TENANT_ID": ({"core/tool_server.py"}, {"core/scale/worker_server_module.py"}),
+    #: The spawning module both reads and writes this one, and the asymmetry
+    #: with SYNAPSE_TENANT_ID is the point: that one is *computed* from
+    #: `get_tenant()`, so it is only ever written. This one is forwarded — read
+    #: from the parent's environment and handed to the child unchanged.
+    #: Forwarding a value decides nothing, which is why it is allowed here and
+    #: a third module still is not.
+    "SYNAPSE_DOCUMENT_RESOLVER": (
+        {"core/tool_server.py", "core/scale/worker_server_module.py"},
+        {"core/scale/worker_server_module.py"},
+    ),
+}
 
 _SEARCH_ROOTS = ("core", "tools", "services", "synapse")
 
@@ -54,11 +70,11 @@ def _sources():
             yield path
 
 
-def _is_var(node) -> bool:
-    return isinstance(node, ast.Constant) and node.value == _VAR
+def _is_var(node, var: str) -> bool:
+    return isinstance(node, ast.Constant) and node.value == var
 
 
-def _accesses(source: str) -> tuple[bool, bool]:
+def _accesses(source: str, var: str) -> tuple[bool, bool]:
     """(reads, writes) of the variable in `source`.
 
     Deliberately AST-based rather than a substring search: prose that explains
@@ -72,9 +88,13 @@ def _accesses(source: str) -> tuple[bool, bool]:
         if isinstance(node, ast.Call):
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-            if name in {"getenv", "get", "pop", "setdefault"} and node.args and _is_var(node.args[0]):
+            if (
+                name in {"getenv", "get", "pop", "setdefault"}
+                and node.args
+                and _is_var(node.args[0], var)
+            ):
                 reads = True
-        elif isinstance(node, ast.Subscript) and _is_var(node.slice):
+        elif isinstance(node, ast.Subscript) and _is_var(node.slice, var):
             if isinstance(node.ctx, ast.Store):
                 writes = True
             else:
@@ -83,33 +103,34 @@ def _accesses(source: str) -> tuple[bool, bool]:
     return reads, writes
 
 
-def test_only_one_module_reads_the_tenant_variable():
+@pytest.mark.parametrize("var", sorted(_TOOL_VARS))
+def test_only_the_named_modules_touch_a_tool_subprocess_variable(var: str):
+    readers, writers = _TOOL_VARS[var]
     read_by, written_by = [], []
     for path in _sources():
         source = path.read_text(encoding="utf-8")
-        if _VAR not in source:
+        if var not in source:
             continue
         rel = path.relative_to(_BACKEND).as_posix()
-        reads, writes = _accesses(source)
+        reads, writes = _accesses(source, var)
         if reads:
             read_by.append(rel)
         if writes:
             written_by.append(rel)
 
-    assert set(read_by) <= _READERS, (
-        f"{_VAR} may only be read by {sorted(_READERS)} — the module that exists "
-        "to tell a tool subprocess which tenant it serves. Also read by: "
-        f"{sorted(set(read_by) - _READERS)}. A second reader is a tenancy "
-        "decision, not an import."
+    assert set(read_by) <= readers, (
+        f"{var} may only be read by {sorted(readers)} — the module that configures "
+        f"a tool subprocess. Also read by: {sorted(set(read_by) - readers)}. "
+        "A second reader is a tenancy decision, not an import."
     )
-    assert set(written_by) <= _WRITERS, (
-        f"{_VAR} may only be written by {sorted(_WRITERS)}, where a tool server "
-        f"is spawned. Also written by: {sorted(set(written_by) - _WRITERS)}."
+    assert set(written_by) <= writers, (
+        f"{var} may only be written by {sorted(writers)}, where a tool server "
+        f"is spawned. Also written by: {sorted(set(written_by) - writers)}."
     )
     # And the mechanism must still exist — a guard that passes because the thing
     # it guards was deleted is worse than no guard.
-    assert set(read_by) == _READERS
-    assert set(written_by) == _WRITERS
+    assert set(read_by) == readers
+    assert set(written_by) == writers
 
 
 class TestAdoptingATenant:
