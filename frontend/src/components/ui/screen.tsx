@@ -40,15 +40,23 @@ export function Screen({
   title,
   description,
   actions,
+  breadcrumb,
   bleed = false,
   width = "form",
   children,
 }: {
-  title: string;
-  /** One line, shown under the title. Never a template. */
-  description?: string;
+  title: React.ReactNode;
+  /**
+   * One line, shown under the title. Never a template.
+   *
+   * A node rather than a string because a detail page's subtitle is often the
+   * thing being detailed — a run id in `Mono`, not a sentence.
+   */
+  description?: React.ReactNode;
   /** Right-hand side of the header — a button, or a close control. */
   actions?: React.ReactNode;
+  /** Sits above the title: a back link on a detail page. */
+  breadcrumb?: React.ReactNode;
   /**
    * For screens that manage their own height — the DAG canvas, the log
    * viewer, the file explorer. Gives them a flex column to fill instead of a
@@ -61,17 +69,32 @@ export function Screen({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* The header is the kit's own `PageHeader`, so a screen here and a
-          screen in the other product are the same object. */}
-      <header className="shrink-0 border-b border-border px-6 py-4">
-        <PageHeader title={title} description={description} actions={actions} />
+      {/*
+        The rule is full-bleed and the header's *content* is not: it sits in the
+        same column the body does, at the same horizontal padding, so the title
+        starts exactly above the first thing under it. Centring the body inside
+        a max-width while the title stayed at the page edge left the two
+        visibly out of line at wide viewports — the heading floating alone off
+        to the left of everything it heads.
+
+        The header itself is the kit's own `PageHeader`, so a screen here and a
+        screen in the other product are the same object.
+      */}
+      <header className="shrink-0 border-b border-border">
+        <div className={cn("mx-auto w-full px-6 py-4 md:px-12", !bleed && WIDTHS[width])}>
+          <PageHeader title={title} description={description} actions={actions}>
+            {breadcrumb}
+          </PageHeader>
+        </div>
       </header>
 
       {bleed ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-6 md:p-12">
-          <div className={cn("mx-auto space-y-10", WIDTHS[width])}>{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className={cn("mx-auto w-full space-y-10 px-6 py-6 md:px-12 md:py-12", WIDTHS[width])}>
+            {children}
+          </div>
         </div>
       )}
     </div>
