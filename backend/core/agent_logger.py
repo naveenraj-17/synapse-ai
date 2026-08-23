@@ -28,6 +28,17 @@ def _meta_key(run_id: str) -> str:
     """Sidecar holding what list_logs() shows, so listing reads no log bodies."""
     return f"{_BLOB_PREFIX}/{run_id}.meta.json"
 
+
+def meta_for(text: str) -> dict:
+    """The `.meta.json` sidecar for a log body. See the orchestration logger's
+    twin: `file_size_kb` belongs here because a blob store cannot cheaply stat
+    an object, and the listing has shown `0KB` for every finished run since D29.
+    """
+    return {
+        **_head_fields(text[:1000]),
+        "file_size_kb": round(len(text.encode("utf-8")) / 1024, 1),
+    }
+
 def _head_fields(head: str) -> dict:
     """The summary fields list_logs() shows, parsed from a log's banner.
 
@@ -145,7 +156,7 @@ class AgentLogger:
             # One put() at the end, not a write per line: put() replaces the
             # whole object, so appending through it would be quadratic.
             store.put(_blob_key(self.run_id), text)
-            store.put(_meta_key(self.run_id), json.dumps(_head_fields(text[:1000])))
+            store.put(_meta_key(self.run_id), json.dumps(meta_for(text)))
         except Exception:
             pass  # S3 upload failure must never surface to callers
 

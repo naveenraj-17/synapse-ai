@@ -9,6 +9,11 @@
 backend/node_modules/
 backend/data/orchestration_runs/
 backend/logs/
+# …and what the D29 log import renames it to. Same reason as `backend/data*`:
+# these are one person's live run history, and committing them means the next
+# person to pull gets a repo full of someone else's logs.
+backend/logs.migrated*/
+
 backend/venv/
 backend/data/chroma_db/
 backend/data/*

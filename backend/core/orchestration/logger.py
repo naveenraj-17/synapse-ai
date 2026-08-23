@@ -49,6 +49,23 @@ def _parse_head(head: str) -> dict:
     }
 
 
+def meta_for(text: str) -> dict:
+    """The `.meta.json` sidecar for a log body.
+
+    `file_size_kb` is in here rather than computed by `list_logs()` because a
+    blob store cannot cheaply stat an object — the listing hardcoded `0` and
+    every finished run has shown `0KB` since logs moved to blobs in D29. The
+    size is known at the moment the body is written, so it is written then.
+
+    Shared with `core/store/log_importer.py` so a migrated log lists exactly
+    like a freshly written one.
+    """
+    return {
+        **_parse_head(text[:1000]),
+        "file_size_kb": round(len(text.encode("utf-8")) / 1024, 1),
+    }
+
+
 def _ts() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 
@@ -117,7 +134,7 @@ class OrchestrationLogger:
             text = self.path.read_text(encoding="utf-8")
             store = get_blob_store()
             store.put(_blob_key(self.run_id), text)
-            store.put(_meta_key(self.run_id), json.dumps(_parse_head(text[:1000])))
+            store.put(_meta_key(self.run_id), json.dumps(meta_for(text)))
         except Exception:
             pass
 

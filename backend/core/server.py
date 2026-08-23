@@ -436,6 +436,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning: legacy data import skipped: {e}")
 
+    # And the logs, which live in `backend/logs/` and so were never part of the
+    # DATA_DIR import above. Its own call because its triggers are different in
+    # both directions: an install that already upgraded has `data.migrated/`,
+    # and by the time anyone notices their history is missing the store is not
+    # empty. See `core/store/log_importer.py`.
+    try:
+        from core.store.log_importer import import_legacy_logs_if_present
+        await import_legacy_logs_if_present()
+    except Exception as e:
+        print(f"Warning: legacy log import skipped: {e}")
+
     # Settings come from the store from here on. Order matters: after the
     # importer, which is what puts an upgrading install's settings.json into the
     # store, and before _build_native_mcp_servers() and _init_memory_store()
