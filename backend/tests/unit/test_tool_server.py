@@ -231,6 +231,41 @@ class TestBootstrap:
             set_settings_provider(None)
             settings_runtime.reset_state()
 
+    async def test_it_attaches_the_store_without_creating_the_schema(self, monkeypatch):
+        """A tool subprocess must never run DDL.
+
+        `get_store()` is lazy and calls `init_db()` on first use. A tool server
+        is spawned by a process that already owns the schema, so DDL from here
+        is redundant at best — and against an embedder's database it creates a
+        second, unpoliced set of the engine's tables underneath one that carries
+        a tenant column, foreign keys and row-level security.
+
+        In the cloud fleet the application role deliberately cannot CREATE, so
+        this surfaced as `permission denied for schema public` and every
+        database-backed tool was dead before it ran. The grant was standing in
+        for this call.
+        """
+        from core import store
+        from core.store import engine as store_engine
+
+        called: list[str] = []
+
+        async def _init_db(_engine):
+            called.append("init_db")
+
+        monkeypatch.setattr(store_engine, "init_db", _init_db)
+        monkeypatch.delenv("SYNAPSE_TENANT_ID", raising=False)
+        monkeypatch.setenv("SYNAPSE_DB_URL", "sqlite+aiosqlite:///:memory:")
+        await store.reset_store()
+        try:
+            tool_server._attach_store()
+            # Installed, so the lazy path is unreachable...
+            assert await store.get_store() is not None
+            # ...and therefore init_db was never the thing that provided it.
+            assert called == [], "a tool subprocess ran DDL against the store"
+        finally:
+            await store.reset_store()
+
     async def test_it_never_raises(self, monkeypatch):
         """A tool server that cannot reach the database still has to start."""
         from core import settings_runtime

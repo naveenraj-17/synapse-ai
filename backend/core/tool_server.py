@@ -69,6 +69,33 @@ def _install_document_resolver() -> None:
     collections.set_document_resolver(getattr(importlib.import_module(module_name), attribute))
 
 
+def _attach_store() -> None:
+    """Bind the store without letting this process create the schema.
+
+    `get_store()` is lazy and runs `init_db()` — `create_all` plus migrations —
+    on first use. **A tool server must never be the process that does that.** It
+    is spawned by a server or a worker that already owns the schema, so any DDL
+    from here is at best redundant and at worst wrong: an embedder whose tables
+    carry columns and policies the engine does not know about (a tenant column,
+    a foreign key, a row-level security policy) would get a second, unpoliced
+    set created underneath it. That is the same hazard the scale worker's
+    `set_store()` call exists to prevent, one process further out.
+
+    In the cloud fleet this surfaced as `permission denied for schema public`:
+    the tool subprocess connects as an application role that deliberately cannot
+    CREATE, so `collections.load()` raised before any tool ran and every
+    database-backed tool was dead. The grant was doing its job; this is the
+    thing it was standing in for.
+
+    `set_store()` installs the factory directly, which is what makes `init_db()`
+    unreachable — see `core/store/engine.py::get_store`.
+    """
+    from core.store import set_store
+    from core.store.engine import build_engine, build_session_factory, default_url
+
+    set_store(build_session_factory(build_engine(default_url())))
+
+
 async def bootstrap() -> None:
     """Adopt the tenant and point `load_settings()` at the store.
 
@@ -79,6 +106,13 @@ async def bootstrap() -> None:
     from core import tenancy
 
     tenancy.adopt_process_tenant(process_tenant())
+
+    try:
+        # Before anything can reach the store lazily, for the same reason
+        # `set_store` is first in the scale worker's startup.
+        _attach_store()
+    except Exception as exc:  # noqa: BLE001 — see the docstring
+        print(f"[tool_server] store unavailable: {exc}", flush=True)
 
     try:
         _install_document_resolver()
