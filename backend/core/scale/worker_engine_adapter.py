@@ -5,6 +5,15 @@ Differences from the in-process (V1) execution path:
   - Publishes every SSE event to a Redis Stream via RunEventPublisher
   - Polls Redis for distributed cancellation signal at each step boundary
   - Handles HUMAN step pause/resume via Redis keys + ARQ re-enqueue
+
+`resume()` below is a near-copy of `OrchestrationEngine.resume()`, deliberately
+— it uses the orchestration this process already loaded from the store rather
+than reloading a definition it may not have. **That makes the two a pair that
+must be changed together, and they have already drifted once:** a fix to the
+classmethod is invisible here, and on a shared fleet *every* resume runs here
+and none runs there, so a suite that only exercises the classmethod stays green
+while the product is broken. `tests/unit/test_adapter_resume.py` covers this
+path for that reason.
 """
 from typing import AsyncGenerator
 
@@ -141,6 +150,16 @@ class WorkerEngineAdapter:
         run.status = "running"
 
         if current_step:
+            # Before _resolve_next, so the loop guard counts this iteration.
+            # This line, and this ordering, must match OrchestrationEngine.resume():
+            # everything below is a copy of it, and when `_complete_human_step`
+            # was added there it was not added here. On a shared fleet, where
+            # every resume comes through this method and never that one, the
+            # effect was that a human step's `paused` entry in `step_history`
+            # was never closed — so a finished run still showed the approval as
+            # awaiting input, its duration grew forever against wall-clock, and
+            # `_apply_loop_guard` never counted a human step inside a loop.
+            engine._complete_human_step(run, current_step)
             next_id, _ = engine._resolve_next(current_step, run)
             run.current_step_id = next_id
             print(f"[adapter.resume] ➡  _resolve_next → next_step_id={next_id!r}", flush=True)
