@@ -30,6 +30,15 @@ export function ErrorNote({
   );
 }
 
+/**
+ * Inline confirmation. `aria-live="polite"` so it is announced when it appears.
+ *
+ * Polite rather than `role="alert"`, which its counterpart above uses: an error
+ * interrupts because it usually means the thing you asked for did not happen,
+ * while "saved" can wait for a gap in whatever is being read. Both have to say
+ * *something* though — a form whose only feedback is a green box is a form that
+ * silently does nothing for anyone not looking at it.
+ */
 export function SuccessNote({
   children,
   className,
@@ -40,6 +49,7 @@ export function SuccessNote({
   if (!children) return null;
   return (
     <div
+      aria-live="polite"
       className={cn(
         "flex items-start gap-2 rounded-md border border-success/25 bg-success-subtle px-3 py-2.5 text-sm leading-relaxed text-success",
         className,
