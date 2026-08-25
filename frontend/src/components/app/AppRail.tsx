@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun } from 'lucide-react';
 
-import { IconButton, Label, usePersisted } from '@/components/ui';
+import { IconButton, Label, Mark, usePersisted } from '@/components/ui';
 import { PRIMARY_NAV, type NavEntry } from '@/lib/nav';
 import { useNotifications } from '@/components/notifications/NotificationProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -112,12 +112,16 @@ export function AppRail({
             )}
         >
             <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-4">
-                <span aria-hidden className="size-2 shrink-0 rounded-full bg-accent" />
+                {/* The mark stays through the collapse. Collapsed the rail is
+                    56px less 32px of padding, which is 24px of content — enough
+                    for the mark and nothing else, and the mark is the one thing
+                    here worth keeping. */}
+                <Mark size={18} className="text-accent" />
                 <span className={cn(
                     'text-sm font-semibold tracking-tight text-text',
                     collapsed ? 'hidden' : 'hidden md:inline',
                 )}>
-                    Synapse
+                    SynapseOrch
                 </span>
                 {/* Collapse lives at the top while the rail is open, where it
                     is next to the thing it collapses. Collapsed there is no

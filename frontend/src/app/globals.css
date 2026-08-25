@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./brand-motion.css";
 
 /*
  * The design tokens, taken from `synapse-ai-pro-v1/web/src/app/globals.css`.
