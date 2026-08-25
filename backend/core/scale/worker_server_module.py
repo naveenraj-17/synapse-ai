@@ -22,11 +22,23 @@ tenant — and a Filesystem server rooted at whichever vault `get_tenant()`
 resolved to at startup, which is the default tenant's.
 """
 import asyncio
+import os
 import platform
 import sys
 from pathlib import Path
 
 from core.tool_router import ToolRouter
+
+#: How long one remote MCP server may take to hand back a usable transport.
+#:
+#: Bounds the handshake, which nothing else does — `ClientSession`'s
+#: `read_timeout_seconds` starts applying only once a session exists. Thirty
+#: seconds is generous for a TLS handshake plus an HTTP round trip and short
+#: enough that a fleet worker is not held by a third party. Overridable because
+#: a self-hosted install may sit behind a slow corporate proxy.
+REMOTE_MCP_CONNECT_TIMEOUT = float(
+    os.environ.get("SYNAPSE_MCP_CONNECT_TIMEOUT", "30")
+)
 
 _IS_WIN = platform.system() == "Windows"
 _NPX_CMD = "npx.cmd" if _IS_WIN else "npx"
@@ -219,9 +231,8 @@ class WorkerServerModule:
                     if params is None:
                         instance.mcp_disabled.append(server_name)
                         continue
-                    from mcp.client.sse import sse_client
-                    read, write = await exit_stack.enter_async_context(
-                        sse_client(params["url"], headers=params.get("headers", {}))
+                    read, write = await _open_remote(
+                        exit_stack, params["url"], params.get("headers", {})
                     )
                 else:
                     params = _build_stdio_mcp_params(cfg)
@@ -427,6 +438,73 @@ def _build_stdio_mcp_params(cfg: dict):
         args_raw = shlex.split(args_raw)
     env = cfg.get("env") or {}
     return StdioServerParameters(command=command, args=list(args_raw), env=env or None)
+
+
+async def _open_remote(exit_stack, url: str, headers: dict) -> tuple:
+    """Open a remote MCP server, trying both transports. Returns `(read, write)`.
+
+    ## Why this is not just `sse_client`
+
+    It was, and that is a bug with an unusually bad shape. Two transports are in
+    common use — streamable HTTP (MCP 2025-03-26+) and the legacy SSE one — and
+    `core/mcp_client.py::_open_http_session` has negotiated between them since
+    remote servers were added. This path did not: it dialled SSE unconditionally.
+
+    Against a streamable-HTTP endpoint that is not a clean failure. The server
+    accepts the GET and simply never sends the `endpoint` event SSE is waiting
+    for, so `sse_client` **hangs** — and a hang is not an exception, so the
+    `try/except` around the call site catches nothing. One such server wedges
+    `WorkerServerModule.build_for_tenant`, which wedges `mcp_pool._own`, which
+    leaves every `acquire()` for that tenant waiting on `entry.ready` forever.
+
+    Observed on `https://mcp.deepwiki.com/mcp`, a `/mcp` endpoint seeded by the
+    cloud's app directory: unbounded via SSE, and 2.6 seconds and three tools
+    via streamable HTTP. The job holding it sat in `arq:in-progress` for forty
+    minutes with nothing published and no `chat_sessions` row written, because
+    the pool is acquired before either.
+
+    ## Why there is a timeout as well
+
+    The transport fix removes the case we found; the timeout removes the class.
+    A remote server is a third party, and "accepts the connection, then goes
+    quiet" is a thing third parties do — through a proxy, mid-deploy, or because
+    someone pointed a URL at something that is not an MCP server at all. Nothing
+    else in this loop is bounded: `ClientSession`'s `read_timeout_seconds`
+    covers requests *after* a session exists, not the handshake that creates one.
+
+    A server that exceeds it is skipped like any other failing server, which is
+    what the `except` around the caller already does with everything else.
+    """
+    from mcp.client.sse import sse_client
+    from mcp.client.streamable_http import streamablehttp_client
+
+    async def _connect():
+        # Streamable HTTP first — it is what current servers speak, and what a
+        # `/mcp` endpoint almost always means.
+        try:
+            read, write, _ = await exit_stack.enter_async_context(
+                streamablehttp_client(url, headers=headers or None)
+            )
+            return read, write
+        except BaseException as exc:  # noqa: BLE001 — reported below if SSE also fails
+            first = exc
+
+        # Legacy SSE. Only the headers we set explicitly, never httpx's defaults:
+        # `accept-encoding` and `user-agent` confuse some SSE servers, which is
+        # the same accommodation `core/mcp_client.py` makes.
+        try:
+            read, write = await exit_stack.enter_async_context(
+                sse_client(url, headers=headers or None)
+            )
+            return read, write
+        except BaseException as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"both MCP transports failed for {url} — "
+                f"streamable HTTP: {type(first).__name__}: {first}; "
+                f"SSE: {type(exc).__name__}: {exc}"
+            ) from None
+
+    return await asyncio.wait_for(_connect(), timeout=REMOTE_MCP_CONNECT_TIMEOUT)
 
 
 def _build_remote_mcp_params(cfg: dict) -> dict | None:
