@@ -174,6 +174,15 @@ class WorkerServerModule:
                 instance._session_tools[server_name] = tools_result.tools
                 for tool in tools_result.tools:
                     instance.tool_router.register(server_name, tool.name)
+            except asyncio.CancelledError:
+                if _was_our_cancellation():
+                    raise
+                print(
+                    f"[worker_server_module] Skipping MCP server '{server_name}': "
+                    f"its client cancelled the connect",
+                    flush=True,
+                )
+                instance.mcp_disabled.append(server_name)
             except Exception as e:
                 print(
                     f"[worker_server_module] Skipping MCP server '{server_name}': {e}",
@@ -266,6 +275,19 @@ class WorkerServerModule:
                         server_name, tool.name, session_key=agent_key, alias=False
                     )
                 print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
+            except asyncio.CancelledError:
+                # An expired OAuth token is the ordinary way here: the server
+                # answers 401, the client's task group cancels its host, and
+                # without this the whole job dies rather than this one server.
+                if _was_our_cancellation():
+                    raise
+                print(
+                    f"[worker_server_module] Skipping user MCP '{server_name}': "
+                    f"its client cancelled the connect (an expired credential "
+                    f"or a server that closed the connection)",
+                    flush=True,
+                )
+                instance.mcp_disabled.append(server_name)
             except Exception as e:
                 print(
                     f"[worker_server_module] Skipping user MCP '{server_name}': {e}",
@@ -438,6 +460,56 @@ def _build_stdio_mcp_params(cfg: dict):
         args_raw = shlex.split(args_raw)
     env = cfg.get("env") or {}
     return StdioServerParameters(command=command, args=list(args_raw), env=env or None)
+
+
+def _was_our_cancellation() -> bool:
+    """True when a `CancelledError` we just caught was aimed at *this* job.
+
+    ## The failure this exists for
+
+    Every MCP client context manager is backed by an `anyio` task group. When a
+    child of that group raises — an expired OAuth token answering `401`, a
+    server closing the connection mid-handshake — the group cancels its host
+    task on the way out, and that host is the task building this tenant's
+    module. What arrives at the call site is a bare `asyncio.CancelledError`.
+
+    `CancelledError` is a `BaseException`, so `except Exception` does not catch
+    it. The connect loops looked like they skipped a failing server and did not:
+    the cancellation went straight through, ARQ recorded the job as cancelled,
+    retried it twice more, and gave up with `max retries 3 exceeded`. One
+    third-party server with a stale credential took every chat turn in the org
+    down with it, and the log said nothing about which server or why.
+
+    ## Telling the two apart
+
+    `Task.uncancel()` is the documented way (3.11+): it decrements the count of
+    outstanding `cancel()` calls and returns what is left. Zero means nothing
+    outside this call is trying to stop us, so the cancellation belonged to the
+    task group that has just unwound — absorb it and skip the server. Above
+    zero means the job really is being cancelled (a shutdown, a `job_timeout`),
+    and that must propagate untouched.
+
+    ## What this does not fix
+
+    Servers listed *after* a failing one are still lost. Both connect loops share
+    one long-lived `AsyncExitStack`, and a context manager that blew up inside it
+    leaves it unusable. Measured against the two real servers on a dev org: with
+    the failing one first, the healthy one after it is cancelled too; with the
+    healthy one first, it connects and the failing one is skipped. So the outcome
+    depends on the order `resolve_mcp_servers()` happens to return, which is not
+    a property worth having.
+
+    The fix is a task per server owning its own stack for the session's lifetime
+    — `core/scale/mcp_pool.py::_own` is the same pattern one level up — so a
+    crashing task group cancels only its own task. That is a refactor of both
+    loops rather than a catch clause, and it is deliberately not bundled here:
+    this change is what stops one stale credential taking down every chat turn in
+    an org, and it should be reviewable on its own.
+    """
+    task = asyncio.current_task()
+    if task is None:
+        return False
+    return task.uncancel() > 0
 
 
 async def _open_remote(exit_stack, url: str, headers: dict) -> tuple:
