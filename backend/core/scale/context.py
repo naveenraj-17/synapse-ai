@@ -42,6 +42,15 @@ class ResourceProvider(Protocol):
     async def resolve_custom_tools(self) -> list[dict]: ...
     async def resolve_mcp_servers(self) -> list[dict]: ...
 
+    #: Optional. The counterpart to ``resolve_mcp_servers``: the engine says
+    #: what happened when it tried to reach one. Optional because it is the only
+    #: method here that *writes*, and an embedder with a read-only projection is
+    #: a legitimate thing to be — a provider without it is called for everything
+    #: else and simply not told. Checked with ``getattr`` rather than declared
+    #: on the Protocol, which cannot express "may be absent".
+    #:
+    #: async def report_mcp_status(self, server_name: str, status: str) -> None
+
 
 _provider: ResourceProvider | None = None
 
@@ -178,3 +187,42 @@ async def resolve_mcp_servers() -> list[dict]:
     from core.store.resources import load_mcp_servers
 
     return await load_mcp_servers()
+
+
+async def report_mcp_status(server_name: str, status: str) -> None:
+    """Record how the last attempt to reach an MCP server went.
+
+    The engine has always *known* which servers needed re-authorising and has
+    never had anywhere to say so. `reauth_needed` has been in the vocabulary of
+    both UIs since their MCP screens were written, with nothing able to set it
+    from a worker — so a server whose token had expired went on displaying
+    `connected` while every agent using it reported, accurately, that it had no
+    such tool.
+
+    Never raises. A status is a courtesy to whoever is looking at the screen
+    later; failing a tenant's whole MCP build because a status write did not
+    land would trade a cosmetic problem for a real one.
+    """
+    try:
+        if _provider is not None:
+            report = getattr(_provider, "report_mcp_status", None)
+            if report is not None:
+                await report(server_name, status)
+            return
+
+        # No provider: the single-tenant store is the record. Read first so an
+        # unchanged status is not a write — a pool build touches every server a
+        # tenant has, and most of the time nothing has moved.
+        from core.store.resources import get_mcp_server, save_mcp_server
+
+        server = await get_mcp_server(server_name)
+        if server is None or server.get("status") == status:
+            return
+        server["status"] = status
+        await save_mcp_server(server)
+    except Exception as exc:  # noqa: BLE001 — see the docstring
+        print(
+            f"[context] could not record MCP status '{status}' for "
+            f"'{server_name}': {exc}",
+            flush=True,
+        )

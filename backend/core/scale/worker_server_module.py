@@ -225,7 +225,7 @@ class WorkerServerModule:
         _BROWSER_MCP_PKGS = {"@playwright/mcp", "playwright-mcp"}
 
         from core.mcp_oauth import can_refresh, refresh_and_persist
-        from core.scale.context import resolve_mcp_servers
+        from core.scale.context import report_mcp_status, resolve_mcp_servers
         user_mcp_configs = await resolve_mcp_servers()
         for cfg in user_mcp_configs:
             server_name = cfg.get("name", "")
@@ -282,9 +282,12 @@ class WorkerServerModule:
             # has refresh material, therefore try once with a new token. A
             # transient failure costs one extra token exchange; an expired token
             # is repaired without anyone being told to click Authorize again.
+            renewed = False
+            refresh_refused = False
             if handle.error is not None and server_type == "remote" and can_refresh(cfg):
                 fresh = await refresh_and_persist(cfg)
                 if fresh:
+                    renewed = True
                     print(
                         f"[worker_server_module] Refreshed the token for "
                         f"'{server_name}'; retrying",
@@ -295,9 +298,24 @@ class WorkerServerModule:
                         "Authorization": f"Bearer {fresh}",
                     }
                     handle = await _start_server(server_name, connect)
+                else:
+                    refresh_refused = True
 
             if handle.error is not None:
-                needs_auth = server_type == "remote" and cfg.get("auth") == "oauth"
+                # `reauth_needed` is an instruction to go and click Authorize,
+                # so it is worth being exact about rather than treating every
+                # failure of an OAuth server as one. It used to be the latter,
+                # which would tell someone to re-authorise over a DNS blip.
+                #
+                # Two cases genuinely mean it, and only these two: the refresh
+                # was attempted and refused, or there is no refresh material to
+                # attempt with. A server that took a *fresh* token and still
+                # failed is not one the person can fix — that is the server
+                # being down, and saying otherwise sends them somewhere useless.
+                is_oauth = server_type == "remote" and cfg.get("auth") == "oauth"
+                needs_auth = is_oauth and not renewed and (
+                    refresh_refused or not can_refresh(cfg)
+                )
                 print(
                     f"[worker_server_module] Skipping user MCP '{server_name}': "
                     f"{_reason(handle.error)}"
@@ -307,6 +325,7 @@ class WorkerServerModule:
                 instance.mcp_disabled.append(server_name)
                 if needs_auth:
                     instance.mcp_reauth_needed.append(server_name)
+                    await report_mcp_status(server_name, "reauth_needed")
                 continue
 
             # `ext_mcp_` is how the rest of the engine spells "this session
@@ -340,6 +359,10 @@ class WorkerServerModule:
                 instance.tool_router.register(
                     server_name, tool.name, session_key=agent_key, alias=False
                 )
+            # And say so when it works, or a server flagged once stays flagged
+            # after the person has already fixed it. `report_mcp_status` skips
+            # a write when nothing moved, so the common case costs a read.
+            await report_mcp_status(server_name, "connected")
             print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
 
     def _attach_memory_store(self) -> None:
