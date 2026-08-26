@@ -24,6 +24,7 @@ import asyncio
 import json
 import os
 import secrets
+import time
 from contextlib import AsyncExitStack
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
@@ -106,6 +107,56 @@ OAUTH_CALLBACK_URL = f"http://localhost:{_BACKEND_PORT}/api/mcp/oauth/callback"
 #: the name of the server they belong to.
 _TOKENS_COLLECTION = "mcp_tokens"
 
+#: Renew this many seconds before the access token actually dies.
+#:
+#: A token that expires during the handshake fails the connect just as surely as
+#: one that expired an hour ago, and the round trip to renew costs far less than
+#: the re-authorisation prompt that failure produces. Sixty seconds also covers
+#: ordinary clock drift between this host and the provider.
+_EXPIRY_SKEW_SECONDS = 60
+
+#: Where an authorization server publishes its metadata. RFC 8414 first, then
+#: the OpenID Connect location that some providers serve instead.
+_METADATA_PATHS = (
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/openid-configuration",
+)
+
+
+async def _discover_token_endpoint(server_url: str) -> Optional[str]:
+    """Find a server's token endpoint, for one authorised before we stored it.
+
+    Only reached when nothing is on file. A server authorised from now on has
+    its endpoint recorded at authorise time, from the metadata the SDK already
+    discovered — which is the value to trust, because it was fetched when the
+    person actually granted access rather than at some later moment of the
+    server's choosing.
+
+    Failure is None and a fall-through to the existing behaviour, never an
+    exception: not being able to renew is worse than today only if it also
+    breaks the connect that would have worked.
+    """
+    parsed = urlparse(server_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            for path in _METADATA_PATHS:
+                try:
+                    response = await client.get(origin + path)
+                except Exception:
+                    continue
+                if response.status_code != 200:
+                    continue
+                try:
+                    endpoint = response.json().get("token_endpoint")
+                except ValueError:
+                    continue
+                if endpoint:
+                    return str(endpoint)
+    except Exception:
+        return None
+    return None
+
 
 # ── Token Storage ──────────────────────────────────────────────────────────────
 
@@ -144,7 +195,59 @@ class StoreTokenStorage(TokenStorage):
         return OAuthToken(**d) if d else None
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
-        await self._merge(tokens=tokens.model_dump(mode="json"))
+        """Store the tokens, and an **absolute** expiry beside them.
+
+        The absolute part is the whole point. `OAuthToken` carries `expires_in`,
+        which is a duration from the moment it was issued — so a token stored at
+        09:00 with `expires_in=3600` is dead at 10:00, and recomputing
+        `now + expires_in` when it is loaded at 14:00 would call it fresh until
+        15:00. The SDK's own `update_token_expiry()` does exactly that, in
+        memory, at exchange time; nothing writes the result down.
+
+        That omission is what made every restart ask the person to authorise
+        again. `OAuthClientProvider._initialize()` restores the tokens and
+        **not** `token_expiry_time`, and `is_token_valid()` reads
+        `not self.token_expiry_time or ...` — so a `None` expiry counts as
+        *valid*, the proactive refresh is skipped, the expired token goes out,
+        and the `401` that comes back triggers a full re-authorisation rather
+        than a refresh. The refresh token sat there unused the entire time.
+        """
+        import time
+
+        fields: dict = {"tokens": tokens.model_dump(mode="json")}
+        if tokens.expires_in:
+            fields["expires_at"] = time.time() + float(tokens.expires_in)
+        await self._merge(**fields)
+
+    async def get_expires_at(self) -> Optional[float]:
+        """When the stored access token dies, in absolute epoch seconds.
+
+        None means unknown — a token stored before this was recorded. Treated as
+        "assume it needs refreshing" by the caller rather than "assume it is
+        fine", because the second is the assumption that produced the bug.
+        """
+        v = (await self._document()).get("expires_at")
+        return float(v) if v is not None else None
+
+    async def get_token_endpoint(self) -> Optional[str]:
+        return (await self._document()).get("token_endpoint")
+
+    async def set_token_endpoint(self, endpoint: str) -> None:
+        """Remember where a refresh is sent, recorded when the person authorised.
+
+        Stored rather than re-derived on each refresh for the reason
+        `core/mcp_oauth.py` gives: a server that later advertises a *different*
+        token endpoint would otherwise be handed this tenant's refresh token on
+        its own say-so.
+
+        It also has to be stored because the SDK cannot supply it cold. Its
+        `_refresh_token()` reads `context.oauth_metadata`, which is populated by
+        discovery during an interactive flow and is `None` in a fresh process —
+        so it falls back to `urljoin(server_url, "/token")`. For Vercel the real
+        endpoint is `https://vercel.com/api/login/oauth/token`, nothing like
+        `https://mcp.vercel.com/token`, and the same is true of most providers.
+        """
+        await self._merge(token_endpoint=endpoint)
 
     async def get_client_info(self) -> Optional[OAuthClientInformationFull]:
         d = (await self._document()).get("client")
@@ -433,6 +536,20 @@ class MCPClientManager:
             )
             await session.initialize()
             self.sessions[name] = session
+
+            # Record where a refresh goes, now, while the provider still holds
+            # the metadata it discovered during this flow. It is thrown away
+            # with the process otherwise, and a refresh in a later process has
+            # no way to find it again — which is what `_discover_token_endpoint`
+            # exists to paper over for servers authorised before this line.
+            try:
+                metadata = getattr(oauth_provider.context, "oauth_metadata", None)
+                endpoint = getattr(metadata, "token_endpoint", None)
+                if endpoint:
+                    await StoreTokenStorage(name).set_token_endpoint(str(endpoint))
+            except Exception as e:
+                print(f"[MCP] Could not record the token endpoint for '{name}': {e}")
+
             await self._set_status(name, "connected")
             await self._auto_register(name)    # ← register tools into agent_sessions
             print(f"OAuth complete — connected to '{name}'.")
@@ -441,6 +558,81 @@ class MCPClientManager:
             await self._set_status(name, "disconnected")
             if not auth_url_future.done():
                 auth_url_future.set_exception(e)
+
+    # ── Silent renewal, before a reconnect ────────────────────────────────────
+
+    async def _renew_if_expired(self, name: str, url: str) -> bool:
+        """Refresh this server's access token if it has expired. True if renewed.
+
+        **Why this exists rather than leaning on the SDK.** `OAuthClientProvider`
+        has a refresh path and it never runs: `_initialize()` restores the tokens
+        but not `token_expiry_time`, `is_token_valid()` treats a `None` expiry as
+        valid, so the proactive refresh is skipped and the dead token is sent.
+        The `401` that comes back does not trigger a refresh either — it starts a
+        *full* re-authorisation, straight into the `noop_callback` that
+        `_connect_remote_cached` deliberately installs, which raises. The server
+        then falls through to a no-auth connect, which an authenticated server
+        refuses, and the person is asked to click Authorize again. Every restart.
+
+        Even with the expiry restored the SDK could not finish the job cold: its
+        `_refresh_token()` takes the endpoint from `context.oauth_metadata`,
+        which discovery fills in during an interactive flow and which is `None`
+        in a fresh process, so it would POST to `urljoin(server_url, "/token")`.
+        Those lines are marked `# pragma: no cover` upstream, which is a fair
+        warning about how much weight to put on them.
+
+        So the renewal is explicit and reuses `core/mcp_oauth.py` — the same
+        exchange the worker performs, in one place, with the failure visible in
+        a log rather than inferred from a re-auth prompt.
+        """
+        from core import mcp_oauth
+
+        storage = StoreTokenStorage(name)
+        tokens = await storage.get_tokens()
+        if not tokens or not tokens.refresh_token:
+            return False
+
+        # An unknown expiry means "stored before this was recorded", and is
+        # treated as expired. Assuming the other way is the bug this fixes; the
+        # cost of being wrong here is one refresh nobody needed.
+        expires_at = await storage.get_expires_at()
+        if expires_at is not None and time.time() < expires_at - _EXPIRY_SKEW_SECONDS:
+            return False
+
+        client_info = await storage.get_client_info()
+        if not client_info or not client_info.client_id:
+            return False
+
+        endpoint = await storage.get_token_endpoint()
+        if not endpoint:
+            endpoint = await _discover_token_endpoint(url)
+            if endpoint:
+                await storage.set_token_endpoint(endpoint)
+        if not endpoint:
+            print(f"[MCP] No token endpoint known for '{name}' — cannot refresh.")
+            return False
+
+        cfg = {
+            "name": name,
+            "refresh_token": tokens.refresh_token,
+            "token_endpoint": endpoint,
+            "client_id": client_info.client_id,
+            "client_secret": client_info.client_secret or "",
+        }
+        fresh = await mcp_oauth.refresh_access_token(cfg)
+        if not fresh:
+            return False
+
+        # `set_tokens` writes the new absolute expiry, and a rotated refresh
+        # token is carried across — several providers issue a new one every time
+        # and invalidate the old, so keeping only the access token works exactly
+        # once and fails forever after.
+        renewed = OAuthToken(**fresh)
+        if not renewed.refresh_token:
+            renewed.refresh_token = tokens.refresh_token
+        await storage.set_tokens(renewed)
+        print(f"[MCP] Renewed the access token for '{name}'.")
+        return True
 
     # ── Remote reconnect: use cached tokens (startup / manual retry) ───────────
 
@@ -462,6 +654,16 @@ class MCPClientManager:
         has_tokens = bool(await storage.get_tokens())
 
         if has_tokens:
+            # Renew first, so the provider below is handed a token that works.
+            # Once storage holds a live token the SDK's own path is correct
+            # again — it is only the *expired* case it cannot get right.
+            try:
+                await self._renew_if_expired(name, url)
+            except Exception as e:
+                # A renewal that blew up must not cost us the connect attempt
+                # the old token might still satisfy.
+                print(f"[MCP] Token renewal for '{name}' failed: {e}")
+
             # ── OAuth path: try cached tokens, allow silent refresh ────────────
             async def noop_redirect(auth_url: str) -> None:
                 print(f"[MCP] Token refresh failed for '{name}' — re-auth needed.")
