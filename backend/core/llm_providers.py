@@ -1023,31 +1023,201 @@ def _convert_tools_for_gemini(ollama_tools: list[dict] | None):
     return [types.Tool(function_declarations=declarations)]
 
 
-def _clean_schema_for_gemini(schema: dict) -> dict:
-    """Remove fields from JSON schema that Gemini doesn't support."""
-    UNSUPPORTED_KEYS = {
-        "default", "$schema", "additionalProperties",
-        "propertyNames", "patternProperties",
-        "minProperties", "maxProperties",
-        "dependentRequired", "dependentSchemas",
-        "examples", "$id", "$comment",
-        "if", "then", "else",
-        "unevaluatedProperties", "unevaluatedItems",
-        "readOnly", "writeOnly",
-        "deprecated",
+#: JSON Schema keywords `google.genai`'s `Schema` has no field for. Anything
+#: here is dropped; the composition keywords are handled separately below,
+#: because dropping one leaves a node with no type and Gemini rejects that too.
+def _gemini_json_type(value) -> str:
+    """The JSON Schema type name for a literal. `bool` before `int` — it is one."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "string"
+
+
+def _gemini_fixed_value(value) -> dict:
+    """`const`, expressed in what Gemini's `Schema` can hold.
+
+    A string const becomes a one-value `enum`, which says exactly what `const`
+    says. Anything else keeps its type and states the fixed value in prose,
+    because `enum` here is `list[str]` and coercing `true` into `"true"` changes
+    what the model sends the tool.
+    """
+    if isinstance(value, str):
+        return {"type": "string", "enum": [value]}
+    return {
+        "type": _gemini_json_type(value),
+        "description": f"Must be {json.dumps(value)}.",
     }
+
+
+#: Keys whose value is a map of name → schema rather than a schema.
+_SCHEMA_MAPS = {"properties", "$defs", "definitions"}
+
+#: Exactly what `google.genai`'s `Schema` accepts, by its JSON name.
+#:
+#: A whitelist, not a list of things to strip, and that is the point. The strip
+#: list was rewritten three times in one sitting — `oneOf`, then non-string
+#: `enum` values, then `exclusiveMinimum` — each time because a real server
+#: declared something nobody had thought of, and each time the whole tool list
+#: was rejected and the customer's agent answered with a pydantic traceback.
+#: JSON Schema has a long tail and MCP servers use it; `Schema`'s fields are
+#: finite and knowable. Filtering to what is accepted cannot be surprised.
+#:
+#: Regenerate the candidate set with:
+#:     [f.alias or n for n, f in types.Schema.model_fields.items()]
+#: then subtract `_GEMINI_NOT_IN_FUNCTION_SCHEMA` — see below, it is not the
+#: same list.
+_GEMINI_SCHEMA_KEYS = {
+    "anyOf", "description", "enum", "example", "format", "items",
+    "maxItems", "maxLength", "maximum", "minItems", "minLength", "minimum",
+    "nullable", "pattern", "properties", "propertyOrdering", "required",
+    "title", "type",
+}
+
+#: Fields `types.Schema` has and the **function-calling API** refuses.
+#:
+#: Kept as its own named set because the difference is not guessable and cost a
+#: round to learn. `Schema` is the SDK's general schema type, used for structured
+#: output as well; `FunctionDeclaration.parameters` is validated server-side
+#: against something narrower. So a key can pass pydantic locally and come back
+#:
+#:     Unknown name "additional_properties" at
+#:     'tools[0].function_declarations[0].parameters.properties[3].value'
+#:
+#: which is a 400 on every call that agent makes, not a warning.
+#:
+#: `defs`/`ref` are here for a different reason: nothing resolves a `$ref` on
+#: this path, and a reference the model cannot follow is worse than the loose
+#: schema left behind without it.
+_GEMINI_NOT_IN_FUNCTION_SCHEMA = {
+    "additionalProperties", "default", "minProperties", "maxProperties",
+    "defs", "ref",
+}
+
+#: Bounds Gemini has no exclusive form of. Carried into the description rather
+#: than dropped: the model cannot honour a bound it is never told about.
+_GEMINI_EXCLUSIVE_BOUNDS = {
+    "exclusiveMinimum": "greater than",
+    "exclusiveMaximum": "less than",
+}
+
+
+def _clean_schema_for_gemini(schema: dict) -> dict:
+    """Rewrite a JSON schema into the subset Gemini's `Schema` accepts.
+
+    ## Why this is more than a key filter
+
+    It was one, and it worked until a real MCP server arrived. Vercel's
+    `update_project_deployment_protection` declares a `passwordProtection`
+    property as `oneOf`, and the whole call failed with
+
+        3 validation errors for FunctionDeclaration
+        parameters.properties.passwordProtection.oneOf
+          Extra inputs are not permitted
+
+    — which the customer saw as their agent's answer. One property on one tool
+    of one server takes down every turn that agent makes, because the tool list
+    is declared up front and validated as a whole.
+
+    Simply adding `oneOf` to the drop list is worse than leaving it: what
+    remains is a property with no `type`, and Gemini rejects *that* with a
+    different error. The composition keywords have to be translated.
+
+    ## The translation
+
+    * `oneOf` → `anyOf`, which `Schema` does have. The distinction — exactly one
+      branch versus at least one — is not something a model choosing a call
+      shape acts on, and a slightly loose schema is worth far more than a tool
+      the model cannot see at all.
+    * `allOf` → merged into the parent. Members are almost always object
+      fragments contributing properties, which is exactly what a merge produces.
+    * `const` → a single-value `enum`, which is what `const` means.
+    * `not` → dropped. There is no expressing it, and a schema that cannot say
+      "not this" is still usable for choosing arguments.
+    * A node left with no `type` gets one, because Gemini requires it: `object`
+      when it has properties, `string` otherwise. `anyOf` nodes are exempt —
+      they carry their type in their branches.
+    """
     if not isinstance(schema, dict):
         return schema
-    cleaned = {}
+
+    cleaned: dict = {}
+
+    # `allOf` first: it contributes keys the rest of this node may override.
+    for member in schema.get("allOf", []) or []:
+        if isinstance(member, dict):
+            merged = _clean_schema_for_gemini(member)
+            for key, value in merged.items():
+                if key == "properties" and isinstance(value, dict):
+                    cleaned.setdefault("properties", {}).update(value)
+                elif key == "required" and isinstance(value, list):
+                    cleaned["required"] = [*cleaned.get("required", []), *value]
+                else:
+                    cleaned.setdefault(key, value)
+
+    notes: list[str] = []
     for k, v in schema.items():
-        if k in UNSUPPORTED_KEYS:
+        if k in _GEMINI_EXCLUSIVE_BOUNDS:
+            notes.append(f"{_GEMINI_EXCLUSIVE_BOUNDS[k]} {json.dumps(v)}")
             continue
-        if isinstance(v, dict):
+        # `oneOf`, `allOf`, `const` and `not` are translated below or dropped;
+        # everything else outside the whitelist has no field to land in.
+        if k not in _GEMINI_SCHEMA_KEYS:
+            continue
+        if k in _SCHEMA_MAPS and isinstance(v, dict):
+            # A map of *name → schema*, not a schema. Recursing into it as one
+            # is how `properties` acquired a `type` of its own and Gemini
+            # answered `properties.type: Input should be a valid dictionary`.
+            cleaned[k] = {
+                name: _clean_schema_for_gemini(sub) if isinstance(sub, dict) else sub
+                for name, sub in v.items()
+            }
+        elif isinstance(v, dict):
             cleaned[k] = _clean_schema_for_gemini(v)
         elif isinstance(v, list):
             cleaned[k] = [_clean_schema_for_gemini(i) if isinstance(i, dict) else i for i in v]
         else:
             cleaned[k] = v
+
+    branches = schema.get("oneOf") or schema.get("anyOf")
+    if isinstance(branches, list) and branches:
+        cleaned["anyOf"] = [
+            _clean_schema_for_gemini(b) for b in branches if isinstance(b, dict)
+        ]
+
+    if "const" in schema:
+        cleaned.update(_gemini_fixed_value(schema["const"]))
+
+    # Gemini's `enum` is `list[str]`. A numeric or boolean enum has to keep its
+    # *type* instead — stringifying `true` to `"true"` would have the model send
+    # a string where the tool wants a boolean, which is a worse failure than a
+    # slightly looser schema because it happens at call time, inside the tool.
+    values = cleaned.get("enum")
+    if isinstance(values, list) and values and not all(isinstance(v, str) for v in values):
+        cleaned.pop("enum")
+        cleaned["type"] = _gemini_json_type(values[0])
+        allowed = ", ".join(json.dumps(v) for v in values)
+        cleaned["description"] = (
+            f"{cleaned.get('description', '')} (one of: {allowed})".strip()
+        )
+
+    if "type" not in cleaned and "anyOf" not in cleaned:
+        cleaned["type"] = "object" if "properties" in cleaned else "string"
+
+    if notes:
+        cleaned["description"] = (
+            f"{cleaned.get('description', '')} (must be {', '.join(notes)})".strip()
+        )
+
+    # A merged `allOf` can repeat a required name.
+    if isinstance(cleaned.get("required"), list):
+        cleaned["required"] = list(dict.fromkeys(cleaned["required"]))
+
     return cleaned
 
 
