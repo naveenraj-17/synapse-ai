@@ -462,23 +462,38 @@ async def run_agent_chat_job(
     leased = False
     images = images or []
 
+    # Set before the `try`, so the `except` can tell "we never got far enough to
+    # have a publisher" from "the turn failed with one". See below.
+    publisher = None
+
     try:
+        # Everything that makes this turn *visible* happens before the pool is
+        # acquired, and the ordering is the point.
+        #
+        # `mcp_pool.acquire()` can block for a long time — it builds this
+        # tenant's MCP sessions, and a remote server that accepts a connection
+        # and then goes quiet holds it. With the acquire first, a turn wedged
+        # there wrote no session row and published no event: no trace anywhere
+        # except `j_ongoing` in a health line, for up to `job_timeout` (an
+        # hour). Observed for real on 2026-08-25 — acme's job `25698d0f` sat
+        # in-progress for forty minutes with zero `chat_%` rows for the org.
+        #
+        # These three reads and the publisher need only Postgres and Redis, so
+        # there is nothing to trade away by doing them first. A wedged turn is
+        # now a `running` row a staff console or a support reply can see.
+        agent_data = await _load_agent(session_factory, agent_id) if agent_id else None
+        history = await _load_chat_history(session_factory, session_id, agent_id)
+        await _upsert_chat_session(session_factory, session_id, agent_id, "running", history)
+
+        from core.scale.pubsub import ChatEventPublisher
+        publisher = ChatEventPublisher(redis, session_id, ttl=cfg.pubsub_event_ttl)
+
         # This tenant's MCP session set, from the bounded pool. It merges the
         # process-wide native servers with the tenant's own, so what the engine
         # sees is the shape `ctx["server_module"]` used to be — except that it
         # is this tenant's, not whoever's was current at worker startup.
         server_module = await mcp_pool.acquire()
         leased = True
-        # Load agent definition from Postgres
-        agent_data = await _load_agent(session_factory, agent_id) if agent_id else None
-        # Load prior message history from Postgres chat_sessions
-        history = await _load_chat_history(session_factory, session_id, agent_id)
-
-        # Mark session as running
-        await _upsert_chat_session(session_factory, session_id, agent_id, "running", history)
-
-        from core.scale.pubsub import ChatEventPublisher
-        publisher = ChatEventPublisher(redis, session_id, ttl=cfg.pubsub_event_ttl)
 
         # No local materialisation: core/session.py reads the same rows this
         # job just loaded. The shim that used to live here wrote a session file
@@ -540,6 +555,28 @@ async def run_agent_chat_job(
     except Exception as exc:
         tb = traceback.format_exc()
         print(f"[worker] run_agent_chat_job ERROR {session_id}: {exc}\n{tb}", flush=True)
+
+        # Say so on the stream before failing.
+        #
+        # This used to mark the row `failed` and re-raise without publishing
+        # anything, so a turn that died outside the ReAct loop — a recycled
+        # worker, an MCP pool failure, anything before the loop starts — left
+        # the Redis stream open with nothing further to say. The API went on
+        # sending keepalives because it was still waiting for `done`, and the
+        # browser spun forever. A client that hangs when the server stops
+        # talking is a client bug; a server that stops talking without saying
+        # why is a server bug, and this is that half.
+        #
+        # Best-effort: a Redis that is already unreachable must not replace the
+        # real error with a publishing one, and the `failed` row below is the
+        # durable record either way.
+        if publisher is not None:
+            try:
+                await publisher.publish({"type": "error", "message": str(exc)})
+                await publisher.publish_done()
+            except Exception:
+                pass
+
         try:
             await _upsert_chat_session(session_factory, session_id, agent_id, "failed", [])
         except Exception:
