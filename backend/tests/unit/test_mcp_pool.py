@@ -310,3 +310,61 @@ class TestSingleTenantDefault:
 
         assert first is second
         assert mcp_pool.stats()["size"] == 1
+
+
+class TestATornDownEntryIsNeverHandedOut:
+    """The invariant: an entry reachable from `_entries` is one you can use.
+
+    Teardown used to rely entirely on whoever set `closing` having popped the
+    entry first. That holds for `_reap` and for `drain`, and it did not hold for
+    the case that actually happened: the owner task cancelled from underneath,
+    by an MCP client's `anyio` task group losing a child. The `finally` nulled
+    `module` and left the entry cached with `ready` set and no error, so
+    `acquire()` handed back `None` and every later job for that tenant died on
+    `'NoneType' object has no attribute 'agent_sessions'` — permanently, because
+    nothing rebuilds an entry that is still in the map.
+    """
+
+    async def test_a_cancelled_owner_task_does_not_poison_the_tenant(
+        self, pool, multi_tenant
+    ):
+        with tenant_scope("t1"):
+            first = await mcp_pool.acquire()
+            assert first is not None
+            await mcp_pool.release()
+
+            # What an MCP client's task group does to its host, reproduced.
+            entry = mcp_pool._entries["t1"]  # noqa: SLF001
+            entry.task.cancel()
+            await asyncio.sleep(0.05)
+
+            # The entry unregistered itself on the way down...
+            assert "t1" not in mcp_pool._entries, (  # noqa: SLF001
+                "a torn-down entry stayed reachable and will be handed out"
+            )
+
+            # ...so the next acquire builds a fresh one rather than returning None.
+            second = await mcp_pool.acquire()
+            assert second is not None, "acquire() returned a module-less entry"
+            assert second is not first
+            assert second.agent_sessions is not None
+            await mcp_pool.release()
+
+    async def test_acquire_rebuilds_rather_than_return_none(self, pool, multi_tenant):
+        """Belt and braces behind the invariant, forced directly.
+
+        If some future path ever leaves a `ready`, no-error, no-module entry in
+        the map, the caller must not be the one to discover it — its very next
+        line is `server_module.agent_sessions`.
+        """
+        with tenant_scope("t2"):
+            first = await mcp_pool.acquire()
+            await mcp_pool.release()
+
+            entry = mcp_pool._entries["t2"]  # noqa: SLF001
+            entry.module = None  # the impossible state, made real
+
+            second = await mcp_pool.acquire()
+            assert second is not None
+            assert second is not first
+            await mcp_pool.release()

@@ -60,6 +60,11 @@ class WorkerServerModule:
         self._session_tools: dict = {}     # session name -> tools it advertised
         self.memory_store = None           # workers don't maintain long-term memory store
         self.mcp_disabled: list[str] = []  # names of MCP servers that failed to connect
+        # A subset of `mcp_disabled`: OAuth servers whose token could not be
+        # refreshed, so the only way back is the person authorising again. The
+        # cloud's `definition["status"]` has documented `reauth_needed` since the
+        # router was written and has never had anything able to set it.
+        self.mcp_reauth_needed: list[str] = []
         # One handle per server this module opened, each with its own task and
         # its own AsyncExitStack. Borrowed sessions (folded in from `shared`) are
         # deliberately absent: `close()` closes what this module opened, never
@@ -219,6 +224,7 @@ class WorkerServerModule:
         _BROWSER_MCP_NAMES = {"Browser Automation", "browser", "playwright"}
         _BROWSER_MCP_PKGS = {"@playwright/mcp", "playwright-mcp"}
 
+        from core.mcp_oauth import can_refresh, refresh_and_persist
         from core.scale.context import resolve_mcp_servers
         user_mcp_configs = await resolve_mcp_servers()
         for cfg in user_mcp_configs:
@@ -262,13 +268,45 @@ class WorkerServerModule:
                 return session
 
             handle = await _start_server(server_name, connect)
+
+            # One retry, with a freshly minted access token.
+            #
+            # An OAuth access token lasts about an hour, so a server authorised
+            # this morning answers `401` this afternoon — and the 401 does not
+            # arrive as a 401. It crashes the MCP client's task group, which
+            # cancels the connect, so what we hold here is a `CancelledError`
+            # with nothing in it. Inspecting the failure to decide whether to
+            # refresh would mean reading a cause that is not there.
+            #
+            # So the rule is the honest one: the connect failed and this server
+            # has refresh material, therefore try once with a new token. A
+            # transient failure costs one extra token exchange; an expired token
+            # is repaired without anyone being told to click Authorize again.
+            if handle.error is not None and server_type == "remote" and can_refresh(cfg):
+                fresh = await refresh_and_persist(cfg)
+                if fresh:
+                    print(
+                        f"[worker_server_module] Refreshed the token for "
+                        f"'{server_name}'; retrying",
+                        flush=True,
+                    )
+                    params["headers"] = {
+                        **params.get("headers", {}),
+                        "Authorization": f"Bearer {fresh}",
+                    }
+                    handle = await _start_server(server_name, connect)
+
             if handle.error is not None:
+                needs_auth = server_type == "remote" and cfg.get("auth") == "oauth"
                 print(
                     f"[worker_server_module] Skipping user MCP '{server_name}': "
-                    f"{_reason(handle.error)}",
+                    f"{_reason(handle.error)}"
+                    + ("  (re-authorisation needed)" if needs_auth else ""),
                     flush=True,
                 )
                 instance.mcp_disabled.append(server_name)
+                if needs_auth:
+                    instance.mcp_reauth_needed.append(server_name)
                 continue
 
             # `ext_mcp_` is how the rest of the engine spells "this session
