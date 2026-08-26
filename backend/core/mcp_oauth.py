@@ -105,9 +105,18 @@ async def refresh_access_token(cfg: dict) -> dict | None:
     if response.status_code != 200:
         # A refresh token can be revoked, expired or already spent. All three
         # mean the same thing to the person: authorise the server again.
+        #
+        # The body is logged because the status code alone cannot tell those
+        # apart from the case that is *not* the person's fault. OAuth answers
+        # both with `400`, and the two want opposite responses: `invalid_grant`
+        # is "authorise it again", while `invalid_client` means this
+        # deployment's client registration is wrong and re-authorising will
+        # produce the same 400 forever. Measured against a real provider, where
+        # `(400)` on its own sent the diagnosis down the wrong path.
+        detail = " ".join(response.text.split())[:200]
         print(
             f"[mcp_oauth] refresh rejected for '{cfg.get('name')}' "
-            f"({response.status_code}) — re-authorisation needed",
+            f"({response.status_code}) — re-authorisation needed: {detail}",
             flush=True,
         )
         return None

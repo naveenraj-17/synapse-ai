@@ -31,6 +31,13 @@ class _Response:
         self.status_code = status_code
         self._payload = payload or {}
 
+    @property
+    def text(self):
+        """A real `httpx.Response` has one, and a refusal is logged from it."""
+        import json as _json
+
+        return _json.dumps(self._payload)
+
     def json(self):
         return self._payload
 
@@ -117,6 +124,17 @@ class TestWhenItFails:
         person: authorise it again."""
         _stub(monkeypatch, _Response(400, {"error": "invalid_grant"}))
         assert await mcp_oauth.refresh_access_token(FULL) is None
+
+    async def test_the_refusal_body_reaches_the_log(self, monkeypatch, capsys):
+        """`invalid_grant` and `invalid_client` are both `400` and want opposite
+        responses — one is "authorise it again", the other means the client
+        registration is wrong and re-authorising will fail identically forever.
+        Logging the status alone sent a real diagnosis down the wrong path."""
+        _stub(monkeypatch, _Response(400, {"error": "invalid_client"}))
+
+        await mcp_oauth.refresh_access_token(FULL)
+
+        assert "invalid_client" in capsys.readouterr().out
 
     async def test_a_transport_failure_returns_none(self, monkeypatch):
         _stub(monkeypatch, RuntimeError("connection reset"))
