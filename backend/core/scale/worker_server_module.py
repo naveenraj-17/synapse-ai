@@ -60,7 +60,11 @@ class WorkerServerModule:
         self._session_tools: dict = {}     # session name -> tools it advertised
         self.memory_store = None           # workers don't maintain long-term memory store
         self.mcp_disabled: list[str] = []  # names of MCP servers that failed to connect
-        self._exit_stack = None
+        # One handle per server this module opened, each with its own task and
+        # its own AsyncExitStack. Borrowed sessions (folded in from `shared`) are
+        # deliberately absent: `close()` closes what this module opened, never
+        # what it referenced.
+        self._servers: list = []
 
     @classmethod
     async def build_shared(
@@ -137,16 +141,12 @@ class WorkerServerModule:
     # ── connection helpers ───────────────────────────────────────────────────
 
     async def _connect_native(self, native_servers: dict, disabled: set) -> None:
-        from contextlib import AsyncExitStack
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
         from datetime import timedelta
         from core.config import MCP_SESSION_READ_TIMEOUT
 
         instance = self
-        if instance._exit_stack is None:
-            instance._exit_stack = AsyncExitStack()
-        exit_stack = instance._exit_stack
 
         _SESSION_READ_TIMEOUT = timedelta(seconds=MCP_SESSION_READ_TIMEOUT)
 
@@ -154,41 +154,50 @@ class WorkerServerModule:
             if server_name in disabled:
                 instance.mcp_disabled.append(server_name)
                 continue
-            try:
-                read, write = await exit_stack.enter_async_context(
-                    stdio_client(params)
-                )
-                session = await exit_stack.enter_async_context(
+
+            async def connect(stack, params=params):
+                read, write = await stack.enter_async_context(stdio_client(params))
+                session = await stack.enter_async_context(
                     ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
                 )
                 await session.initialize()
-                instance.agent_sessions[server_name] = session
+                return session
+
+            handle = await _start_server(server_name, connect)
+            if handle.error is not None:
+                print(
+                    f"[worker_server_module] Skipping MCP server '{server_name}': "
+                    f"{_reason(handle.error)}",
+                    flush=True,
+                )
+                instance.mcp_disabled.append(server_name)
+                continue
+
+            try:
                 # Register tools into the router as {server}__{tool}, with the
                 # bare name kept as an alias — see core/tool_router.py. The
                 # worker used to key native *and* user MCP on the bare name, so
                 # a tenant's own server could shadow a native tool.
-                tools_result = await session.list_tools()
+                #
                 # Cached here rather than on first use: this call has already
                 # been made, and every tenant folding in the shared module then
                 # inherits the answer instead of re-listing eight servers.
-                instance._session_tools[server_name] = tools_result.tools
-                for tool in tools_result.tools:
-                    instance.tool_router.register(server_name, tool.name)
-            except asyncio.CancelledError:
-                if _was_our_cancellation():
-                    raise
-                print(
-                    f"[worker_server_module] Skipping MCP server '{server_name}': "
-                    f"its client cancelled the connect",
-                    flush=True,
-                )
-                instance.mcp_disabled.append(server_name)
+                tools_result = await handle.session.list_tools()
             except Exception as e:
                 print(
-                    f"[worker_server_module] Skipping MCP server '{server_name}': {e}",
+                    f"[worker_server_module] Skipping MCP server '{server_name}': "
+                    f"connected but would not list tools ({e})",
                     flush=True,
                 )
+                handle.closing.set()
                 instance.mcp_disabled.append(server_name)
+                continue
+
+            instance._servers.append(handle)
+            instance.agent_sessions[server_name] = handle.session
+            instance._session_tools[server_name] = tools_result.tools
+            for tool in tools_result.tools:
+                instance.tool_router.register(server_name, tool.name)
 
     async def _connect_user_mcp(self, disabled: set) -> None:
         """This tenant's own MCP servers.
@@ -197,16 +206,12 @@ class WorkerServerModule:
         these are remote (SSE) sessions — no subprocess, which is what makes a
         per-tenant set affordable at fleet scale.
         """
-        from contextlib import AsyncExitStack
         from mcp import ClientSession
         from mcp.client.stdio import stdio_client
         from datetime import timedelta
         from core.config import MCP_SESSION_READ_TIMEOUT
 
         instance = self
-        if instance._exit_stack is None:
-            instance._exit_stack = AsyncExitStack()
-        exit_stack = instance._exit_stack
 
         _SESSION_READ_TIMEOUT = timedelta(seconds=MCP_SESSION_READ_TIMEOUT)
 
@@ -234,66 +239,70 @@ class WorkerServerModule:
                 instance.mcp_disabled.append(server_name)
                 continue
             server_type = cfg.get("server_type", "stdio")
-            try:
+            params = (
+                _build_remote_mcp_params(cfg)
+                if server_type == "remote"
+                else _build_stdio_mcp_params(cfg)
+            )
+            if params is None:
+                instance.mcp_disabled.append(server_name)
+                continue
+
+            async def connect(stack, params=params, server_type=server_type):
                 if server_type == "remote":
-                    params = _build_remote_mcp_params(cfg)
-                    if params is None:
-                        instance.mcp_disabled.append(server_name)
-                        continue
                     read, write = await _open_remote(
-                        exit_stack, params["url"], params.get("headers", {})
+                        stack, params["url"], params.get("headers", {})
                     )
                 else:
-                    params = _build_stdio_mcp_params(cfg)
-                    if params is None:
-                        instance.mcp_disabled.append(server_name)
-                        continue
-                    read, write = await exit_stack.enter_async_context(
-                        stdio_client(params)
-                    )
-                session = await exit_stack.enter_async_context(
+                    read, write = await stack.enter_async_context(stdio_client(params))
+                session = await stack.enter_async_context(
                     ClientSession(read, write, read_timeout_seconds=_SESSION_READ_TIMEOUT)
                 )
                 await session.initialize()
-                # `ext_mcp_` is how the rest of the engine spells "this session
-                # belongs to a user-configured MCP server" — core/server.py:563,
-                # routes/tools.py, mcp_client.py, and the three sites in
-                # react_engine.py that strip it back off to name the server in an
-                # error. The worker used its bare name instead, so a user MCP
-                # tool was declared to the model as `sometool` here and as
-                # `myserver__sometool` on the API server: an agent's stored
-                # tools[] array could only ever match in one of the two places,
-                # and on a worker it silently matched nothing.
-                agent_key = f"ext_mcp_{server_name}"
-                instance.agent_sessions[agent_key] = session
-                tools_result = await session.list_tools()
-                instance._session_tools[agent_key] = tools_result.tools
-                for tool in tools_result.tools:
-                    # alias=False: a tenant's own MCP server must not be able to
-                    # take over a native tool's bare name for that tenant's runs.
-                    instance.tool_router.register(
-                        server_name, tool.name, session_key=agent_key, alias=False
-                    )
-                print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
-            except asyncio.CancelledError:
-                # An expired OAuth token is the ordinary way here: the server
-                # answers 401, the client's task group cancels its host, and
-                # without this the whole job dies rather than this one server.
-                if _was_our_cancellation():
-                    raise
+                return session
+
+            handle = await _start_server(server_name, connect)
+            if handle.error is not None:
                 print(
                     f"[worker_server_module] Skipping user MCP '{server_name}': "
-                    f"its client cancelled the connect (an expired credential "
-                    f"or a server that closed the connection)",
+                    f"{_reason(handle.error)}",
                     flush=True,
                 )
                 instance.mcp_disabled.append(server_name)
+                continue
+
+            # `ext_mcp_` is how the rest of the engine spells "this session
+            # belongs to a user-configured MCP server" — core/server.py:563,
+            # routes/tools.py, mcp_client.py, and the three sites in
+            # react_engine.py that strip it back off to name the server in an
+            # error. The worker used its bare name instead, so a user MCP tool
+            # was declared to the model as `sometool` here and as
+            # `myserver__sometool` on the API server: an agent's stored tools[]
+            # array could only ever match in one of the two places, and on a
+            # worker it silently matched nothing.
+            agent_key = f"ext_mcp_{server_name}"
+            try:
+                tools_result = await handle.session.list_tools()
             except Exception as e:
                 print(
-                    f"[worker_server_module] Skipping user MCP '{server_name}': {e}",
+                    f"[worker_server_module] Skipping user MCP '{server_name}': "
+                    f"connected but would not list tools ({e})",
                     flush=True,
                 )
+                handle.closing.set()
                 instance.mcp_disabled.append(server_name)
+                continue
+
+            instance._servers.append(handle)
+            instance.agent_sessions[agent_key] = handle.session
+            instance._session_tools[agent_key] = tools_result.tools
+            for tool in tools_result.tools:
+                # alias=False: a tenant's own MCP server must not be able to take
+                # over a native tool's bare name for that tenant's runs.
+                instance.tool_router.register(
+                    server_name, tool.name, session_key=agent_key, alias=False
+                )
+            print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
 
     def _attach_memory_store(self) -> None:
         """Postgres-backed long-term memory, if this deployment has one."""
@@ -309,19 +318,27 @@ class WorkerServerModule:
     async def close(self) -> None:
         """Close what this module opened. Never what it borrowed.
 
-        MUST be awaited from the task that ran the build — anyio requires a
-        cancel scope to be exited by the task that entered it, and closing an
-        MCP stack from another task propagates a CancelledError that tears down
-        unrelated sessions. `core/server.py`'s `_filesystem_mcp_manager` carries
-        the same warning and the scar that produced it; `core/scale/mcp_pool.py`
-        is what guarantees it here.
+        Each server closes its own stack, in the task that opened it, which is
+        anyio's requirement met by construction. This used to be one shared
+        stack and the docstring here had to *ask* callers to close it from the
+        building task — a constraint no type could express and one wrong caller
+        could break. `core/server.py`'s `_filesystem_mcp_manager` carries the
+        scar that produced that warning.
+
+        Safe from any task now, and safe to call twice.
         """
-        if self._exit_stack:
+        servers, self._servers = self._servers, []
+        for handle in servers:
+            handle.closing.set()
+        for handle in servers:
+            if handle.task is None:
+                continue
             try:
-                await self._exit_stack.aclose()
+                await handle.task
             except Exception:
+                # An owner task that failed on the way out has nothing left to
+                # tell anyone: its session is gone either way.
                 pass
-            self._exit_stack = None
 
 
 def _get_native_mcp_servers(
@@ -462,54 +479,119 @@ def _build_stdio_mcp_params(cfg: dict):
     return StdioServerParameters(command=command, args=list(args_raw), env=env or None)
 
 
-def _was_our_cancellation() -> bool:
-    """True when a `CancelledError` we just caught was aimed at *this* job.
+def _reason(exc: BaseException) -> str:
+    """A one-line why, for a server that could not be opened.
 
-    ## The failure this exists for
-
-    Every MCP client context manager is backed by an `anyio` task group. When a
-    child of that group raises — an expired OAuth token answering `401`, a
-    server closing the connection mid-handshake — the group cancels its host
-    task on the way out, and that host is the task building this tenant's
-    module. What arrives at the call site is a bare `asyncio.CancelledError`.
-
-    `CancelledError` is a `BaseException`, so `except Exception` does not catch
-    it. The connect loops looked like they skipped a failing server and did not:
-    the cancellation went straight through, ARQ recorded the job as cancelled,
-    retried it twice more, and gave up with `max retries 3 exceeded`. One
-    third-party server with a stale credential took every chat turn in the org
-    down with it, and the log said nothing about which server or why.
-
-    ## Telling the two apart
-
-    `Task.uncancel()` is the documented way (3.11+): it decrements the count of
-    outstanding `cancel()` calls and returns what is left. Zero means nothing
-    outside this call is trying to stop us, so the cancellation belonged to the
-    task group that has just unwound — absorb it and skip the server. Above
-    zero means the job really is being cancelled (a shutdown, a `job_timeout`),
-    and that must propagate untouched.
-
-    ## What this does not fix
-
-    Servers listed *after* a failing one are still lost. Both connect loops share
-    one long-lived `AsyncExitStack`, and a context manager that blew up inside it
-    leaves it unusable. Measured against the two real servers on a dev org: with
-    the failing one first, the healthy one after it is cancelled too; with the
-    healthy one first, it connects and the failing one is skipped. So the outcome
-    depends on the order `resolve_mcp_servers()` happens to return, which is not
-    a property worth having.
-
-    The fix is a task per server owning its own stack for the session's lifetime
-    — `core/scale/mcp_pool.py::_own` is the same pattern one level up — so a
-    crashing task group cancels only its own task. That is a refactor of both
-    loops rather than a catch clause, and it is deliberately not bundled here:
-    this change is what stops one stale credential taking down every chat turn in
-    an org, and it should be reviewable on its own.
+    `CancelledError` is the common one and it stringifies to nothing at all —
+    which is how "an expired OAuth token" used to reach the log as an empty
+    message, or as no message. Named here so the operator sees a cause rather
+    than a blank.
     """
-    task = asyncio.current_task()
-    if task is None:
-        return False
-    return task.uncancel() > 0
+    if isinstance(exc, asyncio.CancelledError):
+        return (
+            "its client cancelled the connect, which usually means an expired "
+            "credential or a server that closed the connection"
+        )
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+class _ServerHandle:
+    """One MCP server's session, and the task that owns its lifetime.
+
+    ## Why a task per server
+
+    Every MCP client context manager is backed by an `anyio` task group, and a
+    task group that loses a child **cancels its host task on the way out**. When
+    all the servers shared one `AsyncExitStack` entered in the module builder's
+    task, that host was the builder — so one server answering `401` cancelled the
+    task building the whole tenant's module.
+
+    That cost three separate failures before it was understood. `except
+    Exception` never caught it (`CancelledError` is a `BaseException`), so ARQ
+    recorded the job cancelled and burned its retries. Absorbing the
+    cancellation instead was worse: the build finished, the cancellation
+    resurfaced at the owner task's next await, and `mcp_pool` was left holding an
+    entry with `ready` set, no error and **no module** — every later chat turn
+    for that org died instantly on `'NoneType' object has no attribute
+    'agent_sessions'`.
+
+    With a task per server the cancellation lands on that server's own task and
+    goes no further. The builder is never cancelled, so the pool cannot be
+    poisoned, and a failing server can no longer take the servers listed after it
+    — which it did, making the outcome depend on the order
+    `resolve_mcp_servers()` happened to return.
+
+    ## Why the task also does the closing
+
+    anyio requires a cancel scope to be exited by the task that entered it. The
+    stack is opened, used and closed inside `_own_server`, so that holds by
+    construction rather than by a comment asking callers to be careful.
+    `core/scale/mcp_pool.py::_own` is the same shape one level up, and
+    `core/server.py::_filesystem_mcp_manager` carries the scar that produced it.
+    """
+
+    __slots__ = ("name", "session", "tools", "error", "ready", "closing", "task")
+
+    def __init__(self, name: str):
+        self.name = name
+        self.session = None
+        self.tools: list = []
+        self.error: BaseException | None = None
+        self.ready = asyncio.Event()
+        self.closing = asyncio.Event()
+        self.task: asyncio.Task | None = None
+
+
+async def _own_server(handle: "_ServerHandle", connect) -> None:
+    """Open one server, hold it, close it — all in this task.
+
+    `connect` is given a private `AsyncExitStack` and returns the live session.
+    Whatever it raises is recorded on the handle rather than propagated: the
+    builder decides what to do about a server it could not open, and it cannot
+    do that if this task's failure has already cancelled it.
+    """
+    from contextlib import AsyncExitStack
+
+    stack = AsyncExitStack()
+    try:
+        try:
+            handle.session = await connect(stack)
+        except BaseException as exc:  # noqa: BLE001 — handed to the builder
+            handle.error = exc
+            return
+        finally:
+            handle.ready.set()
+
+        await handle.closing.wait()
+    finally:
+        try:
+            await stack.aclose()
+        except BaseException:  # noqa: BLE001
+            # A server that failed on the way in often fails on the way out too.
+            # Nothing above can act on it, and raising here would replace a
+            # useful error with a teardown one.
+            pass
+
+
+async def _start_server(name: str, connect) -> "_ServerHandle":
+    """Spawn a server's owner task and wait for it to report, or time out.
+
+    The timeout is the same bound `_open_remote` applies to a single connect,
+    and it is applied here as well because a stdio server can hang in exactly
+    the same way — and because `handle.ready` is the only thing the builder
+    waits on.
+    """
+    handle = _ServerHandle(name)
+    handle.task = asyncio.create_task(_own_server(handle, connect), name=f"mcp[{name}]")
+    try:
+        await asyncio.wait_for(handle.ready.wait(), timeout=REMOTE_MCP_CONNECT_TIMEOUT)
+    except asyncio.TimeoutError:
+        handle.error = TimeoutError(
+            f"no response within {REMOTE_MCP_CONNECT_TIMEOUT:.0f}s"
+        )
+        handle.closing.set()
+    return handle
 
 
 async def _open_remote(exit_stack, url: str, headers: dict) -> tuple:

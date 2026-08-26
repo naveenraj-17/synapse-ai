@@ -135,6 +135,25 @@ async def _own(entry: _Entry) -> None:
     try:
         await entry.closing.wait()
     finally:
+        # Unregister *before* tearing down, and unconditionally.
+        #
+        # The invariant this restores: an entry reachable from `_entries` is one
+        # `acquire()` can use. Teardown used to rely entirely on whoever set
+        # `closing` having popped the entry first, which is true for `_reap` and
+        # `drain` and false for the case that actually happened — this task
+        # being cancelled by an MCP client's task group. The entry stayed cached
+        # with `ready` set, no error and `module` None, and every subsequent job
+        # for that tenant died instantly on `'NoneType' object has no attribute
+        # 'agent_sessions'`. Permanently: nothing rebuilds an entry that is
+        # still in the map.
+        #
+        # `is entry` rather than a bare delete: a fresh entry may already have
+        # taken this tenant's slot, and it must not be evicted by its
+        # predecessor's teardown.
+        async with _get_lock():
+            if _entries.get(entry.tenant) is entry:
+                del _entries[entry.tenant]
+
         module = entry.module
         entry.module = None
         if module is not None:
@@ -174,6 +193,18 @@ async def acquire(tenant: str | None = None):
                 del _entries[tenant]
             entry.closing.set()
         raise entry.error
+
+    if entry.module is None:
+        # Belt and braces behind the invariant above: `ready` is set, no error
+        # was recorded, and there is still nothing to hand back. Drop it and
+        # build again rather than return `None` to a caller whose very next line
+        # is `server_module.agent_sessions`.
+        async with lock:
+            entry.refs = max(0, entry.refs - 1)
+            if _entries.get(tenant) is entry:
+                del _entries[tenant]
+            entry.closing.set()
+        return await acquire(tenant)
 
     await _reap()
     return entry.module
