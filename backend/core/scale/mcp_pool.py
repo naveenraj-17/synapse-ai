@@ -168,9 +168,31 @@ async def acquire(tenant: str | None = None):
     """
     tenant = tenant or get_tenant()
     lock = _get_lock()
+    stale: _Entry | None = None
 
     async with lock:
         entry = _entries.get(tenant)
+
+        # An entry past its idle TTL is rebuilt here rather than left to `_reap`.
+        #
+        # `_reap` runs at the *end* of this function, after `refs` has been
+        # incremented, and only ever dooms entries with `refs == 0` — so it can
+        # never evict the entry it is being called from. A tenant that is the
+        # only active one on a worker therefore keeps its module **forever**:
+        # observed serving MCP sessions built twenty-two minutes into a
+        # fifteen-minute TTL, because nobody else's acquire ever came along to
+        # reap it.
+        #
+        # That is not merely a stale-cache curiosity. It is why connecting an
+        # MCP server did nothing: the customer authorised it, the row said
+        # `connected`, and the fleet kept handing out a module built before it
+        # existed. `invalidate()` below is the fast path for that; this is the
+        # bound underneath it.
+        if entry is not None and _is_stale(entry):
+            del _entries[tenant]
+            stale = entry
+            entry = None
+
         if entry is None:
             entry = _Entry(tenant)
             _entries[tenant] = entry
@@ -180,6 +202,11 @@ async def acquire(tenant: str | None = None):
         entry.refs += 1
         entry.idle_since = None
         _entries.move_to_end(tenant)
+
+    if stale is not None:
+        # Outside the lock: teardown latency belongs to the tenant being
+        # replaced, not to the lock every other tenant is waiting on.
+        _close(stale)
 
     await entry.ready.wait()
 
@@ -208,6 +235,36 @@ async def acquire(tenant: str | None = None):
 
     await _reap()
     return entry.module
+
+
+def _is_stale(entry: _Entry) -> bool:
+    """True when nobody holds this entry and it has sat past the idle TTL."""
+    return (
+        entry.refs == 0
+        and entry.idle_since is not None
+        and (time.monotonic() - entry.idle_since) > _idle_ttl()
+    )
+
+
+async def invalidate(tenant: str | None = None) -> None:
+    """Drop a tenant's cached module so the next job rebuilds it.
+
+    For when what the module was built *from* has changed: a server connected or
+    authorised, a credential rotated, a server removed. Without it the customer
+    waits out the idle TTL — and, before the staleness check in `acquire()`,
+    could wait forever, because a tenant's own acquire never reaps its own
+    entry.
+
+    Safe while a job holds the entry. The map loses it immediately so the next
+    acquire builds fresh, and the owner task closes the old sessions once the
+    jobs still using them let go — which is the same reason eviction is a task's
+    job rather than the caller's.
+    """
+    tenant = tenant or get_tenant()
+    async with _get_lock():
+        entry = _entries.pop(tenant, None)
+    if entry is not None:
+        _close(entry)
 
 
 async def release(tenant: str | None = None) -> None:

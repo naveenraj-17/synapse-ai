@@ -368,3 +368,82 @@ class TestATornDownEntryIsNeverHandedOut:
             assert second is not None
             assert second is not first
             await mcp_pool.release()
+
+
+class TestStaleness:
+    """A module is only as good as what it was built from.
+
+    Both of these were reported as "I connected an MCP server and the agent says
+    it does not have that tool" — accurately, of the module it had been handed.
+    """
+
+    async def test_a_lone_tenants_entry_is_not_immortal(self, pool, multi_tenant, monkeypatch):
+        """`_reap` cannot evict the entry it is called from.
+
+        It runs at the end of `acquire`, after `refs` has been incremented, and
+        only dooms entries with `refs == 0`. So a tenant that is the only active
+        one on a worker kept its module forever — observed still serving
+        twenty-two minutes into a fifteen-minute TTL, because nobody else's
+        acquire ever came along to reap it.
+        """
+        monkeypatch.setattr(mcp_pool, "_idle_ttl", lambda: 0.01)
+
+        with tenant_scope("lonely"):
+            first = await mcp_pool.acquire()
+            await mcp_pool.release()
+            await asyncio.sleep(0.05)  # past the TTL
+
+            second = await mcp_pool.acquire()
+            await mcp_pool.release()
+
+        assert second is not first, (
+            "the same tenant acquiring again kept a module past its idle TTL"
+        )
+
+    async def test_a_held_entry_is_never_replaced_underneath_a_job(
+        self, pool, multi_tenant, monkeypatch
+    ):
+        """Staleness must not become a way to close sessions under a running step."""
+        monkeypatch.setattr(mcp_pool, "_idle_ttl", lambda: 0.01)
+
+        with tenant_scope("busy"):
+            held = await mcp_pool.acquire()          # refs == 1, never released
+            await asyncio.sleep(0.05)
+            again = await mcp_pool.acquire()          # refs == 2
+            assert again is held, "an entry in use was rebuilt under its holder"
+            await mcp_pool.release()
+            await mcp_pool.release()
+
+    async def test_invalidate_forces_a_rebuild(self, pool, multi_tenant):
+        """The fast path for "this tenant's configuration just moved"."""
+        with tenant_scope("changed"):
+            first = await mcp_pool.acquire()
+            await mcp_pool.release()
+
+            await mcp_pool.invalidate("changed")
+
+            second = await mcp_pool.acquire()
+            await mcp_pool.release()
+
+        assert second is not first
+        assert first.closed_on is not None, "the replaced module was never closed"
+
+    async def test_invalidate_is_safe_while_a_job_holds_the_entry(self, pool, multi_tenant):
+        """The map loses it immediately so the next job builds fresh; the owner
+        task closes the old sessions once the holders let go."""
+        with tenant_scope("midflight"):
+            held = await mcp_pool.acquire()
+            await mcp_pool.invalidate("midflight")
+
+            # The holder keeps a working module.
+            assert held.agent_sessions is not None
+
+            fresh = await mcp_pool.acquire()
+            assert fresh is not held, "the next acquire reused an invalidated entry"
+            await mcp_pool.release()
+            await mcp_pool.release()
+
+    async def test_invalidating_a_tenant_with_nothing_cached_is_a_no_op(
+        self, pool, multi_tenant
+    ):
+        await mcp_pool.invalidate("never-seen")
