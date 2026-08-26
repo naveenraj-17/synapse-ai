@@ -134,11 +134,32 @@ class WorkerServerModule:
             instance.mcp_disabled.extend(shared.mcp_disabled)
             instance.memory_store = shared.memory_store
 
-        # The Filesystem server, rooted at *this* tenant's vault.
-        await instance._connect_native(
-            _get_native_mcp_servers(_TOOLS_DIR, _BACKEND_ROOT, scope="tenant"), disabled
-        )
-        await instance._connect_user_mcp(disabled)
+        # A build that does not finish still closes what it opened.
+        #
+        # Without this, a builder abandoned part-way — `mcp_pool` cancelling it
+        # for exceeding its bound is the case that exists — leaves every server
+        # already connected holding an open stack and a task parked on
+        # `handle.closing`, owned by nobody and freed only by process exit. The
+        # sessions are the expensive part, so leaking a set per wedged build is
+        # how a fleet runs out of them.
+        #
+        # `BaseException`, because the case being cleaned up after is
+        # `CancelledError`. Best-effort and re-raising: the reason the build
+        # stopped is what the caller needs, never a failure from tidying up.
+        try:
+            # The Filesystem server, rooted at *this* tenant's vault.
+            await instance._connect_native(
+                _get_native_mcp_servers(_TOOLS_DIR, _BACKEND_ROOT, scope="tenant"),
+                disabled,
+            )
+            await instance._connect_user_mcp(disabled)
+        except BaseException:
+            try:
+                await instance.close()
+            except BaseException:
+                pass
+            raise
+
         if shared is None:
             instance._attach_memory_store()
         return instance

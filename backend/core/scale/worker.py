@@ -481,7 +481,6 @@ async def run_agent_chat_job(
         # These three reads and the publisher need only Postgres and Redis, so
         # there is nothing to trade away by doing them first. A wedged turn is
         # now a `running` row a staff console or a support reply can see.
-        agent_data = await _load_agent(session_factory, agent_id) if agent_id else None
         history = await _load_chat_history(session_factory, session_id, agent_id)
         await _upsert_chat_session(session_factory, session_id, agent_id, "running", history)
 
@@ -768,20 +767,6 @@ async def _load_orchestration(session_factory, orch_id: str):
         raise ValueError(f"Orchestration '{orch_id}' not found in Postgres. Run Sync first.")
 
     return Orchestration.model_validate(row.definition)
-
-
-async def _load_agent(session_factory, agent_id: str) -> dict | None:
-    """Load agent definition dict from Postgres."""
-    from sqlalchemy import select
-    from core.scale.models_db import AgentDB
-
-    async with session_factory() as session:
-        result = await session.execute(
-            select(AgentDB).where(AgentDB.id == agent_id)
-        )
-        row = result.scalar_one_or_none()
-
-    return row.definition if row else None
 
 
 async def _load_chat_history(session_factory, session_id: str, agent_id: str | None) -> list:

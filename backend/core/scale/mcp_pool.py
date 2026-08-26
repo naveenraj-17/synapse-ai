@@ -51,6 +51,22 @@ _DEFAULT_POOL_SIZE = 32
 #: How long an unused entry is kept before its sessions are closed.
 _DEFAULT_IDLE_TTL = 900.0
 
+#: How long a caller waits for a tenant's session set to be built.
+#:
+#: Deliberately generous, because it is a **ceiling on the pathological case**
+#: rather than a service-level target. A legitimate build is already bounded per
+#: server by `REMOTE_MCP_CONNECT_TIMEOUT` (30s by default), and the tenant's
+#: servers are connected in sequence — so an org with eight unreachable servers
+#: legitimately spends four minutes here and must not be failed for it.
+#:
+#: What this catches is the class the per-server bound cannot: a vault hydration
+#: that never returns, a resolver query that hangs, anything a future step adds
+#: to the build without a bound of its own. Before it, such a build held the job
+#: until `job_timeout` — an hour — with a `chat_sessions` row that never left
+#: `running`. Five minutes turns that into a diagnosable failure with the
+#: tenant's name in it.
+_DEFAULT_BUILD_TIMEOUT = 300.0
+
 
 def _pool_size() -> int:
     try:
@@ -64,6 +80,15 @@ def _idle_ttl() -> float:
         return float(os.getenv("SYNAPSE_MCP_IDLE_TTL", "") or _DEFAULT_IDLE_TTL)
     except (TypeError, ValueError):
         return _DEFAULT_IDLE_TTL
+
+
+def _build_timeout() -> float:
+    try:
+        return float(
+            os.getenv("SYNAPSE_MCP_BUILD_TIMEOUT", "") or _DEFAULT_BUILD_TIMEOUT
+        )
+    except (TypeError, ValueError):
+        return _DEFAULT_BUILD_TIMEOUT
 
 
 class _Entry:
@@ -208,7 +233,30 @@ async def acquire(tenant: str | None = None):
         # replaced, not to the lock every other tenant is waiting on.
         _close(stale)
 
-    await entry.ready.wait()
+    try:
+        await asyncio.wait_for(entry.ready.wait(), timeout=_build_timeout())
+    except asyncio.TimeoutError:
+        # The build is wedged. Three things have to happen, in this order.
+        #
+        # Drop the entry, so the tenant's *next* job builds a fresh one instead
+        # of queueing behind this one and inheriting the same wait. Cancel the
+        # owner task, because nothing else will — it is stuck inside `_build`,
+        # not waiting on `closing`, so setting `closing` would be ignored;
+        # `_own` catches the cancellation, records it and wakes anyone else
+        # already waiting on `ready`, and `build_for_tenant` closes whatever it
+        # had opened. Then raise, rather than return a module the caller would
+        # immediately dereference.
+        async with lock:
+            entry.refs = max(0, entry.refs - 1)
+            if _entries.get(tenant) is entry:
+                del _entries[tenant]
+        if entry.task is not None:
+            entry.task.cancel()
+        raise TimeoutError(
+            f"MCP session set for tenant '{tenant}' was not built within "
+            f"{_build_timeout():.0f}s — a server is accepting connections "
+            f"without answering, or a step of the build has no bound of its own"
+        )
 
     if entry.error is not None:
         async with lock:

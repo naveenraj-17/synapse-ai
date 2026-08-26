@@ -447,3 +447,94 @@ class TestStaleness:
         self, pool, multi_tenant
     ):
         await mcp_pool.invalidate("never-seen")
+
+
+class TestABuildThatNeverFinishes:
+    """`acquire()` used to wait on `entry.ready` with no bound at all.
+
+    The per-server `REMOTE_MCP_CONNECT_TIMEOUT` bounds each connect, which is
+    the case that was actually seen. It does not bound the rest of the build:
+    vault hydration, the resolver query, or anything a later step adds without a
+    bound of its own. One of those hanging held the job until `job_timeout` —
+    an hour — against a `chat_sessions` row that never left `running`.
+
+    The timeout is the ceiling on that class, not a service-level target, so
+    these drive it through the environment variable rather than waiting on the
+    real five minutes.
+    """
+
+    async def test_a_wedged_build_raises_instead_of_waiting(
+        self, monkeypatch, multi_tenant
+    ):
+        monkeypatch.setenv("SYNAPSE_MCP_BUILD_TIMEOUT", "0.2")
+
+        async def never_finishes(tenant):
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(mcp_pool, "_build", never_finishes)
+
+        with tenant_scope("t-wedged"):
+            with pytest.raises(TimeoutError, match="t-wedged"):
+                await mcp_pool.acquire()
+
+    async def test_the_wedged_entry_is_dropped_so_the_next_job_starts_fresh(
+        self, monkeypatch, multi_tenant
+    ):
+        """Otherwise every later job queues behind the same wedged build and
+        inherits the same wait — the failure would spread rather than stay put."""
+        monkeypatch.setenv("SYNAPSE_MCP_BUILD_TIMEOUT", "0.2")
+
+        async def never_finishes(tenant):
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(mcp_pool, "_build", never_finishes)
+
+        with tenant_scope("t-wedged"):
+            with pytest.raises(TimeoutError):
+                await mcp_pool.acquire()
+
+        assert "t-wedged" not in mcp_pool._entries  # noqa: SLF001
+
+    async def test_the_owner_task_is_stopped_rather_than_left_running(
+        self, monkeypatch, multi_tenant
+    ):
+        """Nothing else would stop it: it is inside `_build`, not waiting on
+        `closing`, so setting `closing` would never be seen and the task would
+        hold its half-built sessions until the process exited.
+
+        It finishes rather than ending up `cancelled()`, and that is the design:
+        `_own` catches the cancellation, records it on the entry and sets
+        `ready`, so anyone *already* waiting on this entry is woken with the
+        reason instead of waiting out their own timeout too.
+        """
+        monkeypatch.setenv("SYNAPSE_MCP_BUILD_TIMEOUT", "0.2")
+        started: list[asyncio.Task] = []
+        entries: list = []
+
+        async def never_finishes(tenant):
+            started.append(asyncio.current_task())
+            entries.append(mcp_pool._entries[tenant])  # noqa: SLF001
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(mcp_pool, "_build", never_finishes)
+
+        with tenant_scope("t-wedged"):
+            with pytest.raises(TimeoutError):
+                await mcp_pool.acquire()
+
+        await asyncio.sleep(0.05)
+        assert started[0].done(), "the wedged owner task is still running"
+        assert entries[0].ready.is_set(), "other waiters were left hanging"
+        assert isinstance(entries[0].error, asyncio.CancelledError)
+
+    async def test_a_build_inside_the_bound_is_untouched(
+        self, monkeypatch, multi_tenant, pool
+    ):
+        """The bound must not fail a slow-but-legitimate build. An org with
+        several unreachable servers spends real minutes here by design."""
+        monkeypatch.setenv("SYNAPSE_MCP_BUILD_TIMEOUT", "5")
+
+        with tenant_scope("t-slow"):
+            module = await mcp_pool.acquire()
+            assert module is not None
+            await mcp_pool.release()
