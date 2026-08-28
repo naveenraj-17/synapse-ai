@@ -48,6 +48,7 @@ two tenants, and nothing in the shipped product sets it at all.
 from __future__ import annotations
 
 import os
+import sys
 
 
 def process_tenant() -> str:
@@ -96,6 +97,22 @@ def _attach_store() -> None:
     set_store(build_session_factory(build_engine(default_url())))
 
 
+#: Where a diagnostic goes when this process IS an MCP stdio server.
+#:
+#: **stdout is the JSONRPC channel.** Anything written there is parsed as a
+#: protocol message, so a single `print()` corrupts the stream and the client
+#: fails with "Failed to parse JSONRPC message from server" — while the real
+#: error, the one the print was trying to report, is consumed by the parser and
+#: never reaches a log. The failure that follows is a chat turn that simply
+#: never starts.
+#:
+#: The three calls below are deliberately non-fatal and deliberately loud; loud
+#: has to mean stderr here, which the parent captures and which no protocol
+#: reads.
+def _diagnostic(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
 async def bootstrap() -> None:
     """Adopt the tenant and point `load_settings()` at the store.
 
@@ -112,7 +129,7 @@ async def bootstrap() -> None:
         # `set_store` is first in the scale worker's startup.
         _attach_store()
     except Exception as exc:  # noqa: BLE001 — see the docstring
-        print(f"[tool_server] store unavailable: {exc}", flush=True)
+        _diagnostic(f"[tool_server] store unavailable: {exc}")
 
     try:
         _install_document_resolver()
@@ -121,7 +138,7 @@ async def bootstrap() -> None:
         # carry unresolvable references fails at the point of use with a real
         # error; a tool server that refused to start would take every other
         # tool in the set down with it.
-        print(f"[tool_server] document resolver unavailable: {exc}", flush=True)
+        _diagnostic(f"[tool_server] document resolver unavailable: {exc}")
 
     try:
         from core import settings_runtime
@@ -129,4 +146,4 @@ async def bootstrap() -> None:
         settings_runtime.install_provider()
         await settings_runtime.refresh()
     except Exception as exc:  # noqa: BLE001 — see the docstring
-        print(f"[tool_server] settings unavailable, using defaults: {exc}", flush=True)
+        _diagnostic(f"[tool_server] settings unavailable, using defaults: {exc}")
