@@ -362,36 +362,34 @@ body {
 /*
  * React Flow, themed through its own override hooks.
  *
- * v12 reads `--xy-*-default` custom properties for every piece of its chrome,
- * so pointing them at the semantic tokens themes the canvas in BOTH modes with
- * no `!important` and no per-mode duplication — `.light-mode` swaps the
- * underlying tokens and everything here follows.
+ * Every colour in its stylesheet resolves as
+ * `var(--xy-X-props, var(--xy-X, var(--xy-X-default)))`, and the `-default`
+ * names are declared ON `.react-flow` itself — so declaring `-default` from
+ * `:root` does nothing (the element's own declaration wins; that is how the
+ * minimap shipped white in dark mode). The **un-suffixed** names are the user
+ * hook: React Flow never defines them, so these inherit in from `:root` and
+ * win. Pointing them at the semantic tokens themes the canvas in BOTH modes
+ * with no `!important` and no per-mode duplication.
  */
 :root {
-  --xy-background-color-default: var(--bg);
-  --xy-background-pattern-dots-color-default: var(--border-strong);
-  --xy-edge-stroke-default: var(--flow-edge);
-  --xy-edge-label-background-color-default: var(--surface);
-  --xy-edge-label-color-default: var(--text-muted);
-  --xy-connectionline-stroke-default: var(--accent);
-  --xy-controls-button-background-color-default: var(--surface);
-  --xy-controls-button-background-color-hover-default: var(--surface-2);
-  --xy-controls-button-color-default: var(--text-muted);
-  --xy-controls-button-color-hover-default: var(--text);
-  --xy-controls-button-border-color-default: var(--border);
-  --xy-controls-box-shadow-default: 0 4px 12px rgb(0 0 0 / 0.25);
-  --xy-minimap-background-color-default: var(--surface);
-  --xy-minimap-mask-background-color-default: var(--minimap-mask);
-  --xy-selection-background-color-default: var(--ring);
-  --xy-selection-border-default: 1px solid var(--accent);
-  --xy-handle-background-color-default: var(--text-faint);
-  --xy-handle-border-color-default: var(--bg);
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-dots-color: var(--border-strong);
+  --xy-edge-stroke: var(--flow-edge);
+  --xy-edge-label-background-color: var(--surface);
+  --xy-edge-label-color: var(--text-muted);
+  --xy-connectionline-stroke: var(--accent);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: var(--minimap-mask);
+  --xy-selection-background-color: var(--ring);
+  --xy-selection-border: 1px solid var(--accent);
+  --xy-handle-background-color: var(--text-faint);
+  --xy-handle-border-color: var(--bg);
 }
 
-/* Frame the floating chrome like the kit's own popovers. Two classes so these
-   outrank React Flow's single-class rules regardless of bundle order. */
-.react-flow .react-flow__minimap,
-.react-flow .react-flow__controls {
+/* Frame the minimap like the kit's own popovers. Two classes so this outranks
+   React Flow's single-class rule regardless of bundle order. (The `<Controls>`
+   component is gone — zoom lives in the canvas' own top-right cluster.) */
+.react-flow .react-flow__minimap {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
     ReactFlow,
     Background,
-    Controls,
     MiniMap,
     Panel,
     useNodesState,
@@ -18,7 +17,7 @@ import {
     MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Maximize, Wand2 } from 'lucide-react';
+import { Maximize, Minus, Plus, Wand2 } from 'lucide-react';
 import { StepNode } from './StepNode';
 import { StepPalette, STEP_DRAG_TYPE } from './StepPalette';
 import { addStepToGraph, clearEdgeLink, removeStepFromGraph, ROUTE_COLORS, type EdgeLink } from './graph';
@@ -291,7 +290,7 @@ export function WorkflowCanvas({
     runStepStatuses,
     showPalette = true,
 }: WorkflowCanvasProps) {
-    const { fitView, getNodes, screenToFlowPosition } = useReactFlow();
+    const { fitView, getNodes, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
 
     const validation = useMemo(() => validateOrchestration(orchestration), [orchestration]);
 
@@ -488,7 +487,6 @@ export function WorkflowCanvas({
                 defaultEdgeOptions={{ type: 'smoothstep' }}
             >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-                <Controls showInteractive={false} />
                 <MiniMap
                     pannable
                     zoomable
@@ -508,9 +506,30 @@ export function WorkflowCanvas({
                         <StepPalette onAdd={addStep} />
                     </Panel>
                 )}
+                {/* One cluster for every canvas control — the default <Controls>
+                    sat alone in the bottom-left corner, a second home for
+                    buttons that belong with Tidy up. */}
                 <Panel position="top-right" className="!m-2 flex gap-1.5">
                     <button type="button" onClick={tidyUp} title="Auto-arrange the graph left to right" className={canvasButtonCls}>
                         <Wand2 size={13} aria-hidden /> Tidy up
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => zoomIn({ duration: 150 })}
+                        title="Zoom in"
+                        aria-label="Zoom in"
+                        className={canvasButtonCls}
+                    >
+                        <Plus size={13} aria-hidden />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => zoomOut({ duration: 150 })}
+                        title="Zoom out"
+                        aria-label="Zoom out"
+                        className={canvasButtonCls}
+                    >
+                        <Minus size={13} aria-hidden />
                     </button>
                     <button
                         type="button"
