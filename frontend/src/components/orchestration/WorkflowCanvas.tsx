@@ -502,7 +502,9 @@ export function WorkflowCanvas({
                     // resolve against the canvas — on the palette div they
                     // resolved against an auto-height wrapper and the list
                     // could never scroll.
-                    <Panel position="top-left" className="!m-2 flex max-h-[calc(100%-5rem)]">
+                    // 1rem = the Panel's own m-2 twice over, so the rail ends
+                    // the same 8px from the bottom edge as it starts from the top.
+                    <Panel position="top-left" className="!m-2 flex max-h-[calc(100%-1rem)]">
                         <StepPalette onAdd={addStep} />
                     </Panel>
                 )}
