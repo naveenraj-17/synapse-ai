@@ -136,6 +136,39 @@ export function Field({
 }
 
 /**
+ * Fields side by side, with an optional action button aligned to the controls.
+ *
+ * Upstreamed from the cloud's staff screens: a `Field` is `block`, so two of
+ * them always stack. When a row genuinely wants label-over-control columns —
+ * country + state, phone + its country — this provides the flex wrapper, and
+ * the `&nbsp;` spacer drops an action button to the control line rather than
+ * the label line.
+ */
+export function FieldRow({
+  children,
+  action,
+  className,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-start gap-3", className)}>
+      {children}
+      {action ? (
+        <div>
+          <span aria-hidden className="mb-1.5 block text-sm font-medium">
+            &nbsp;
+          </span>
+          {action}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * The search box that sits above a list.
  *
  * The icon, its padding offset and the clear button were assembled inline in

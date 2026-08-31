@@ -27,7 +27,7 @@ export { BrandLoader, Mark, Wordmark } from "./brand";
 export { Card, CardBody, CardFooter } from "./card";
 export { EmptyState, ErrorNote, SuccessNote } from "./feedback";
 export { controlStyles, type ControlSize } from "./control-styles";
-export { Field, Input, SearchInput, Textarea } from "./input";
+export { Field, FieldRow, Input, SearchInput, Textarea } from "./input";
 export { TextLink, type TextLinkVariant } from "./link";
 export {
   CellStack,
