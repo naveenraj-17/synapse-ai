@@ -57,7 +57,7 @@ function AllowedTools({ step, update, availableTools }: StepSectionProps) {
                 <span className="text-xs text-text">
                     Restrict tools for this step
                     <span className="mt-0.5 block text-[10px] text-text-faint">
-                        Narrows the agent&apos;s own tool set — it can only remove access, never add it.
+                        For this step the agent gets exactly the tools picked here, instead of its own set.
                     </span>
                 </span>
             </label>
@@ -85,8 +85,13 @@ function AllowedTools({ step, update, availableTools }: StepSectionProps) {
                             </label>
                         );
                     })}
+                    {/* An empty list is falsy to the engine (`react_engine.py:772`),
+                        so it behaves as "no override" — say so instead of implying
+                        a lockdown that does not happen. */}
                     {(step.allowed_tools || []).length === 0 && (
-                        <p className="text-[10px] text-warning">No tools selected — this step will run with none.</p>
+                        <p className="text-[10px] text-warning">
+                            Nothing selected yet — until you pick at least one tool, the agent keeps its own set.
+                        </p>
                     )}
                 </div>
             )}

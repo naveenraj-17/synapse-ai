@@ -101,6 +101,10 @@ export function Combobox<T extends string = string>({
           align="start"
           sideOffset={6}
           collisionPadding={8}
+          // The panel behind this scrolls. Without this, scrolling the trigger
+          // out of view leaves the popup clamped at the viewport edge, floating
+          // over unrelated content — hidden-when-detached is the honest state.
+          hideWhenDetached
           className={cn(
             "z-50 flex flex-col overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl",
             // Match the trigger's width rather than hugging the longest option,

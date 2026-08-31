@@ -90,6 +90,9 @@ export function Select<T extends string = string>({
           position="popper"
           sideOffset={6}
           collisionPadding={8}
+          // Same rule as Combobox: a trigger scrolled out of its panel must not
+          // leave the option list floating over whatever replaced it.
+          hideWhenDetached
           className={cn(
             "z-50 overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl",
             // `--radix-select-trigger-width` keeps the list the width of the
