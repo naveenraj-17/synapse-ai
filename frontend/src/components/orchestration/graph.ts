@@ -199,11 +199,20 @@ export function hasTypeSpecificConfig(step: StepConfig): boolean {
 }
 
 /**
- * Every state key the orchestration knows about: the declared schema plus each
- * step's output key. Feeds the input-key chips and the `state.` helpers.
+ * Keys the engine seeds into shared state on every run, before any step runs:
+ * `_init_state()` writes the initial input under both names. They are always
+ * valid inputs even though no schema declares them and no step outputs them.
+ */
+export const BUILTIN_STATE_KEYS = ['user_input', 'user_query'];
+
+/**
+ * Every state key the orchestration knows about: the engine's built-ins, the
+ * declared schema, plus each step's output key. Feeds the input-key chips and
+ * the `state.` helpers.
  */
 export function collectStateKeys(orch: Orchestration): string[] {
-    const keys = new Set<string>(Object.keys(orch.state_schema || {}));
+    const keys = new Set<string>(BUILTIN_STATE_KEYS);
+    for (const key of Object.keys(orch.state_schema || {})) keys.add(key);
     for (const s of orch.steps) {
         if (s.output_key) keys.add(s.output_key);
     }

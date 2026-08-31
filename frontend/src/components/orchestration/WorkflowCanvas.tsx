@@ -499,7 +499,12 @@ export function WorkflowCanvas({
                     maskColor="var(--minimap-mask)"
                 />
                 {showPalette && (
-                    <Panel position="top-left" className="!m-2">
+                    // The height bound lives on the Panel: it is absolutely
+                    // positioned inside `.react-flow`, so percentage heights
+                    // resolve against the canvas — on the palette div they
+                    // resolved against an auto-height wrapper and the list
+                    // could never scroll.
+                    <Panel position="top-left" className="!m-2 flex max-h-[calc(100%-5rem)]">
                         <StepPalette onAdd={addStep} />
                     </Panel>
                 )}

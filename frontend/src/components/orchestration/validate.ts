@@ -10,6 +10,7 @@
  */
 
 import type { Orchestration, StepIssue } from '@/types/orchestration';
+import { BUILTIN_STATE_KEYS } from './graph';
 
 export interface ValidationResult {
     byStep: Record<string, StepIssue[]>;
@@ -42,8 +43,11 @@ export function validateOrchestration(orch: Orchestration): ValidationResult {
         global.push(error('Entry point references a deleted step'));
     }
 
-    // --- Known state keys (schema + every output key) for input_keys checks ---
-    const knownKeys = new Set(Object.keys(orch.state_schema || {}));
+    // --- Known state keys for input_keys checks: the engine's built-ins
+    // (user_input/user_query are seeded on every run), the schema, and every
+    // output key. Flagging a built-in taught this check its first false alarm.
+    const knownKeys = new Set(BUILTIN_STATE_KEYS);
+    for (const key of Object.keys(orch.state_schema || {})) knownKeys.add(key);
     for (const s of orch.steps) if (s.output_key) knownKeys.add(s.output_key);
 
     // --- Duplicate output keys ---

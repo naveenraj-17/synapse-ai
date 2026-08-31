@@ -89,12 +89,16 @@ export function Select<T extends string = string>({
         <RSelect.Content
           position="popper"
           sideOffset={6}
+          collisionPadding={8}
           className={cn(
             "z-50 overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl",
             // `--radix-select-trigger-width` keeps the list the width of the
             // control instead of hugging its longest option, which otherwise
-            // makes the popup jump around as the selection changes.
-            "max-h-72 w-[var(--radix-select-trigger-width)]",
+            // makes the popup jump around as the selection changes. The
+            // available-height cap keeps a long list near the viewport edge
+            // scrolling inside itself instead of running off the page.
+            "w-[var(--radix-select-trigger-width)]",
+            "max-h-[min(18rem,var(--radix-select-content-available-height))]",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0",
           )}
         >

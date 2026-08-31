@@ -100,16 +100,21 @@ export function Combobox<T extends string = string>({
         <RPopover.Content
           align="start"
           sideOffset={6}
+          collisionPadding={8}
           className={cn(
-            "z-50 overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl",
+            "z-50 flex flex-col overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl",
             // Match the trigger's width rather than hugging the longest option,
             // which otherwise makes the popup jump as the selection changes.
             "w-[var(--radix-popover-trigger-width)]",
+            // Never taller than the space Radix measured to the viewport edge —
+            // without this a long list near the bottom of the screen ran off
+            // the page instead of scrolling inside itself.
+            "max-h-[var(--radix-popover-content-available-height)]",
           )}
         >
           {/* `shouldFilter` on: cmdk scores against each item's `value`, which
               is set below to the label plus the id, so typing either finds it. */}
-          <Command loop>
+          <Command loop className="flex min-h-0 flex-col">
             <div className="flex items-center gap-2 border-b border-border px-3">
               <Search className="size-4 shrink-0 text-text-faint" aria-hidden />
               <Command.Input
@@ -124,7 +129,7 @@ export function Combobox<T extends string = string>({
               />
             </div>
 
-            <Command.List className="max-h-72 overflow-y-auto overscroll-contain p-1">
+            <Command.List className="max-h-72 min-h-0 overflow-y-auto overscroll-contain p-1">
               <Command.Empty className="px-2 py-6 text-center text-sm text-text-faint">
                 {emptyMessage}
               </Command.Empty>

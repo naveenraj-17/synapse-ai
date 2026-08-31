@@ -64,7 +64,7 @@ export function StepPalette({ onAdd }: { onAdd: (type: StepType) => void }) {
     }
 
     return (
-        <div className="flex max-h-[calc(100%-1rem)] w-56 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md">
+        <div className="flex max-h-full min-h-0 w-56 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md">
             <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                 <span className="flex-1 text-xs font-semibold text-text">Steps</span>
                 <button
