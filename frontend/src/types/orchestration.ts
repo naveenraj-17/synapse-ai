@@ -52,6 +52,9 @@ export interface StepConfig {
     // HUMAN
     human_prompt?: string;
     human_fields?: { name: string; type: string; label: string }[];
+    // Optional messaging-channel notification for the pause (first response wins).
+    human_channel_id?: string;
+    human_timeout_seconds?: number;
 
     // I/O mapping
     input_keys?: string[];
@@ -138,6 +141,13 @@ export interface OrchestrationRun {
     ended_at?: string;
 }
 
+// A configuration problem surfaced by `components/orchestration/validate.ts`.
+// Errors block a run; warnings are advisory and never block anything.
+export interface StepIssue {
+    severity: 'error' | 'warning';
+    message: string;
+}
+
 // xyflow node data
 export interface StepNodeData {
     step: StepConfig;
@@ -145,26 +155,34 @@ export interface StepNodeData {
     isSelected: boolean;
     agentName?: string;
     runStatus?: 'pending' | 'running' | 'completed' | 'failed';
+    issues?: StepIssue[];
     [key: string]: unknown;
 }
 
 export type StepNode = Node<StepNodeData>;
 export type StepEdge = Edge;
 
-// Step type metadata for UI
-export const STEP_TYPE_META: Record<StepType, { label: string; color: string; icon: string }> = {
-    agent:     { label: 'Agent',     color: '#3b82f6', icon: 'Bot' },
-    llm:       { label: 'LLM',       color: '#14b8a6', icon: 'Zap' },
-    tool:      { label: 'Tool',      color: '#a855f7', icon: 'Wrench' },
-    evaluator: { label: 'Evaluator', color: '#10b981', icon: 'Scale' },
-    parallel:  { label: 'Parallel',  color: '#8b5cf6', icon: 'GitBranch' },
-    merge:     { label: 'Merge',     color: '#ec4899', icon: 'GitMerge' },
-    loop:      { label: 'Loop',      color: '#f59e0b', icon: 'RefreshCw' },
-    human:     { label: 'Human',     color: '#ef4444', icon: 'User' },
-    transform:    { label: 'Transform',    color: '#6366f1', icon: 'Code' },
-    extract_json: { label: 'Extract JSON', color: '#f97316', icon: 'Braces' },
-    if_else:      { label: 'If / Else',    color: '#eab308', icon: 'GitFork' },
-    switch:       { label: 'Switch',       color: '#06b6d4', icon: 'ArrowLeftRight' },
-    print:        { label: 'Print',        color: '#84cc16', icon: 'FileText' },
-    end:          { label: 'End',          color: '#6b7280', icon: 'Square' },
+// Step type metadata for UI. `color` is identity (icon chip, minimap) and is a
+// literal hex on purpose — it renders on both themes and never carries meaning
+// beyond "which type is this". `category` groups the palette; `blurb` is the
+// one-liner shown while choosing a step.
+export type StepCategory = 'Core' | 'Logic' | 'Data' | 'I/O';
+
+export const STEP_TYPE_META: Record<StepType, {
+    label: string; color: string; icon: string; category: StepCategory; blurb: string;
+}> = {
+    agent:     { label: 'Agent',     color: '#3b82f6', icon: 'Bot',          category: 'Core',  blurb: 'Run a configured agent with tools' },
+    llm:       { label: 'LLM',       color: '#14b8a6', icon: 'Zap',          category: 'Core',  blurb: 'Single LLM call, no tools' },
+    tool:      { label: 'Tool',      color: '#a855f7', icon: 'Wrench',       category: 'Core',  blurb: 'Force exactly one tool call' },
+    evaluator: { label: 'Evaluator', color: '#10b981', icon: 'Scale',        category: 'Logic', blurb: 'LLM picks the next route' },
+    parallel:  { label: 'Parallel',  color: '#8b5cf6', icon: 'GitBranch',    category: 'Logic', blurb: 'Run branches concurrently' },
+    merge:     { label: 'Merge',     color: '#ec4899', icon: 'GitMerge',     category: 'Logic', blurb: 'Combine parallel outputs' },
+    loop:      { label: 'Loop',      color: '#f59e0b', icon: 'RefreshCw',    category: 'Logic', blurb: 'Repeat body steps N times' },
+    human:     { label: 'Human',     color: '#ef4444', icon: 'User',         category: 'I/O',   blurb: 'Pause for a person to decide' },
+    transform:    { label: 'Transform',    color: '#6366f1', icon: 'Code',   category: 'Data',  blurb: 'Run Python over shared state' },
+    extract_json: { label: 'Extract JSON', color: '#f97316', icon: 'Braces', category: 'Data',  blurb: 'Parse JSON out of text' },
+    if_else:      { label: 'If / Else',    color: '#eab308', icon: 'GitFork',       category: 'Logic', blurb: 'Branch on a condition' },
+    switch:       { label: 'Switch',       color: '#06b6d4', icon: 'ArrowLeftRight', category: 'Logic', blurb: 'Match a value to a case' },
+    print:        { label: 'Print',        color: '#84cc16', icon: 'FileText',      category: 'I/O',   blurb: 'Write text/markdown to state' },
+    end:          { label: 'End',          color: '#6b7280', icon: 'Square',        category: 'I/O',   blurb: 'Terminate the flow here' },
 };

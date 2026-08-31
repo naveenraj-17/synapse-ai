@@ -2,17 +2,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, Scale, GitBranch, GitMerge, RefreshCw, User, Code, Zap, Wrench, ExternalLink, X, Sparkles, Braces, GitFork, ArrowLeftRight, FileText, ArrowLeft } from 'lucide-react';
-import { Combobox, SearchInput } from '@/components/ui';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle } from 'lucide-react';
+import { Button, Combobox, Hint, IconButton, SearchInput } from '@/components/ui';
 import { matchesQuery } from '@/lib/search';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
-import { STEP_TYPE_META } from '@/types/orchestration';
+import { cloneStep, generateStepId, removeStepFromGraph } from '../orchestration/graph';
+import { validateOrchestration } from '../orchestration/validate';
+import { useBuilderShortcuts, useDraftHistory } from '../orchestration/use-draft-history';
 import { readWithStallTimeout } from '@/lib/sse';
 import { ReactFlowProvider } from '@xyflow/react';
 import { WorkflowCanvas } from '../orchestration/WorkflowCanvas';
 import { StepConfigPanel } from '../orchestration/StepConfigPanel';
 import { StateSchemaEditor } from '../orchestration/StateSchemaEditor';
-import type { Orchestration, StepConfig, StepType } from '@/types/orchestration';
+import type { Orchestration, StepConfig } from '@/types/orchestration';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ConfirmationModal } from './ConfirmationModal';
@@ -42,12 +44,6 @@ function applyStepHistory(
     return next;
 }
 
-const STEP_ICONS: Record<StepType, React.FC<{ size?: number }>> = {
-    llm: Zap, agent: Bot, tool: Wrench, evaluator: Scale, parallel: GitBranch,
-    merge: GitMerge, loop: RefreshCw, human: User, transform: Code,
-    extract_json: Braces, if_else: GitFork, switch: ArrowLeftRight, print: FileText, end: Square,
-};
-
 const EMPTY_ORCHESTRATION: Orchestration = {
     id: '',
     name: 'New Orchestration',
@@ -61,29 +57,14 @@ const EMPTY_ORCHESTRATION: Orchestration = {
     trigger: 'manual',
 };
 
-function generateId() {
-    return 'step_' + Math.random().toString(36).substring(2, 9);
-}
-
-function newStep(type: StepType, position: { x: number; y: number }): StepConfig {
-    return {
-        id: generateId(),
-        name: type.charAt(0).toUpperCase() + type.slice(1) + ' Step',
-        type,
-        position_x: position.x,
-        position_y: position.y,
-        max_turns: 15,
-        timeout_seconds: 300,
-        max_iterations: 3,
-    };
-}
-
 export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {}) {
     // --- Orchestration list ---
     const [orchestrations, setOrchestrations] = useState<Orchestration[]>([]);
     const [orchQuery, setOrchQuery] = useState('');
     const [selectedOrchId, setSelectedOrchId] = useState<string | null>(null);
-    const [draft, setDraft] = useState<Orchestration | null>(null);
+    // The draft with undo/redo, dirty tracking and the unload guard.
+    // `setDraft` records history (edits); `replaceDraft` resets it (navigation).
+    const { draft, setDraft, replaceDraft, markSaved, undo, redo, canUndo, canRedo, dirty } = useDraftHistory();
     const [agents, setAgents] = useState<any[]>([]);
     const [availableModels, setAvailableModels] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
@@ -357,7 +338,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
         }
         setSelectedOrchId(runInfo.orchestration_id);
         setSelectedStepId(null);
-        setDraft({ ...orch });
+        replaceDraft({ ...orch }, { saved: true });
         setRunId(runInfo.run_id);
         // Sync the ref synchronously — the useEffect that mirrors runId only runs
         // after render, but streamRunJournal's guard reads currentRunIdRef immediately.
@@ -413,11 +394,11 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
         setHumanPrompt(null);
         if (id) {
             const orch = orchestrations.find(o => o.id === id);
-            setDraft(orch ? { ...orch } : null);
+            replaceDraft(orch ? { ...orch } : null, { saved: true });
         } else {
-            setDraft(null);
+            replaceDraft(null);
         }
-    }, [orchestrations]);
+    }, [orchestrations, replaceDraft]);
 
     // --- Back to the landing dashboard ---
     // Detaches this browser from the run's event stream; the run itself keeps
@@ -436,7 +417,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
     const createNew = () => {
         const id = 'orch_' + Math.random().toString(36).substring(2, 9);
         const orch: Orchestration = { ...EMPTY_ORCHESTRATION, id };
-        setDraft(orch);
+        replaceDraft(orch);
         setSelectedOrchId(id);
         setSelectedStepId(null);
     };
@@ -448,7 +429,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
         // Build old→new step ID map
         const idMap: Record<string, string> = {};
         for (const step of draft.steps) {
-            idMap[step.id] = generateId();
+            idMap[step.id] = generateStepId();
         }
 
         // Remap a step ID reference, preserving null/undefined
@@ -511,16 +492,23 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             if (res.ok) {
                 const saved = await res.json();
                 setOrchestrations(prev => [...prev, saved]);
-                setDraft(saved);
+                replaceDraft(saved, { saved: true });
                 setSelectedOrchId(newId);
                 setSelectedStepId(null);
+            } else {
+                showToast('Duplicate failed — the server rejected the copy', 'error');
             }
-        } catch { /* ignore */ } finally {
+        } catch {
+            showToast('Duplicate failed — could not reach the server', 'error');
+        } finally {
             setSaving(false);
         }
     };
 
     // --- Save orchestration ---
+    // Always saves — a half-built draft must be saveable — but names the
+    // outcome either way. Configuration errors surface as node badges and a
+    // toast here; they only *block* at Run.
     const handleSave = async () => {
         if (!draft) return;
         setSaving(true);
@@ -540,9 +528,20 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 } else {
                     setOrchestrations([...orchestrations, saved]);
                 }
-                setDraft(saved);
+                markSaved(saved);
+                const { errorCount } = validateOrchestration(saved);
+                if (errorCount > 0) {
+                    showToast(`Saved, with ${errorCount} configuration error${errorCount !== 1 ? 's' : ''} still to fix`, 'warning');
+                } else {
+                    showToast('Orchestration saved', 'success');
+                }
+            } else {
+                const err = await res.json().catch(() => null);
+                showToast(`Save failed: ${err?.detail || `HTTP ${res.status}`}`, 'error');
             }
-        } catch { /* ignore */ } finally {
+        } catch {
+            showToast('Save failed — could not reach the server', 'error');
+        } finally {
             setSaving(false);
         }
     };
@@ -559,23 +558,16 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             await fetch(`/api/orchestrations/${confirmDeleteOrchId}`, { method: 'DELETE' });
             setOrchestrations(orchestrations.filter(o => o.id !== confirmDeleteOrchId));
             if (draft?.id === confirmDeleteOrchId) {
-                setDraft(null);
+                replaceDraft(null);
                 setSelectedOrchId(null);
             }
-        } catch { /* ignore */ }
+        } catch {
+            showToast('Delete failed — could not reach the server', 'error');
+        }
     };
 
-    // --- Add step ---
-    const addStep = (type: StepType) => {
-        if (!draft) return;
-        const existingCount = draft.steps.length;
-        const step = newStep(type, { x: 100 + (existingCount % 3) * 250, y: 80 + Math.floor(existingCount / 3) * 180 });
-        const updated = { ...draft, steps: [...draft.steps, step] };
-        if (!updated.entry_step_id) {
-            updated.entry_step_id = step.id;
-        }
-        setDraft(updated);
-    };
+    // Steps are added from the palette inside WorkflowCanvas (drag-drop or
+    // click), which owns placement and entry-point assignment via graph.ts.
 
     // --- Update step ---
     const updateStep = useCallback((updatedStep: StepConfig) => {
@@ -584,63 +576,35 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             ...draft,
             steps: draft.steps.map(s => s.id === updatedStep.id ? updatedStep : s),
         });
-    }, [draft]);
+    }, [draft, setDraft]);
 
-    // --- Delete step ---
+    // --- Delete step --- (reference cleanup lives in the shared graph module)
     const deleteStep = useCallback((stepId: string) => {
         if (!draft) return;
-        const updated = {
-            ...draft,
-            steps: draft.steps.filter(s => s.id !== stepId),
-        };
-        // Clean references
-        updated.steps = updated.steps.map(s => {
-            const patched: any = {
-                ...s,
-                next_step_id: s.next_step_id === stepId ? undefined : s.next_step_id,
-                loop_step_ids: s.loop_step_ids?.filter(id => id !== stepId),
-                parallel_branches: s.parallel_branches?.map(branch => branch.filter(id => id !== stepId)),
-                // Clean if_else references
-                if_true_step_id: s.if_true_step_id === stepId ? undefined : s.if_true_step_id,
-                if_false_step_id: s.if_false_step_id === stepId ? undefined : s.if_false_step_id,
-                // Clean switch default
-                switch_default_step_id: s.switch_default_step_id === stepId ? undefined : s.switch_default_step_id,
-            };
-            // Clean route_map entries pointing to deleted step
-            if (s.route_map) {
-                const newRouteMap: Record<string, string | null> = {};
-                for (const [label, target] of Object.entries(s.route_map)) {
-                    newRouteMap[label] = target === stepId ? null : target;
-                }
-                patched.route_map = newRouteMap;
-            }
-            // Clean switch_cases entries pointing to deleted step
-            if (s.switch_cases) {
-                const newCases: Record<string, string | null> = {};
-                for (const [val, target] of Object.entries(s.switch_cases)) {
-                    newCases[val] = target === stepId ? null : target;
-                }
-                patched.switch_cases = newCases;
-            }
-            return patched;
-        });
-        if (updated.entry_step_id === stepId) {
-            updated.entry_step_id = updated.steps[0]?.id || '';
-        }
-        setDraft(updated);
+        setDraft(removeStepFromGraph(draft, stepId));
         if (selectedStepId === stepId) setSelectedStepId(null);
-    }, [draft, selectedStepId]);
+    }, [draft, selectedStepId, setDraft]);
+
+    // --- Duplicate the selected step (Cmd+D) ---
+    const duplicateSelectedStep = useCallback(() => {
+        if (!draft || !selectedStepId) return;
+        const step = draft.steps.find(s => s.id === selectedStepId);
+        if (!step) return;
+        const copy = cloneStep(step);
+        setDraft({ ...draft, steps: [...draft.steps, copy] });
+        setSelectedStepId(copy.id);
+    }, [draft, selectedStepId, setDraft]);
 
     // --- Set entry point ---
     const setEntryPoint = useCallback((stepId: string) => {
         if (!draft) return;
         setDraft({ ...draft, entry_step_id: stepId });
-    }, [draft]);
+    }, [draft, setDraft]);
 
     // --- Update orchestration from canvas (position changes, edge connections) ---
     const updateOrchestration = useCallback((orch: Orchestration) => {
         setDraft(orch);
-    }, []);
+    }, [setDraft]);
 
     // --- Reattach stream: replay the run's event journal, then tail it live ---
     // The engine runs in a background task on the server and keeps executing
@@ -851,6 +815,17 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
     // --- Run orchestration ---
     const startRun = () => {
         if (!draft) return;
+        // Errors are exactly the class the engine would fail on mid-run —
+        // dangling targets, an agent step with no agent. Block here, where the
+        // author can still fix them, instead of three steps into a paid run.
+        const { errorCount } = validateOrchestration(draft);
+        if (errorCount > 0) {
+            showToast(`Fix ${errorCount} configuration error${errorCount !== 1 ? 's' : ''} before running — see the marked steps`, 'error');
+            return;
+        }
+        if (dirty) {
+            showToast('You have unsaved changes — the run uses the last saved version', 'warning');
+        }
         const statuses: Record<string, 'pending' | 'running' | 'completed' | 'failed'> = {};
         draft.steps.forEach(s => { statuses[s.id] = 'pending'; });
         setRunStepStatuses(statuses);
@@ -1177,6 +1152,18 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
     const selectedStep = draft?.steps.find(s => s.id === selectedStepId) || null;
     const allStepIds = draft?.steps.map(s => ({ id: s.id, name: s.name })) || [];
 
+    // Issues drive the toolbar chip and the Run gate; the canvas badges nodes
+    // and the panel explains — all from the same validate.ts pass.
+    const validation = draft ? validateOrchestration(draft) : null;
+
+    useBuilderShortcuts({
+        enabled: !!draft,
+        undo,
+        redo,
+        onDuplicate: duplicateSelectedStep,
+        onSave: handleSave,
+    });
+
     // --- Deploy as agent ---
     const handleDeploy = async () => {
         if (!draft) return;
@@ -1241,49 +1228,49 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 </div>
 
                 {draft && (
-                    <div className="flex items-center gap-2 pr-6">
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors disabled:opacity-50"
-                        >
-                            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-                        </button>
-                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled' ? (
-                            <button
-                                onClick={startRun}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white transition-colors"
+                    <div className="flex items-center gap-1.5 pr-6">
+                        {validation && validation.errorCount + validation.warningCount > 0 && (
+                            <Hint
+                                content={[
+                                    ...validation.global.map(i => i.message),
+                                    ...Object.values(validation.byStep).flat().map(i => i.message),
+                                ].slice(0, 6).join(' · ')}
                             >
-                                <Play size={14} /> Run
-                            </button>
-                        ) : (
-                            <button
-                                onClick={cancelRun}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white transition-colors"
-                            >
-                                <Square size={14} /> Cancel
-                            </button>
+                                <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${validation.errorCount > 0 ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning'}`}>
+                                    <AlertTriangle size={12} aria-hidden />
+                                    {validation.errorCount > 0
+                                        ? `${validation.errorCount} error${validation.errorCount !== 1 ? 's' : ''}`
+                                        : `${validation.warningCount} warning${validation.warningCount !== 1 ? 's' : ''}`}
+                                </span>
+                            </Hint>
                         )}
-                        <button
-                            onClick={handleDeploy}
-                            className="px-3 py-1.5 text-xs bg-accent hover:bg-accent-hover text-accent-fg transition-colors"
-                        >
+                        <IconButton label="Undo (Ctrl+Z)" icon={Undo2} size="sm" onClick={undo} disabled={!canUndo} />
+                        <IconButton label="Redo (Ctrl+Shift+Z)" icon={Redo2} size="sm" onClick={redo} disabled={!canRedo} />
+                        <div className="mx-1 h-5 w-px bg-border-strong" />
+                        <Button size="sm" variant="secondary" onClick={handleSave} disabled={saving} title={dirty ? 'Unsaved changes (Ctrl+S)' : 'Saved (Ctrl+S)'}>
+                            {saving ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Save size={14} aria-hidden />}
+                            Save
+                            {dirty && <span className="size-1.5 rounded-full bg-accent" aria-label="Unsaved changes" />}
+                        </Button>
+                        {runStatus === 'idle' || runStatus === 'completed' || runStatus === 'failed' || runStatus === 'cancelled' ? (
+                            <Button size="sm" variant="primary" onClick={startRun}>
+                                <Play size={14} aria-hidden /> Run
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="danger" onClick={cancelRun}>
+                                <Square size={14} aria-hidden /> Cancel
+                            </Button>
+                        )}
+                        <Button size="sm" variant="secondary" onClick={handleDeploy}>
                             Deploy as Agent
-                        </button>
-                        <button
-                            onClick={handleDuplicate}
-                            disabled={saving}
-                            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors disabled:opacity-50"
-                        >
-                            <Copy size={13} /> Duplicate
-                        </button>
-                        <div className="w-px h-5 bg-zinc-700 mx-1" />
-                        <button
-                            onClick={handleDelete}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-zinc-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
-                        >
-                            <Trash size={13} /> Delete
-                        </button>
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={handleDuplicate} disabled={saving}>
+                            <Copy size={13} aria-hidden /> Duplicate
+                        </Button>
+                        <div className="mx-1 h-5 w-px bg-border-strong" />
+                        <Button size="sm" variant="ghost" className="text-text-faint hover:text-danger" onClick={handleDelete}>
+                            <Trash size={13} aria-hidden /> Delete
+                        </Button>
                     </div>
                 )}
             </div>
@@ -1441,39 +1428,20 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 </div>
             ) : (
                 <div className="flex-1 flex flex-col min-h-0">
-                    {/* Name + description */}
+                    {/* Name + description. The step palette lives inside the canvas. */}
                     <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 shrink-0">
                         <input
-                            className="bg-transparent border-b border-zinc-700 text-zinc-200 text-sm font-medium px-1 py-0.5 outline-none focus:border-blue-500 w-64"
+                            className="bg-transparent border-b border-zinc-700 text-zinc-200 text-sm font-medium px-1 py-0.5 outline-none focus:border-accent w-64"
                             value={draft.name}
                             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                             placeholder="Orchestration name"
                         />
                         <input
-                            className="bg-transparent border-b border-zinc-700 text-zinc-400 text-xs px-1 py-0.5 outline-none focus:border-blue-500 flex-1 mr-6"
+                            className="bg-transparent border-b border-zinc-700 text-zinc-400 text-xs px-1 py-0.5 outline-none focus:border-accent flex-1 mr-6"
                             value={draft.description}
                             onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                             placeholder="Description..."
                         />
-                    </div>
-
-                    {/* Step type toolbar */}
-                    <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-800 shrink-0">
-                        <span className="text-xs text-zinc-500 mr-2">Add step:</span>
-                        {(['llm', 'agent', 'tool', 'evaluator', 'parallel', 'merge', 'loop', 'human', 'transform', 'extract_json', 'if_else', 'switch', 'print', 'end'] as StepType[]).map(type => {
-                            const meta = STEP_TYPE_META[type];
-                            const Icon = STEP_ICONS[type];
-                            return (
-                                <button
-                                    key={type}
-                                    onClick={() => addStep(type)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors capitalize"
-                                >
-                                    <Icon size={12} />
-                                    {meta.label}
-                                </button>
-                            );
-                        })}
                     </div>
 
                     {/* Main content: canvas + optional side panel */}
@@ -1504,6 +1472,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                 isEntry={draft.entry_step_id === selectedStep.id}
                                 onSetEntry={() => setEntryPoint(selectedStep.id)}
                                 availableModels={availableModels}
+                                orchestration={draft}
                             />
                         )}
                     </div>
@@ -1575,7 +1544,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                             ? prev.map((o) => (o.id === orch.id ? orch : o))
                             : [...prev, orch];
                     });
-                    setDraft(orch);
+                    replaceDraft(orch, { saved: true });
                     setSelectedOrchId(orch.id);
 
                     // Re-fetch the full orchestration from backend to get the
@@ -1590,7 +1559,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                             setOrchestrations(freshList);
                             const fresh = freshList.find((o: any) => o.id === orch.id);
                             if (fresh) {
-                                setDraft(fresh);
+                                replaceDraft(fresh, { saved: true });
                             }
                         }
                     } catch { /* use event data as fallback */ }

@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { Plus, Trash } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
+import { Button, Input, Select, Textarea } from '@/components/ui';
 import type { StateSchemaEntry } from '@/types/orchestration';
 
 interface StateSchemaEditorProps {
@@ -87,9 +88,11 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
         switch (entry.type) {
             case 'number':
                 return (
-                    <input
+                    <Input
+                        size="sm"
                         type="number"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                        className="font-code"
+                        aria-label={`Default for ${key}`}
                         value={entry.default === '' || entry.default == null ? '' : Number(entry.default as number)}
                         onChange={(e) => {
                             const v = e.target.value;
@@ -100,14 +103,16 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                 );
             case 'boolean':
                 return (
-                    <select
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                    <Select
+                        size="sm"
+                        aria-label={`Default for ${key}`}
                         value={entry.default === true ? 'true' : 'false'}
-                        onChange={(e) => updateEntry(key, { default: e.target.value === 'true' })}
-                    >
-                        <option value="false">false</option>
-                        <option value="true">true</option>
-                    </select>
+                        onChange={(v) => updateEntry(key, { default: v === 'true' })}
+                        options={[
+                            { value: 'false', label: 'false' },
+                            { value: 'true', label: 'true' },
+                        ]}
+                    />
                 );
             case 'list':
             case 'dict': {
@@ -120,21 +125,31 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
                     })();
                 const hasError = !!jsonErrors[key];
                 return (
-                    <textarea
-                        className={`w-full bg-zinc-900 border rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono resize-y min-h-[48px] ${hasError ? 'border-red-500/60' : 'border-zinc-700'}`}
-                        value={display}
-                        onChange={(e) => handleJsonChange(key, e.target.value)}
-                        placeholder={entry.type === 'list' ? '[]' : '{}'}
-                        title={hasError ? 'Invalid JSON — value not saved until parseable' : undefined}
-                        rows={3}
-                    />
+                    <div>
+                        <Textarea
+                            size="sm"
+                            className="min-h-[48px] font-code"
+                            aria-label={`Default for ${key}`}
+                            invalid={hasError}
+                            value={display}
+                            onChange={(e) => handleJsonChange(key, e.target.value)}
+                            placeholder={entry.type === 'list' ? '[]' : '{}'}
+                            rows={3}
+                        />
+                        {hasError && (
+                            <p role="alert" className="mt-1 text-[10px] text-danger">
+                                Invalid JSON — the value is not saved until it parses.
+                            </p>
+                        )}
+                    </div>
                 );
             }
             default:
                 return (
-                    <input
-                        type="text"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none font-mono"
+                    <Input
+                        size="sm"
+                        className="font-code"
+                        aria-label={`Default for ${key}`}
                         value={(entry.default as string) ?? ''}
                         onChange={(e) => updateEntry(key, { default: e.target.value })}
                         placeholder="Default value"
@@ -146,45 +161,54 @@ export function StateSchemaEditor({ schema, onChange }: StateSchemaEditorProps) 
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">State Schema</span>
-                <button onClick={addEntry} className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                    <Plus size={12} /> Add Key
-                </button>
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">State Schema</span>
+                <Button size="sm" variant="ghost" onClick={addEntry}>
+                    <Plus size={12} aria-hidden /> Add key
+                </Button>
             </div>
             {entries.length === 0 && (
-                <div className="text-xs text-zinc-600 italic">No state keys defined. Steps will still work with implicit state.</div>
+                <div className="text-xs italic text-text-faint">No state keys defined. Steps will still work with implicit state.</div>
             )}
             {entries.map(([key, entry]) => (
-                <div key={key} className="flex items-start gap-2 bg-zinc-800/50 rounded-md p-2">
-                    <div className="flex-1 space-y-1">
+                <div key={key} className="flex items-start gap-2 rounded-md border border-border bg-surface-2/40 p-2">
+                    <div className="flex-1 space-y-1.5">
                         <div className="flex gap-2">
-                            <input
-                                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 font-mono outline-none"
+                            <Input
+                                size="sm"
+                                className="flex-1 font-code"
+                                aria-label="Key name"
                                 value={key}
                                 onChange={(e) => updateKey(key, e.target.value)}
                                 placeholder="key_name"
                             />
-                            <select
-                                className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 outline-none"
+                            <Select
+                                size="sm"
+                                className="w-24 shrink-0"
+                                aria-label={`Type for ${key}`}
                                 value={entry.type}
-                                onChange={(e) => changeType(key, e.target.value)}
-                            >
-                                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                            </select>
+                                onChange={(t) => changeType(key, t)}
+                                options={TYPES.map((t) => ({ value: t, label: t }))}
+                            />
                         </div>
-                        <input
-                            className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-300 outline-none"
+                        <Input
+                            size="sm"
+                            aria-label={`Description for ${key}`}
                             value={entry.description}
                             onChange={(e) => updateEntry(key, { description: e.target.value })}
-                            placeholder="Description..."
+                            placeholder="Description…"
                         />
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-zinc-500 uppercase tracking-wider w-12 shrink-0">Default</span>
-                            <div className="flex-1 min-w-0">{renderDefaultInput(key, entry)}</div>
+                            <span className="w-12 shrink-0 text-[10px] uppercase tracking-wider text-text-faint">Default</span>
+                            <div className="min-w-0 flex-1">{renderDefaultInput(key, entry)}</div>
                         </div>
                     </div>
-                    <button onClick={() => removeEntry(key)} className="text-zinc-600 hover:text-red-400 mt-1">
-                        <Trash size={12} />
+                    <button
+                        type="button"
+                        aria-label={`Remove ${key}`}
+                        onClick={() => removeEntry(key)}
+                        className="mt-1 text-text-faint transition-colors hover:text-danger"
+                    >
+                        <Trash2 size={12} aria-hidden />
                     </button>
                 </div>
             ))}

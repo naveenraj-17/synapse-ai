@@ -89,6 +89,15 @@
   --sb-track: #09090b;
   --sb-thumb: #27272a;
   --sb-thumb-hover: #3f3f46;
+
+  /* ── Canvas (React Flow) ─────────────────────────────────────────────────
+   * Edge colours live here because React Flow takes them as *props*
+   * (`style.stroke`, `maskColor`), which Tailwind classes cannot reach — a
+   * colour that reaches a library prop needs its own variable (D37a).
+   * -------------------------------------------------------------------- */
+  --minimap-mask: rgba(0, 0, 0, 0.6);
+  --flow-edge: #52525b;      /* zinc-600 — the default link */
+  --flow-parallel: #8b5cf6;  /* parallel fan-out; violet reads on both themes */
 }
 
 @theme inline {
@@ -290,6 +299,11 @@
   --sb-track: #fafafa;
   --sb-thumb: #e4e4e7;
   --sb-thumb-hover: #d4d4d8;
+
+  /* --- CANVAS LIGHT --- */
+  --minimap-mask: rgba(255, 255, 255, 0.7);
+  --flow-edge: #a1a1aa;      /* zinc-400 — a hairline, but a visible one */
+  --flow-parallel: #7c3aed;
 }
 
 /* Force white text on colorful primary buttons in light mode */
@@ -345,27 +359,42 @@ body {
   }
 }
 
-/* React Flow Light Theme Adjustments */
-.light-mode .react-flow__background {
-  background-color: #ffffff;
+/*
+ * React Flow, themed through its own override hooks.
+ *
+ * v12 reads `--xy-*-default` custom properties for every piece of its chrome,
+ * so pointing them at the semantic tokens themes the canvas in BOTH modes with
+ * no `!important` and no per-mode duplication — `.light-mode` swaps the
+ * underlying tokens and everything here follows.
+ */
+:root {
+  --xy-background-color-default: var(--bg);
+  --xy-background-pattern-dots-color-default: var(--border-strong);
+  --xy-edge-stroke-default: var(--flow-edge);
+  --xy-edge-label-background-color-default: var(--surface);
+  --xy-edge-label-color-default: var(--text-muted);
+  --xy-connectionline-stroke-default: var(--accent);
+  --xy-controls-button-background-color-default: var(--surface);
+  --xy-controls-button-background-color-hover-default: var(--surface-2);
+  --xy-controls-button-color-default: var(--text-muted);
+  --xy-controls-button-color-hover-default: var(--text);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-controls-box-shadow-default: 0 4px 12px rgb(0 0 0 / 0.25);
+  --xy-minimap-background-color-default: var(--surface);
+  --xy-minimap-mask-background-color-default: var(--minimap-mask);
+  --xy-selection-background-color-default: var(--ring);
+  --xy-selection-border-default: 1px solid var(--accent);
+  --xy-handle-background-color-default: var(--text-faint);
+  --xy-handle-border-color-default: var(--bg);
 }
 
-.light-mode .react-flow__edge-path {
-  stroke: #d4d4d8;
-}
-
-.light-mode .react-flow__controls button {
-  background-color: #ffffff !important;
-  border-bottom: 1px solid #e4e4e7 !important;
-  color: #18181b !important;
-}
-
-.light-mode .react-flow__controls button:hover {
-  background-color: #f4f4f5 !important;
-}
-
-.light-mode .react-flow__minimap {
-  background-color: #ffffff !important;
+/* Frame the floating chrome like the kit's own popovers. Two classes so these
+   outrank React Flow's single-class rules regardless of bundle order. */
+.react-flow .react-flow__minimap,
+.react-flow .react-flow__controls {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 /* Welcome screen tip card fade-in */
