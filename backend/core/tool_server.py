@@ -47,6 +47,7 @@ two tenants, and nothing in the shipped product sets it at all.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 
@@ -147,3 +148,82 @@ async def bootstrap() -> None:
         await settings_runtime.refresh()
     except Exception as exc:  # noqa: BLE001 — see the docstring
         _diagnostic(f"[tool_server] settings unavailable, using defaults: {exc}")
+
+
+# ── Serving, without the handshake waiting on a database ─────────────────────
+#
+# `bootstrap()` ends in `settings_runtime.refresh()`, which reads Postgres. Every
+# tool server used to `await bootstrap()` *before* opening `stdio_server()`, so
+# that read sat on the critical path of the MCP handshake — the client cannot
+# send `initialize` until the server is listening, and the server was not
+# listening until a database had answered.
+#
+# On a serverless database scaled to zero that is a cold resume, and it cost
+# exactly what it looks like it costs: `sql dropped, 60s handshake bound
+# expired`, on a fleet where the tenant's whole session set is built in sequence,
+# so one slow server delays every server after it and the chat turn behind them
+# all.
+#
+# The ordering was never needed. `bootstrap()` is best-effort by construction —
+# it catches everything and its docstring says a tool server that cannot reach
+# the database is still useful. What actually needs it is a *handler* that
+# touches the store, and a handler runs long after `initialize`.
+#
+# So: answer the handshake immediately, bootstrap alongside, and have each
+# handler wait for it. `list_tools` deliberately does not wait — advertising a
+# tool needs no tenant and no settings, and making discovery block would put the
+# database back on the path this exists to clear.
+
+_bootstrap_task: "asyncio.Task | None" = None
+_bootstrapped: "asyncio.Event | None" = None
+
+
+def _bootstrapped_event() -> "asyncio.Event":
+    # Created lazily: an Event binds to the running loop, and this module is
+    # imported before one exists.
+    global _bootstrapped
+    if _bootstrapped is None:
+        _bootstrapped = asyncio.Event()
+    return _bootstrapped
+
+
+async def ready() -> None:
+    """Wait for `bootstrap()` to finish. Call first in every tool handler.
+
+    Falls back to running the bootstrap inline when nothing started it — a tool
+    server invoked some other way still works, rather than hanging forever on an
+    event no one will set. Since `bootstrap()` never raises, this cannot turn a
+    slow start into a failed one.
+    """
+    if _bootstrap_task is None and not _bootstrapped_event().is_set():
+        await bootstrap()
+        _bootstrapped_event().set()
+        return
+    await _bootstrapped_event().wait()
+
+
+async def serve(app) -> None:
+    """Run one stdio MCP server, bootstrapping in the background.
+
+    The replacement for `await bootstrap()` followed by `stdio_server()`, which
+    is what all five tenant-scoped tool servers used to do. One helper rather
+    than five copies, because the ordering above is the kind of thing that is
+    correct in four files and quietly wrong in the fifth.
+    """
+    global _bootstrap_task
+    from mcp.server.stdio import stdio_server
+
+    async def _run() -> None:
+        try:
+            await bootstrap()
+        finally:
+            # Set even if bootstrap somehow raised. It is documented never to,
+            # but a handler waiting forever on a broken bootstrap is a hung chat
+            # turn with no error anywhere — the exact failure this whole change
+            # exists to remove.
+            _bootstrapped_event().set()
+
+    _bootstrap_task = asyncio.create_task(_run(), name="tool-server-bootstrap")
+
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(read_stream, write_stream, app.create_initialization_options())

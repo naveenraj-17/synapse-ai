@@ -15,7 +15,6 @@ from pathlib import Path
 
 import mcp.types as types
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 
 from core.config import load_settings
 
@@ -151,6 +150,13 @@ async def list_tools() -> list[types.Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    # The tenant, the store and this tenant's settings are established by
+    # `bootstrap()`, which now runs alongside the handshake rather than ahead
+    # of it. A handler is the first thing that actually needs any of them.
+    from core.tool_server import ready
+
+    await ready()
+
     if name != "run_bash":
         return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
@@ -250,11 +256,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 async def main():
     # This process serves exactly one tenant, and it has to be told which —
     # see core/tool_server.py.
-    from core.tool_server import bootstrap
-    await bootstrap()
+    # Serve first, bootstrap alongside. `bootstrap()` reads Postgres, and
+    # putting that ahead of `stdio_server()` meant the MCP handshake waited
+    # on a database — a cold serverless resume expired the 60s bound and
+    # took the whole chat turn with it. Handlers wait via `ready()`.
+    from core.tool_server import serve
 
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    await serve(app)
 
 
 if __name__ == "__main__":

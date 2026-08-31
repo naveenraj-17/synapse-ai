@@ -178,6 +178,26 @@ def _ensure_local_path(path: str) -> str:
         return path
 
 
+def slice_lines(text: str, start_line: int, end_line: int) -> dict:
+    """Lines [start_line, end_line], 1-indexed and inclusive, as a result dict.
+
+    Pure: takes the content, never a path. Extracted so the same slicing serves
+    a file on disk (below) and an object read straight out of the blob store
+    (`tools/vault_fs.py`), which has no local path to offer and should not be
+    made to invent one.
+    """
+    lines = text.splitlines()
+    total = len(lines)
+    s = max(1, start_line) - 1      # 0-indexed
+    e = min(end_line, total)
+    return {
+        "start_line": s + 1,
+        "end_line": e,
+        "total_lines": total,
+        "content": "\n".join(lines[s:e]),
+    }
+
+
 def tool_read_file_chunk(path: str, start_line: int, end_line: int) -> str:
     """Read lines [start_line, end_line] (1-indexed, inclusive) from any file."""
     try:
@@ -185,20 +205,46 @@ def tool_read_file_chunk(path: str, start_line: int, end_line: int) -> str:
         p = _safe_path(path)
         if not p.exists():
             return json.dumps({"error": f"File not found: {path}"})
-        lines = p.read_text(encoding="utf-8").splitlines()
-        total = len(lines)
-        s = max(1, start_line) - 1      # 0-indexed
-        e = min(end_line, total)
-        chunk = lines[s:e]
         return json.dumps({
             "path": path,
-            "start_line": s + 1,
-            "end_line": e,
-            "total_lines": total,
-            "content": "\n".join(chunk),
+            **slice_lines(p.read_text(encoding="utf-8"), start_line, end_line),
         })
     except Exception as ex:
         return json.dumps({"error": str(ex)})
+
+
+def search_text(text: str, query: str, context_lines: int = 5) -> dict:
+    """Grep-like search over content, with surrounding context. Pure — see `slice_lines`."""
+    lines = text.splitlines()
+    q = query.lower()
+    results = []
+    covered: set[int] = set()
+
+    for i, line in enumerate(lines):
+        if q not in line.lower():
+            continue
+        start = max(0, i - context_lines)
+        end = min(len(lines), i + context_lines + 1)
+        if i in covered:
+            continue
+        covered.update(range(start, end))
+        block = []
+        for j in range(start, end):
+            prefix = ">>>" if j == i else "   "
+            block.append(f"{prefix} [L{j + 1}] {lines[j]}")
+        results.append({
+            "match_line": i + 1,
+            "match": line,
+            "context": "\n".join(block),
+        })
+        if len(results) >= 20:
+            break
+
+    return {
+        "query": query,
+        "matches_found": len(results),
+        "results": results,
+    }
 
 
 def tool_search_file(path: str, query: str, context_lines: int = 5) -> str:
@@ -208,36 +254,9 @@ def tool_search_file(path: str, query: str, context_lines: int = 5) -> str:
         p = _safe_path(path)
         if not p.exists():
             return json.dumps({"error": f"File not found: {path}"})
-        lines = p.read_text(encoding="utf-8").splitlines()
-        q = query.lower()
-        results = []
-        covered: set[int] = set()
-
-        for i, line in enumerate(lines):
-            if q not in line.lower():
-                continue
-            start = max(0, i - context_lines)
-            end = min(len(lines), i + context_lines + 1)
-            if i in covered:
-                continue
-            covered.update(range(start, end))
-            block = []
-            for j in range(start, end):
-                prefix = ">>>" if j == i else "   "
-                block.append(f"{prefix} [L{j + 1}] {lines[j]}")
-            results.append({
-                "match_line": i + 1,
-                "match": line,
-                "context": "\n".join(block),
-            })
-            if len(results) >= 20:
-                break
-
         return json.dumps({
             "path": path,
-            "query": query,
-            "matches_found": len(results),
-            "results": results,
+            **search_text(p.read_text(encoding="utf-8"), query, context_lines),
         })
     except Exception as ex:
         return json.dumps({"error": str(ex)})

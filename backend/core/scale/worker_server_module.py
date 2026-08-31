@@ -387,7 +387,40 @@ class WorkerServerModule:
             print(f"[worker_server_module] Connected user MCP '{server_name}'", flush=True)
 
     def _attach_memory_store(self) -> None:
-        """Postgres-backed long-term memory, if this deployment has one."""
+        """Long-term memory, when this deployment can hold one safely.
+
+        **Never in a multi-tenant process, and that is a correctness rule
+        rather than a preference.**
+
+        `MemoryStore` is ChromaDB — the docstring here said "Postgres-backed"
+        for as long as it existed and was never true — and its index lives at
+        `core/runtime_dirs.py::state_dir("chroma_db")`, which resolves through
+        `get_tenant()`. `build_shared()` runs once at worker startup, *before
+        any tenant is bound*, so the path it computes is the **default**
+        tenant's; `build_for_tenant()` then folds that same store into every
+        tenant's module. One index, no tenant dimension, every org sharing it.
+
+        There is no per-tenant repair available here either. Building the store
+        lazily under a tenant would give each org its own directory on a replica
+        whose disk is ephemeral and whose next job belongs to somebody else —
+        rebuilding a vector index per pool entry, to hold data that cannot
+        survive the task.
+
+        So a process serving many tenants leaves `memory_store` as `None`, which
+        is a supported value everywhere it is read: `__init__` sets it, and
+        `core/tools.py::build_system_prompt` takes it. An embedder that wants
+        memory supplies one whose storage is actually shared and actually
+        scoped.
+
+        `is_multi_tenant()` is only true once an embedder has called
+        `set_resource_provider()`, so the single-tenant product is untouched and
+        keeps the store it has always had.
+        """
+        from core.tenancy import is_multi_tenant
+
+        if is_multi_tenant():
+            return
+
         try:
             import os
             pg_url = os.getenv("SCALE_POSTGRES_URL", "")
@@ -504,22 +537,27 @@ def _get_native_mcp_servers(
         for name in sorted(WORKER_NATIVE_TOOLS & TENANT_SCOPED_TOOLS):
             _python_tool(name, tenant_env)
 
-        # Filesystem MCP (Node.js) — rooted at the current tenant's vault, which
-        # is the only directory a worker has any business exposing. It used to be
-        # SYNAPSE_DATA_DIR, i.e. every tenant's config and credentials on a
-        # shared worker, and that variable is going away besides.
+        # **The Node Filesystem server used to be spawned here. It is gone, and
+        # `vault` above replaces it.**
         #
-        # This is *why* the split exists: `_vault_root()` reads the tenant from
-        # the context, so a server built once at startup is rooted at whichever
-        # tenant happened to be current then — the default one.
-        from core.vault import _vault_root
-        worker_fs_paths = os.getenv("WORKER_FILESYSTEM_PATHS", str(_vault_root()))
-        filesystem_paths = [p.strip() for p in worker_fs_paths.split(",") if p.strip()]
-        if filesystem_paths:
-            servers["filesystem"] = StdioServerParameters(
-                command=_NPX_CMD,
-                args=["-y", "@modelcontextprotocol/server-filesystem"] + filesystem_paths,
-            )
+        # It was rooted at `_vault_root()`, a directory path — which is the
+        # assumption that made it wrong for a fleet rather than merely slow. A
+        # replica's vault directory is a *working copy*: `core/vault_backend.py`
+        # materialises it from the blob store on demand, so the Node process was
+        # reading whatever happened to have been hydrated, and reported an empty
+        # vault on any pod that had not served that tenant before. Where the blob
+        # store is S3 there is no directory to root at in the first place.
+        #
+        # `tools/vault_fs.py` goes through `core.storage.get_blob_store()`
+        # instead, so it reads the vault itself rather than a copy of it, and one
+        # implementation serves a local install and an object store alike.
+        #
+        # It also spawned `npx`, which no scale-mode image has — see
+        # `WORKER_NPX_TOOLS` for why installing Node was not the answer.
+        #
+        # `WORKER_FILESYSTEM_PATHS` is no longer read anywhere. A deployment that
+        # still sets it is not broken by this; it simply has no effect, because
+        # the vault is now addressed by key rather than by path.
 
     return servers
 

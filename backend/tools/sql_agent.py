@@ -2,7 +2,6 @@
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 import mcp.types as types
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 import asyncio
 import json
 import os
@@ -197,6 +196,13 @@ async def list_tools() -> list[types.Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    # The tenant, the store and this tenant's settings are established by
+    # `bootstrap()`, which now runs alongside the handshake rather than ahead
+    # of it. A handler is the first thing that actually needs any of them.
+    from core.tool_server import ready
+
+    await ready()
+
     try:
         db_id = arguments.get("db_id") or None
         engine, inspector = await get_db_engine(db_id)
@@ -293,15 +299,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent | type
 async def main():
     # This process serves exactly one tenant, and it has to be told which —
     # see core/tool_server.py.
-    from core.tool_server import bootstrap
-    await bootstrap()
+    # Serve first, bootstrap alongside. `bootstrap()` reads Postgres, and
+    # putting that ahead of `stdio_server()` meant the MCP handshake waited
+    # on a database — a cold serverless resume expired the 60s bound and
+    # took the whole chat turn with it. Handlers wait via `ready()`.
+    from core.tool_server import serve
 
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options()
-        )
+    await serve(app)
 
 if __name__ == "__main__":
     asyncio.run(main())

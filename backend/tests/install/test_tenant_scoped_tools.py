@@ -69,15 +69,33 @@ def test_a_tool_reading_tenant_state_is_declared_tenant_scoped(tool_name, script
 
 @pytest.mark.parametrize("tool_name", sorted(TENANT_SCOPED_TOOLS))
 def test_a_tenant_scoped_tool_adopts_its_tenant_on_startup(tool_name):
-    """Declaring it is not enough; the subprocess has to act on it."""
+    """Declaring it is not enough; the subprocess has to act on it.
+
+    Both halves are required and they guard different failures. `serve()` is
+    what runs the bootstrap at all — without it the subprocess resolves the
+    default tenant's vault and the shipped default settings whoever spawned it.
+    `ready()` is what makes a *handler* wait for it, and it exists because the
+    bootstrap no longer completes before the server starts listening: it reads
+    Postgres, and doing that ahead of `stdio_server()` put a database on the
+    critical path of the MCP handshake, which a cold serverless resume then
+    blew straight through.
+
+    A tool with `serve()` and no `ready()` is the subtle one — it works on a
+    warm database and races on a cold one, which is the shape of bug that gets
+    reported as "sometimes the chat just does not start".
+    """
     source = pathlib.Path(ALL_NATIVE_TOOLS[tool_name]).read_text(encoding="utf-8")
 
-    assert "from core.tool_server import bootstrap" in source, (
-        f"{tool_name} is tenant-scoped but never imports the bootstrap, so it "
-        "will resolve the default tenant's vault and the shipped default "
-        "settings whoever spawned it."
+    assert "from core.tool_server import serve" in source, (
+        f"{tool_name} is tenant-scoped but never serves through core.tool_server, "
+        "so nothing adopts its tenant: it will resolve the default tenant's vault "
+        "and the shipped default settings whoever spawned it."
     )
-    assert "await bootstrap()" in source, f"{tool_name} imports the bootstrap but never awaits it"
+    assert "await serve(" in source, f"{tool_name} imports serve but never awaits it"
+    assert "await ready()" in source, (
+        f"{tool_name} never awaits ready(), so a handler can run before the "
+        "bootstrap that binds its tenant has finished."
+    )
 
 
 def test_the_shared_and_tenant_halves_partition_the_worker_tools():

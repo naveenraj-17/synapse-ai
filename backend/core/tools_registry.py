@@ -20,6 +20,7 @@ ALL_NATIVE_TOOLS: dict[str, str] = {
     "web_scraper":       str(_TOOLS_DIR / "web_scraper.py"),
     "bash":              str(_TOOLS_DIR / "bash.py"),
     "file_reader":       str(_TOOLS_DIR / "file_reader.py"),
+    "vault":             str(_TOOLS_DIR / "vault_fs.py"),
 }
 
 # Tools whose *subprocess* resolves tenant state for itself — the vault, the
@@ -38,6 +39,7 @@ TENANT_SCOPED_TOOLS: set[str] = {
     "code_vault_search",
     "file_reader",
     "sql",
+    "vault",
     "vault_sandbox",
 }
 
@@ -56,6 +58,10 @@ TENANT_SCOPED_TOOLS: set[str] = {
 # subprocess per tool per live pool entry.
 WORKER_NATIVE_TOOLS: set[str] = {
     "time",
+    # The vault, addressed by key through the blob store — the replacement for
+    # the Node Filesystem server, which needed a directory and an `npx` no
+    # scale-mode image has. See `tools/vault_fs.py` and `WORKER_NPX_TOOLS`.
+    "vault",
     "collect_data",
     "pdf_parser",
     "xlsx_parser",
@@ -66,8 +72,30 @@ WORKER_NATIVE_TOOLS: set[str] = {
     "sql",
 }
 
-# npx-based MCP servers available to workers.
-# Excluded: Browser Automation (requires local display), Google Workspace (OAuth session).
-WORKER_NPX_TOOLS: dict[str, list[str]] = {
-    "Sequential Thinking": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-}
+# npx-based MCP servers available to workers. **Deliberately empty.**
+#
+# `Sequential Thinking` lived here and never once started in a worker: the
+# scale-mode images ship a Python runtime and no Node, so every tenant's module
+# build spent ~7 seconds raising `FileNotFoundError: 'npx'` for a binary that
+# does not exist. That line is what diagnosed a CPU-starved fleet, because one
+# failed `execvp` with no I/O in the path should take microseconds.
+#
+# Installing Node would not have settled it. These are invoked as `npx -y <pkg>`,
+# which resolves and fetches from the npm registry **at spawn time** — a network
+# round trip per tenant per build, on the fleet that terminates customer
+# sessions, against a version nobody pinned. Making that safe means baking
+# pinned packages into the image, which is a deliberate catalogue decision and
+# not something to acquire as a side effect of a default.
+#
+# So the worker path spawns no npx at all. The Filesystem server that used to be
+# spawned alongside these is replaced by the native `vault` server in
+# `WORKER_NATIVE_TOOLS`, which reaches the same files through the blob store and
+# therefore works on S3 as well as on disk.
+#
+# **`core/server.py` is unaffected** and keeps its own npx servers — that is the
+# single-process product, installed by an operator who has Node.
+#
+# Left as an empty dict rather than deleted: it is the seam where a deployment
+# that *does* have Node can put one back, and the argument above is what such a
+# deployment has to answer first.
+WORKER_NPX_TOOLS: dict[str, list[str]] = {}

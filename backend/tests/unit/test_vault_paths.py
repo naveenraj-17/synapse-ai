@@ -115,15 +115,49 @@ def test_sandbox_mounts_the_tenant_vault():
         assert "/data:ro" in source, f"{module_name} lost its read-only vault mount"
 
 
-def test_worker_filesystem_server_is_rooted_at_the_vault(monkeypatch):
-    """A shared worker must not expose a data dir holding every tenant's config."""
-    monkeypatch.delenv("WORKER_FILESYSTEM_PATHS", raising=False)
-
+def _worker_servers():
     from core.scale.worker_server_module import _get_native_mcp_servers
 
     backend_root = Path(inspect.getfile(_get_native_mcp_servers)).resolve().parent.parent.parent
-    servers = _get_native_mcp_servers(backend_root / "tools", backend_root)
+    return _get_native_mcp_servers(backend_root / "tools", backend_root)
 
-    fs = servers.get("filesystem")
-    assert fs is not None
-    assert str(_vault_root()) in fs.args
+
+def test_a_worker_reaches_the_vault_without_a_directory():
+    """The vault server is spawned, and it takes no path.
+
+    This replaces an assertion that the Node Filesystem server was rooted at
+    `_vault_root()`. That was the right guard for the wrong mechanism: a
+    replica's vault directory is a working copy the blob store materialises on
+    demand, so rooting a server at it meant reading whatever happened to have
+    been hydrated — and on an object store there is no directory at all.
+
+    `tools/vault_fs.py` goes through `core.storage.get_blob_store()`, where
+    `tenant_key` applies the tenant inside the store. So the property the old
+    test was defending — a shared worker must not expose one tenant's files to
+    another — now holds by construction rather than by a path, and what is worth
+    asserting is that the server is present and carries no directory argument
+    anybody could widen.
+    """
+    servers = _worker_servers()
+
+    vault = servers.get("vault")
+    assert vault is not None, "the vault server is not spawned in a worker"
+    assert str(_vault_root()) not in " ".join(vault.args), (
+        "the vault server was handed a directory; it addresses the blob store by key"
+    )
+    assert vault.env.get("SYNAPSE_TENANT_ID") is not None, (
+        "the vault server must be told which tenant it serves"
+    )
+
+
+def test_a_worker_spawns_no_npx():
+    """No worker MCP server may need Node.
+
+    Every scale-mode image ships Python and no Node, so an `npx` server does not
+    degrade — it fails on every tenant's module build, forever, at about seven
+    seconds each. That is what `WORKER_NPX_TOOLS` being empty is for, and this
+    is the assertion that keeps it empty: a server added back here is a fleet
+    that silently loses a tool and gains a stall.
+    """
+    for name, params in _worker_servers().items():
+        assert "npx" not in params.command, f"{name} spawns npx: {params.command}"
