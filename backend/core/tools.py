@@ -63,6 +63,39 @@ class VirtualTool:
         self.inputSchema = inputSchema
 
 
+#: Servers whose tools `"all"` does not cover — an agent has to name one of them
+#: to get any of them.
+#:
+#: `"all"` means "whatever this deployment makes available", and that is the
+#: right default for a tool set that reads a PDF or fetches a page: the worst
+#: case of a wrong guess is a wasted call. `sql` is different in kind. It opens a
+#: connection to a system somebody configured separately, and the reason it was
+#: configured separately is that somebody decided which agents should reach it.
+#: An agent created by ticking nothing should not arrive holding that.
+#:
+#: A floor rather than a policy: naming the tool still turns it on, and a
+#: deployment that wants finer control layers it on top. The set is expected to
+#: grow, and the test for joining it is whether a surprised owner would call the
+#: call a breach rather than a waste.
+OPT_IN_SERVERS: frozenset[str] = frozenset({"sql"})
+
+
+def permits(allowed_tools, name: str, *, opt_in: bool = False) -> bool:
+    """Whether an agent whose list is `allowed_tools` may call `name`.
+
+    One function rather than the six `"all" in allowed_tools or …` sites it
+    replaces. Those were identical by convention, and a rule applied in five
+    places and forgotten in the sixth is exactly what this exists to prevent.
+
+    `opt_in` marks a tool from a server in `OPT_IN_SERVERS`, which `"all"`
+    deliberately does not reach. Naming it explicitly always works — that is
+    what opting in is.
+    """
+    if name in allowed_tools:
+        return True
+    return "all" in allowed_tools and not opt_in
+
+
 def build_virtual_tools():
     return []
 
@@ -161,6 +194,10 @@ async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
                 continue
 
         is_external = session_name.startswith("ext_mcp_")
+        # Whether `"all"` reaches this server's tools at all. Decided per
+        # session rather than per tool, because it is a property of what the
+        # server connects to, not of any one call.
+        opt_in = session_name in OPT_IN_SERVERS
 
         for t in session_tools:
             key = tool_router.key_for(session_name, t.name)
@@ -171,7 +208,7 @@ async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
                 # array holds. Unchanged deliberately: renaming them would make
                 # every existing agent's list silently stop matching.
                 name = key or f"{session_name[len('ext_mcp_'):]}{SEP}{t.name}"
-                if "all" in allowed_tools or name in allowed_tools:
+                if permits(allowed_tools, name, opt_in=opt_in):
                     all_tools.append(VirtualTool(name, t.description, t.inputSchema))
                 continue
 
@@ -187,7 +224,7 @@ async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
             # by the server a bare call actually reaches, so the LLM sees the
             # schema of the implementation that runs — and Gemini never receives
             # a duplicate function declaration.
-            if "all" in allowed_tools or t.name in allowed_tools:
+            if permits(allowed_tools, t.name, opt_in=opt_in):
                 if key is not None and not tool_router.declares(session_name, t.name):
                     continue
                 all_tools.append(t)
@@ -204,7 +241,7 @@ async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
     
     # Dynamic Custom Tools (n8n/Webhook)
     for ct in custom_tools_list:
-        if "all" in allowed_tools or ct['name'] in allowed_tools:
+        if permits(allowed_tools, ct['name']):
             vt = VirtualTool(ct['name'], ct['description'], ct['inputSchema'])
             all_tools.append(vt)
             tool_schema_map[vt.name] = vt.inputSchema
@@ -216,7 +253,7 @@ async def aggregate_all_tools(server_module, active_agent, custom_tools_list):
     for bt in BUILDER_TOOL_SCHEMAS:
         fn = bt["function"]
         bt_name = fn["name"]
-        if "all" in allowed_tools or bt_name in allowed_tools:
+        if permits(allowed_tools, bt_name):
             vt = VirtualTool(bt_name, fn.get("description", ""), fn.get("parameters", {"type": "object"}))
             all_tools.append(vt)
             tool_schema_map[vt.name] = vt.inputSchema

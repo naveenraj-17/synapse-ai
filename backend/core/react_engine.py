@@ -308,10 +308,82 @@ async def _resolve_agent_by_id(agent_id):
     return await get_active_agent_data()  # raises RuntimeError if none configured
 
 
+#: The server whose tools take a `db_id`. Named once so the guard below and the
+#: prompt text above cannot come to disagree about which tools are in scope.
+_SQL_SERVER = "sql"
+
+
+def _check_db_allowlist(agent_data, server_name: str, tool_args: dict) -> str | None:
+    """Hold a SQL call to the agent's own list of databases.
+
+    Returns an error to hand back to the model, or None to let the call through.
+    Mutates `tool_args` to fill in the obvious `db_id` — see below.
+
+    ## Why this is here and not in the tool
+
+    The SQL server is spawned **per tenant**, not per agent: one subprocess
+    serves every agent in the workspace, so it cannot know whose list to apply.
+    The agent is known here, at the one place a tool call is dispatched, and
+    that makes this the only honest place for the check.
+
+    ## Why the prompt is not enough
+
+    `_inject_db_context` already tells the model which ids it may pass, and that
+    is worth doing — a model told the answer usually gives it. But a model is
+    not a permission system: a `db_id` from a stale plan, a summarised
+    conversation, or a prompt injection in queried data would otherwise reach a
+    database this agent was deliberately not given.
+
+    ## The empty list means "no restriction", deliberately
+
+    Every agent that exists today has no `db_configs`, and a list that defaulted
+    to closed would silently break every one of them on upgrade. Restriction is
+    something a workspace opts into by naming databases — the same shape as
+    `allowed_tools`.
+    """
+    if server_name != _SQL_SERVER:
+        return None
+
+    allowed = agent_data.get("db_configs") or []
+    if not allowed:
+        return None
+
+    requested = tool_args.get("db_id")
+    if not requested:
+        # The model left it out. With exactly one database there is no choice to
+        # make, so making it is a kindness rather than a guess — and it stops
+        # the tool falling through to the deployment-wide connection string,
+        # which is a database this agent was never given.
+        if len(allowed) == 1:
+            tool_args["db_id"] = allowed[0]
+            return None
+        return (
+            "This agent can query more than one database, so `db_id` is required. "
+            f"Choose one of: {', '.join(allowed)}."
+        )
+
+    if requested not in allowed:
+        return (
+            f"This agent is not permitted to query database '{requested}'. "
+            f"It may query: {', '.join(allowed)}."
+        )
+    return None
+
+
 async def _inject_db_context(agent_data, system_template):
-    """Inject linked DB schema context into system prompt for code agents. Returns updated template."""
-    if agent_data.get("type") != "code":
-        return system_template
+    """Tell the agent which databases it may query, and how to name one.
+
+    **No longer restricted to `type == "code"`.** It was, because linking a
+    database was part of the code-intelligence surface — you attached a repo and
+    its database together. The SQL tool has nothing to do with reading a
+    codebase: an agent that answers questions about a business is the obvious
+    caller, and it was the one shape that could not be given a database.
+
+    The gate is now the agent's own list. An agent with no `db_configs` gets
+    nothing injected, whatever its type, and one with a list gets it regardless
+    of type. `_permitted_db_ids` enforces the same list at the point of call,
+    because this text is advice and advice is not a boundary.
+    """
     db_configs_list = agent_data.get("db_configs", [])
     if not db_configs_list:
         return system_template
@@ -1442,6 +1514,19 @@ async def run_agent_step(
 
                 agent_name, actual_tool_name = server_module.tool_router[tool_name]
                 session = server_module.agent_sessions[agent_name]
+
+                # Before the call, not after: the guard exists so a `db_id` the
+                # agent was not given never reaches a connection.
+                _db_refusal = _check_db_allowlist(active_agent, agent_name, tool_args)
+                if _db_refusal:
+                    print(f"DEBUG: 🚫 db allowlist refused '{tool_name}': {_db_refusal}", flush=True)
+                    current_context_text += f"\nSystem: {_db_refusal}\n"
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": tool_name,
+                        "preview": f"Error: {_db_refusal}",
+                    }
+                    continue
 
                 try:
                     # Force event-loop checkpoint before MCP operations.
