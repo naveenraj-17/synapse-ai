@@ -691,6 +691,35 @@ async def _run_spawn_subtask_batch(
     return list(await asyncio.gather(*[_run_one(args) for args in subtask_calls]))
 
 
+def narrow_allowed_tools(override, agent_tools):
+    """The per-step tool override, narrow-only.
+
+    An orchestration step's `allowed_tools` can take access away from its
+    agent, never add it — the agent's own tool selection is the outer bound.
+    This used to be substitution: the override was taken verbatim against the
+    global catalog, so a step could grant a tool its agent never had, which
+    contradicted both `StepConfig.allowed_tools`'s "(narrows only)" contract
+    and the UI that exposes it.
+
+    Shapes, spelled out:
+    - no override (None or [])      -> the agent's own tools
+    - override contains "all"       -> the agent's own tools (an API author
+                                       writing ["all"] means "everything the
+                                       agent has", not the whole catalog)
+    - agent has "all"               -> the override as written (any narrowing
+                                       of everything is just the list)
+    - both explicit                 -> the intersection; a name the agent lost
+                                       since the step was configured silently
+                                       drops, which is the narrow guarantee
+    """
+    agent_tools = list(agent_tools)
+    if not override or "all" in override:
+        return agent_tools
+    if "all" in agent_tools:
+        return list(override)
+    return [t for t in override if t in agent_tools]
+
+
 async def run_agent_step(
     message,
     agent_id,
@@ -769,7 +798,7 @@ async def run_agent_step(
             server_module, active_agent, custom_tools
         )
         print(f"DEBUG RUN_AGENT: aggregate_all_tools done, tool_count={len(all_tools)}", flush=True)
-    allowed_tools = list(allowed_tools_override) if allowed_tools_override else active_agent.get("tools", ["all"])
+    allowed_tools = narrow_allowed_tools(allowed_tools_override, active_agent.get("tools", ["all"]))
     agent_type = active_agent.get("type", "conversational")
 
     # ── DELEGATE AGENT: inject synthetic delegate_to_agent tool + agent context ──

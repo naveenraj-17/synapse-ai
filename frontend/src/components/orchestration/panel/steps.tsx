@@ -41,10 +41,34 @@ function HistoryToggle({ step, update }: { step: StepConfig; update: (patch: Par
     );
 }
 
-/** Narrow the agent's tool set for this step. `undefined` = agent default. */
-function AllowedTools({ step, update, availableTools }: StepSectionProps) {
+/**
+ * Narrow the agent's tool set for this step. `undefined` = agent default.
+ *
+ * The picker offers ONLY the selected agent's own tools — you can take access
+ * away for a step, never add it. The engine enforces the same rule
+ * (`narrow_allowed_tools` in `core/react_engine.py`), so a hand-written
+ * definition cannot widen either; a saved selection the agent no longer has
+ * is shown flagged rather than hidden, because the engine drops it at run
+ * time and invisible dead weight in the definition helps nobody.
+ */
+function AllowedTools({ step, update, agents, availableTools }: StepSectionProps) {
+    const agent = agents.find((a: any) => a.id === step.agent_id);
+    // No agent yet means no set to narrow — the section appears once one is picked.
+    if (!agent) return null;
+    const agentTools: string[] = Array.isArray(agent.tools) ? agent.tools : ['all'];
+    const offered = agentTools.includes('all') ? availableTools.map((t) => t.name) : agentTools;
+    const descriptions = new Map(availableTools.map((t) => [t.name, t.description]));
+    const selected = step.allowed_tools || [];
+    const stale = selected.filter((t) => !offered.includes(t));
     const restricted = step.allowed_tools !== undefined;
-    if (availableTools.length === 0) return null;
+    if (offered.length === 0 && stale.length === 0) return null;
+
+    const toggle = (name: string, checked: boolean) => {
+        update({
+            allowed_tools: checked ? [...selected, name] : selected.filter((t) => t !== name),
+        });
+    };
+
     return (
         <div className="space-y-1.5 rounded-md border border-border bg-surface-2/40 px-3 py-2">
             <label className="flex cursor-pointer items-start gap-2">
@@ -57,38 +81,37 @@ function AllowedTools({ step, update, availableTools }: StepSectionProps) {
                 <span className="text-xs text-text">
                     Restrict tools for this step
                     <span className="mt-0.5 block text-[10px] text-text-faint">
-                        For this step the agent gets exactly the tools picked here, instead of its own set.
+                        Narrows this agent&apos;s own tool set — a step can remove access, never add it.
                     </span>
                 </span>
             </label>
             {restricted && (
                 <div className="max-h-40 space-y-1 overflow-y-auto pl-6 pt-1">
-                    {availableTools.map((tool) => {
-                        const selected = (step.allowed_tools || []).includes(tool.name);
-                        return (
-                            <label key={tool.name} className="flex cursor-pointer items-center gap-2">
-                                <Checkbox
-                                    checked={selected}
-                                    onChange={(checked) => {
-                                        const current = step.allowed_tools || [];
-                                        update({
-                                            allowed_tools: checked
-                                                ? [...current, tool.name]
-                                                : current.filter((t) => t !== tool.name),
-                                        });
-                                    }}
-                                    label={tool.name}
-                                />
-                                <span className="truncate font-code text-[11px] text-text-muted" translate="no" title={tool.description}>
-                                    {tool.name}
-                                </span>
-                            </label>
-                        );
-                    })}
-                    {/* An empty list is falsy to the engine (`react_engine.py:772`),
-                        so it behaves as "no override" — say so instead of implying
-                        a lockdown that does not happen. */}
-                    {(step.allowed_tools || []).length === 0 && (
+                    {offered.map((name) => (
+                        <label key={name} className="flex cursor-pointer items-center gap-2">
+                            <Checkbox
+                                checked={selected.includes(name)}
+                                onChange={(checked) => toggle(name, checked)}
+                                label={name}
+                            />
+                            <span className="truncate font-code text-[11px] text-text-muted" translate="no" title={descriptions.get(name)}>
+                                {name}
+                            </span>
+                        </label>
+                    ))}
+                    {stale.map((name) => (
+                        <label key={name} className="flex cursor-pointer items-center gap-2">
+                            <Checkbox
+                                checked
+                                onChange={() => toggle(name, false)}
+                                label={`${name} (not in this agent's tools)`}
+                            />
+                            <span className="truncate font-code text-[11px] text-warning" translate="no" title="This agent no longer has this tool — the engine ignores it at run time. Uncheck to clean it up.">
+                                {name} — not in this agent&apos;s tools
+                            </span>
+                        </label>
+                    ))}
+                    {selected.length === 0 && (
                         <p className="text-[10px] text-warning">
                             Nothing selected yet — until you pick at least one tool, the agent keeps its own set.
                         </p>
