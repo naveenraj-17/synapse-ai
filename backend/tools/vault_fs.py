@@ -63,8 +63,19 @@ _LIST_LIMIT = 500
 #: How many files `search_files` will open before it stops.
 #:
 #: Each one is a `get` against the blob store — a network round trip on S3 — so
-#: this bounds a tool call's wall-clock time, not just its output size.
+#: this bounds a tool call's wall-clock time, not just its output size. Read
+#: with `_SEARCH_CONCURRENCY` in mind: serially, 200 S3 round trips would run
+#: past the 60s MCP session bound and the search would fail rather than return
+#: what it had found.
 _SEARCH_FILE_LIMIT = 200
+
+#: How many of those reads are in flight at once.
+#:
+#: `BlobStore.get` is synchronous, so each runs on a thread. Sixteen is chosen
+#: against the bound above rather than for throughput: it keeps a full-width
+#: search inside a few seconds while staying far below anything that would look
+#: like a burst to S3 from a worker already running several jobs.
+_SEARCH_CONCURRENCY = 16
 
 #: A file bigger than this is not searched or read whole.
 #:
@@ -225,22 +236,30 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             context = int(arguments.get("context_lines", 3) or 3)
 
             keys = sorted(_store().list(prefix))
-            hits = []
-            for key in keys[:_SEARCH_FILE_LIMIT]:
-                text, error = _get_text(key)
+            searched = keys[:_SEARCH_FILE_LIMIT]
+
+            # Concurrently, and on threads, because `BlobStore.get` is
+            # synchronous and each call is a network round trip on S3. Done
+            # serially this loop is the tool call's whole latency budget.
+            gate = asyncio.Semaphore(_SEARCH_CONCURRENCY)
+
+            async def _scan(key: str) -> dict | None:
+                async with gate:
+                    text, error = await asyncio.to_thread(_get_text, key)
                 if error or not text:
                     # A key that cannot be read is skipped rather than fatal: one
                     # oversized or deleted object must not lose the matches in
                     # every other file.
-                    continue
+                    return None
                 found = search_text(text, query, context)
-                if found["matches_found"]:
-                    hits.append({"path": key, **found})
+                return {"path": key, **found} if found["matches_found"] else None
+
+            hits = [h for h in await asyncio.gather(*(_scan(k) for k in searched)) if h]
 
             return _ok({
                 "query": query,
                 "prefix": prefix,
-                "files_searched": min(len(keys), _SEARCH_FILE_LIMIT),
+                "files_searched": len(searched),
                 "files_skipped": max(0, len(keys) - _SEARCH_FILE_LIMIT),
                 "files_with_matches": len(hits),
                 "results": hits,

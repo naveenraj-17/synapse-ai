@@ -10,6 +10,7 @@ image ships, so it never actually ran.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -141,3 +142,40 @@ async def test_a_multi_tenant_process_builds_no_chroma_index(vault, monkeypatch)
         "a multi-tenant process built a single-index memory store; "
         "every org would share it"
     )
+
+
+@pytest.mark.anyio
+async def test_search_reads_the_store_concurrently(vault, monkeypatch):
+    """Serially, a full-width search would outlive the MCP session bound.
+
+    Each file is a `get`, which on S3 is a network round trip; `_SEARCH_FILE_LIMIT`
+    of them in sequence is comfortably past the 60s `MCP_SESSION_READ_TIMEOUT`,
+    and the failure would be the search returning nothing rather than returning
+    what it had found. This asserts the reads actually overlap, because "make it
+    concurrent" is the kind of change a later refactor quietly undoes.
+    """
+    from tools import vault_fs
+
+    with tenant_scope("org-a"):
+        for i in range(32):
+            vault.put(f"f{i:02d}.txt", f"line one\nneedle {i}\n")
+
+        in_flight = 0
+        peak = 0
+        real_get = vault_fs._get_text
+
+        def _slow_get(key: str):
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            try:
+                time.sleep(0.01)
+                return real_get(key)
+            finally:
+                in_flight -= 1
+
+        monkeypatch.setattr(vault_fs, "_get_text", _slow_get)
+        found = await _call("search_files", {"query": "needle"})
+
+    assert found["files_with_matches"] == 32
+    assert peak > 1, "the store was read one file at a time"
