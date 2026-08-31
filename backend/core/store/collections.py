@@ -31,12 +31,15 @@ shape, same reason: the engine describes the hole and the embedder fills it.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import delete, select
 
 from core.tenancy import get_tenant
+
+logger = logging.getLogger(__name__)
 
 #: Installed by an embedder that stores credentials outside this table.
 _document_resolver: Callable[[dict], Awaitable[dict]] | None = None
@@ -60,6 +63,11 @@ async def _resolved(document: Any) -> Any:
     means a credential is missing, and returning the document with the address
     still in it would hand `create_engine` a `synsec://` URL and produce a
     confusing driver error instead of a clear one.
+
+    That argument is about the document being *used*. `load` applies it to a
+    list, where letting one failure escape hides every sibling — so it skips and
+    logs instead. `load_one` keeps this behaviour, because there the broken
+    document is the whole answer.
     """
     if _document_resolver is None or not isinstance(document, dict):
         return document
@@ -67,7 +75,26 @@ async def _resolved(document: Any) -> Any:
 
 
 async def load(name: str) -> list[dict]:
-    """Every item in `name`, oldest first."""
+    """Every item in `name`, oldest first — minus any that cannot be resolved.
+
+    **One unresolvable document does not fail the list.** It used to: `load`
+    resolved eagerly and let the first failure escape, so a single stale
+    reference took every sibling with it. What the caller then saw was not an
+    error about that document — `tools/sql_agent.py` catches broadly and returns
+    `[]` — but "no databases are configured", for a workspace with two of them,
+    one of which was fine.
+
+    That is the wrong trade for a *list*. The argument in `_resolved` still
+    holds for the document being used, and `load_one` still lets it through
+    unchanged: there, the broken document is the answer. Here it is one row
+    among several, and hiding the working ones to report the broken one is a
+    strictly worse outcome than the reverse.
+
+    A skipped document is logged at WARNING with its key, because the failure
+    now has no other symptom — it is a row that quietly stops appearing. Using
+    the missing item still fails loudly at the point of use, which is where a
+    clear error belongs.
+    """
     from core.store import session
     from core.store.models import CollectionDB
 
@@ -82,7 +109,19 @@ async def load(name: str) -> list[dict]:
                 .order_by(CollectionDB.created_at, CollectionDB.key)
             )
         ).scalars().all()
-    return [await _resolved(r.value) for r in rows]
+
+    items: list[dict] = []
+    for row in rows:
+        try:
+            items.append(await _resolved(row.value))
+        except Exception:
+            logger.warning(
+                "collection %r: skipping %r, its stored reference could not be resolved",
+                name,
+                row.key,
+                exc_info=True,
+            )
+    return items
 
 
 async def save(name: str, items: list[dict], key_field: str = "id") -> None:

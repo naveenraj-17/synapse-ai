@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from sqlalchemy import create_engine, inspect, text
 from core.config import load_settings
 
@@ -102,7 +103,13 @@ async def _load_db_configs() -> list[dict]:
 
     try:
         return await collections.load("db_configs")
-    except Exception:
+    except Exception as exc:
+        # Loud, because the caller turns an empty list into "no databases are
+        # configured" — which is indistinguishable from a workspace that has
+        # configured none, and was exactly the wrong diagnosis when a store read
+        # failed. `collections.load` already skips individual documents it
+        # cannot resolve, so reaching here means the read itself failed.
+        print(f"[sql_agent] could not load db_configs: {exc!r}", file=sys.stderr, flush=True)
         return []
 
 
