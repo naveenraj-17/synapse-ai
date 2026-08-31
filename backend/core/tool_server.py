@@ -21,8 +21,8 @@ two things the engine sets up for itself do not reach them:
 `bootstrap()` fixes both, and every tool server in `TENANT_SCOPED_TOOLS` calls it
 as the first thing in `main()`.
 
-`SYNAPSE_TENANT_ID` and `SYNAPSE_DOCUMENT_RESOLVER`
----------------------------------------------------
+`SYNAPSE_TENANT_ID`, `SYNAPSE_DOCUMENT_RESOLVER` and `SYNAPSE_SESSION_BINDER`
+------------------------------------------------------------------------------
 This module is the only one permitted to read them, in the same way
 `core/store/importer.py` is the only module permitted to name
 `SYNAPSE_DATA_DIR`. `tests/unit/test_tool_server.py` asserts the allowlist, so a
@@ -44,6 +44,13 @@ spawns a separate server per tenant and labels each. It does **not** enable
 multi-tenancy: `tenant_scope()` is still shut unless an embedder registers a
 resource provider, so there is no path from this variable to a process serving
 two tenants, and nothing in the shipped product sets it at all.
+
+`SYNAPSE_SESSION_BINDER` is the same idea for the *connection*: an import path
+installed as `core/store/engine.py`'s session binder, run on every session this
+process opens. A deployment that gates the same rows a second time — row-level
+security compares against a per-transaction setting — cannot otherwise be heard
+from inside a subprocess, because the store is opened here rather than passed
+in. Also unset in the shipped product.
 """
 from __future__ import annotations
 
@@ -57,18 +64,53 @@ def process_tenant() -> str:
     return os.getenv("SYNAPSE_TENANT_ID", "").strip()
 
 
-def _install_document_resolver() -> None:
-    """Point `collections` at the embedder's resolver, if one was named."""
-    spec = os.getenv("SYNAPSE_DOCUMENT_RESOLVER", "").strip()
+def _import_named(spec: str) -> object | None:
+    """Resolve a `package.module:function` spec, or None if it is not one."""
+    spec = spec.strip()
     if not spec or ":" not in spec:
-        return
+        return None
 
     import importlib
 
     module_name, _, attribute = spec.partition(":")
+    return getattr(importlib.import_module(module_name), attribute)
+
+
+def _install_document_resolver() -> None:
+    """Point `collections` at the embedder's resolver, if one was named."""
+    resolver = _import_named(os.getenv("SYNAPSE_DOCUMENT_RESOLVER", ""))
+    if resolver is None:
+        return
+
     from core.store import collections
 
-    collections.set_document_resolver(getattr(importlib.import_module(module_name), attribute))
+    collections.set_document_resolver(resolver)
+
+
+def _install_session_binder() -> None:
+    """Let the deployment speak on every session this process opens.
+
+    The sibling of the resolver above, and it exists for the same reason from
+    the other direction. The resolver answers "this stored value is a
+    reference"; this answers "this connection has not yet said who it is".
+
+    A tool subprocess opens the store **itself**, so a deployment that enforces
+    tenancy on the connection — Postgres row-level security, in the case that
+    prompted this — has no way to make itself heard: the parent's binding does
+    not cross `fork+exec`, and `collections.load()` opens its own session. The
+    symptom is not an error. It is a table that reads as empty, which looks
+    exactly like a workspace that has configured nothing.
+
+    Unset in the shipped product, where the `tenant_id` column is the whole of
+    tenancy and there is no second gate to satisfy.
+    """
+    binder = _import_named(os.getenv("SYNAPSE_SESSION_BINDER", ""))
+    if binder is None:
+        return
+
+    from core.store import engine
+
+    engine.set_session_binder(binder)
 
 
 def _attach_store() -> None:
@@ -131,6 +173,17 @@ async def bootstrap() -> None:
         _attach_store()
     except Exception as exc:  # noqa: BLE001 — see the docstring
         _diagnostic(f"[tool_server] store unavailable: {exc}")
+
+    try:
+        # **Before `settings_runtime.refresh()` below, which reads the store.**
+        # A binder installed after the first read is a binder that missed it,
+        # and the read would have come back empty rather than failed.
+        _install_session_binder()
+    except Exception as exc:  # noqa: BLE001 — see the docstring
+        # Loud and non-fatal, like its neighbours — but worth reading twice if
+        # it appears: with no binder, a deployment that gates rows on the
+        # connection sees every table as empty, and nothing else will say so.
+        _diagnostic(f"[tool_server] session binder unavailable: {exc}")
 
     try:
         _install_document_resolver()

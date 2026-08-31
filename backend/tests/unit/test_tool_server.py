@@ -54,6 +54,16 @@ _TOOL_VARS = {
         {"core/tool_server.py", "core/scale/worker_server_module.py"},
         {"core/scale/worker_server_module.py"},
     ),
+    #: Forwarded exactly like the resolver, and for a symmetrical reason: that
+    #: one says how a stored value becomes real, this one says who the
+    #: connection is. A subprocess opens the store itself, so a deployment
+    #: enforcing tenancy on the connection has no other way to be heard — and
+    #: its absence reads as an empty table rather than an error, which is the
+    #: harder failure to diagnose of the two.
+    "SYNAPSE_SESSION_BINDER": (
+        {"core/tool_server.py", "core/scale/worker_server_module.py"},
+        {"core/scale/worker_server_module.py"},
+    ),
 }
 
 _SEARCH_ROOTS = ("core", "tools", "services", "synapse")

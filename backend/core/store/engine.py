@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -31,6 +31,11 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool, StaticPool
 
 from core.store.models import Base
 
+#: A binder receives each freshly-opened session and may issue statements on it.
+#: Anything it runs lands inside that session's transaction, which is what makes
+#: ``SET LOCAL`` the natural thing to say here.
+SessionBinder = Callable[[AsyncSession], Awaitable[None]]
+
 #: Where a default SQLite install puts its database. Overridden wholesale by
 #: SYNAPSE_DB_URL; there is no separate "which directory" setting, because two
 #: knobs that both decide the same thing is how you get a support thread.
@@ -38,6 +43,21 @@ _DEFAULT_DIR = Path(__file__).resolve().parent.parent.parent / "var"
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+#: Called on every session this module opens, before the caller sees it.
+#:
+#: The engine's own tenancy is the ``tenant_id`` column, and that is complete
+#: for a plain install. A deployment may enforce a *second*, independent gate on
+#: the same rows — Postgres row-level security is the one that prompted this —
+#: and such a gate has to be satisfied on the connection rather than in a WHERE
+#: clause. Nothing above this module can do that, because ``collections.load()``
+#: and its neighbours open their own sessions; by the time a caller holds a
+#: result the opportunity has passed.
+#:
+#: So this is a seam of the same kind as ``collections.set_document_resolver``:
+#: the engine states where the deployment gets to speak, and knows nothing about
+#: what it says. ``None`` is the ordinary case and costs a single ``is None``.
+_session_binder: SessionBinder | None = None
 
 
 def default_url() -> str:
@@ -170,11 +190,23 @@ async def reset_store() -> None:
     _session_factory = None
 
 
+def set_session_binder(binder: SessionBinder | None) -> None:
+    """Install the callable run on every session this module opens.
+
+    Installed once at startup, beside the other deployment seams. Passing
+    ``None`` removes it, which is what tests do rather than reaching for the
+    module global.
+    """
+    global _session_binder
+    _session_binder = binder
+
+
 @asynccontextmanager
 async def session() -> AsyncGenerator[AsyncSession, None]:
     """A transaction against the store, committed on clean exit."""
     factory = await get_store()
     async with factory() as s:
+        await _bind(s)
         try:
             yield s
             await s.commit()
@@ -192,9 +224,27 @@ async def get_session(
     Kept for callers that hold their own factory (the scale worker's ARQ ctx).
     """
     async with session_factory() as s:
+        await _bind(s)
         try:
             yield s
             await s.commit()
         except Exception:
             await s.rollback()
             raise
+
+
+async def _bind(s: AsyncSession) -> None:
+    """Run the installed binder, if there is one.
+
+    **Before the caller's first statement, and inside the same transaction.**
+    A binder that says ``SET LOCAL`` is stating something about this
+    transaction, so running it afterwards — or in a transaction of its own —
+    would be a no-op that looks like it worked.
+
+    Failures propagate. A binder exists to satisfy an access rule, and a
+    swallowed failure here would turn "this deployment's isolation is not in
+    force" into "that table appears to be empty", which is the harder bug of the
+    two by a wide margin.
+    """
+    if _session_binder is not None:
+        await _session_binder(s)

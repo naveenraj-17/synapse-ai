@@ -534,6 +534,14 @@ def _get_native_mcp_servers(
         resolver = os.getenv("SYNAPSE_DOCUMENT_RESOLVER", "").strip()
         if resolver:
             tenant_env["SYNAPSE_DOCUMENT_RESOLVER"] = resolver
+
+        # The same treatment, and the same reasoning, for the session binder.
+        # Without it a child that opens its own store speaks to the database as
+        # nobody — which a deployment gating rows on the connection answers with
+        # an empty result rather than an error.
+        binder = os.getenv("SYNAPSE_SESSION_BINDER", "").strip()
+        if binder:
+            tenant_env["SYNAPSE_SESSION_BINDER"] = binder
         for name in sorted(WORKER_NATIVE_TOOLS & TENANT_SCOPED_TOOLS):
             _python_tool(name, tenant_env)
 
