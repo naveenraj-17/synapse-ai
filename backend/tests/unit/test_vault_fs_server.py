@@ -9,6 +9,7 @@ image ships, so it never actually ran.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -179,3 +180,83 @@ async def test_search_reads_the_store_concurrently(vault, monkeypatch):
 
     assert found["files_with_matches"] == 32
     assert peak > 1, "the store was read one file at a time"
+
+
+@pytest.mark.anyio
+async def test_a_key_cannot_escape_the_tenants_prefix(vault):
+    """Traversal is refused by the store, which is where the guard belongs.
+
+    `tools/vault_fs.py` does no path validation of its own and should not: it
+    passes the key straight to the blob store, and the store is the single place
+    tenancy is applied. This proves the arrangement holds end to end rather than
+    trusting that it does.
+    """
+    with tenant_scope("other-org"):
+        vault.put("secret.txt", "not yours")
+
+    with tenant_scope("org-a"):
+        answer = await _call("read_file", {"path": "../other-org/secret.txt"})
+
+    assert "error" in answer
+    assert "escapes" in answer["error"], answer
+    assert "not yours" not in json.dumps(answer)
+
+
+@pytest.mark.anyio
+async def test_serve_adopts_the_tenant_before_it_starts_the_bootstrap_task():
+    """The tenant must be adopted in the *serving* task, not the child one.
+
+    `adopt_process_tenant` sets a ContextVar and `asyncio.create_task` hands the
+    child a **copy** of the context — so adopting inside the background bootstrap
+    leaves this task, and every handler task spawned from it, resolving
+    `get_tenant()` to the default. On a shared fleet that is one tenant reading
+    another's vault.
+
+    It was written that way first and a live probe caught it: `list_files`
+    returned nothing because the server was looking in the default tenant's
+    prefix. Nothing in the suite noticed, which is why this test exists.
+    """
+    import os
+
+    import mcp.server.stdio as stdio_mod
+
+    from core import tenancy, tool_server
+
+    seen: list[str] = []
+
+    class _App:
+        async def run(self, *_args, **_kwargs):
+            # Whatever a handler would see: this is the task the server runs in.
+            seen.append(tenancy.get_tenant())
+
+        def create_initialization_options(self):
+            return None
+
+    class _NullStdio:
+        async def __aenter__(self):
+            return (None, None)
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def _slow_bootstrap():
+        # Long enough that a serve() relying on the task would still be waiting
+        # when app.run() is entered.
+        await asyncio.sleep(0.05)
+
+    original_stdio = stdio_mod.stdio_server
+    original_bootstrap = tool_server.bootstrap
+    os.environ["SYNAPSE_TENANT_ID"] = "org-from-the-parent"
+    try:
+        stdio_mod.stdio_server = lambda: _NullStdio()
+        tool_server.bootstrap = _slow_bootstrap
+        await tool_server.serve(_App())
+    finally:
+        stdio_mod.stdio_server = original_stdio
+        tool_server.bootstrap = original_bootstrap
+        os.environ.pop("SYNAPSE_TENANT_ID", None)
+
+    assert seen == ["org-from-the-parent"], (
+        "serve() started the server without adopting the tenant first; "
+        f"the serving task saw {seen}"
+    )

@@ -213,6 +213,25 @@ async def serve(app) -> None:
     global _bootstrap_task
     from mcp.server.stdio import stdio_server
 
+    # **Adopt the tenant here, synchronously, before the task exists.**
+    #
+    # `adopt_process_tenant` sets a ContextVar, and `asyncio.create_task` gives
+    # the child a *copy* of the current context — so a value set inside the task
+    # is invisible to this one and to the handler tasks the server spawns from
+    # it. Bootstrapping in the background without this line left every handler
+    # resolving `get_tenant()` to the default, which on a shared fleet is one
+    # tenant reading another's vault: the precise failure
+    # `adopt_process_tenant`'s own docstring exists to prevent.
+    #
+    # It is also the half that needs no I/O — it reads one environment variable
+    # — so there was never anything to gain by deferring it. What belongs in the
+    # background is the store attach and the settings refresh, which touch a
+    # database. `bootstrap()` still calls this too, and it is idempotent, so a
+    # caller invoking `bootstrap()` directly keeps its existing contract.
+    from core import tenancy
+
+    tenancy.adopt_process_tenant(process_tenant())
+
     async def _run() -> None:
         try:
             await bootstrap()
