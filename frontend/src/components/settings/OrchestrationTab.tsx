@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle } from 'lucide-react';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle, Pause, RefreshCw, GitFork, GitBranch, GitMerge, Info, Minimize2, CornerDownRight, Wrench, Brain, MessageSquare } from 'lucide-react';
 import { Button, Combobox, Hint, IconButton, SearchInput } from '@/components/ui';
 import { matchesQuery } from '@/lib/search';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
@@ -27,7 +27,31 @@ type StepResultLogEntry = { kind: 'step_result'; step_name: string; step_type: '
 // chatty agent doesn't drown the structural log lines.
 type ReasoningLogEntry = { kind: 'reasoning'; step_name?: string; content: string };
 type ThoughtLogEntry = { kind: 'thought'; step_name?: string; content: string };
-type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry | StepResultLogEntry | ReasoningLogEntry | ThoughtLogEntry;
+// A structural log line: the tone picks an icon and a colour in the renderer,
+// which is what replaced the emoji prefixes — an icon column reads as product
+// chrome where a row of pictographs read as a group chat.
+type LineTone = 'start' | 'ok' | 'error' | 'pause' | 'loop' | 'flow' | 'parallel' | 'merge' | 'end' | 'info' | 'warn' | 'compact' | 'branch' | 'muted';
+type LineLogEntry = { kind: 'line'; tone: LineTone; text: string };
+type LogEntry = string | ToolCallLogEntry | ToolResultLogEntry | StepResultLogEntry | ReasoningLogEntry | ThoughtLogEntry | LineLogEntry;
+
+const line = (tone: LineTone, text: string): LineLogEntry => ({ kind: 'line', tone, text });
+
+const LINE_META: Record<LineTone, { icon: React.FC<{ size?: number; className?: string }>; cls: string }> = {
+    start:    { icon: Play,            cls: 'text-blue-400' },
+    ok:       { icon: Check,           cls: 'text-green-400' },
+    error:    { icon: X,               cls: 'text-red-400' },
+    pause:    { icon: Pause,           cls: 'text-amber-400' },
+    loop:     { icon: RefreshCw,       cls: 'text-accent' },
+    flow:     { icon: GitFork,         cls: 'text-zinc-300' },
+    parallel: { icon: GitBranch,       cls: 'text-zinc-300' },
+    merge:    { icon: GitMerge,        cls: 'text-zinc-300' },
+    end:      { icon: Square,          cls: 'text-zinc-400' },
+    info:     { icon: Info,            cls: 'text-zinc-400' },
+    warn:     { icon: AlertTriangle,   cls: 'text-amber-400' },
+    compact:  { icon: Minimize2,       cls: 'text-zinc-400' },
+    branch:   { icon: CornerDownRight, cls: 'text-zinc-500 pl-2' },
+    muted:    { icon: Info,            cls: 'text-zinc-500' },
+};
 
 type RunStepStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed';
 
@@ -288,7 +312,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                                     <td className={`${tdCls} max-w-[200px]`}>
                                         {stepName ? (
                                             <span className={`block truncate ${isLive ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                                                {run.status === 'running' ? '▶ ' : run.status === 'paused' ? '⏸ ' : ''}{stepName}
+                                                {stepName}
                                             </span>
                                         ) : <span className="text-zinc-600">—</span>}
                                     </td>
@@ -847,7 +871,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
         switch (data.type) {
             case 'orchestration_start':
                 setRunId(data.run_id);
-                setRunLog(prev => [...prev, `Started run ${data.run_id}`]);
+                setRunLog(prev => [...prev, line('muted', `Started run ${data.run_id}`)]);
                 break;
 
             case 'step_start': {
@@ -858,7 +882,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 setHumanContext(null);
                 setRunStatus('running');
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'running' }));
-                setRunLog(prev => [...prev, `▶ ${data.step_name} (${data.step_type})`]);
+                setRunLog(prev => [...prev, line('start', `${data.step_name} (${data.step_type})`)]);
                 // Begin tracking response for agent/llm/print/extract_json steps, keyed by step id
                 if (data.step_type === 'agent' || data.step_type === 'llm' || data.step_type === 'print' || data.step_type === 'extract_json') {
                     pendingStepResultRef.current.set(data.orch_step_id, {
@@ -877,7 +901,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'completed' }));
                 const pendingForStep = pendingStepResultRef.current.get(data.orch_step_id);
                 setRunLog(prev => {
-                    const next = [...prev, `✓ ${data.step_name} completed (${data.duration_seconds?.toFixed(1)}s)`];
+                    const next = [...prev, line('ok', `${data.step_name} completed (${data.duration_seconds?.toFixed(1)}s)`)];
                     if (pendingForStep && pendingForStep.content.trim()) {
                         next.splice(next.length - 1, 0, {
                             kind: 'step_result',
@@ -895,13 +919,13 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             case 'step_error':
                 setLiveActivity(null);
                 setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'failed' }));
-                setRunLog(prev => [...prev, `✗ Step error: ${data.error}`]);
+                setRunLog(prev => [...prev, line('error', `Step error: ${data.error}`)]);
                 pendingStepResultRef.current.delete(data.orch_step_id);
                 break;
 
             case 'llm_reasoning':
                 if (data.reasoning) {
-                    setLiveActivity(`🧠 ${String(data.reasoning).split('\n')[0].slice(0, 140)}`);
+                    setLiveActivity(`reasoning · ${String(data.reasoning).split('\n')[0].slice(0, 140)}`);
                     setRunLog(prev => [...prev, {
                         kind: 'reasoning',
                         step_name: data.step_name,
@@ -923,20 +947,20 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             case 'thinking':
                 // Chatty progress line ("Analyzing...", "Delegating to X...") —
                 // shown as the live activity indicator, not appended to the log.
-                if (data.message) setLiveActivity(`💭 ${data.message}`);
+                if (data.message) setLiveActivity(`thinking · ${data.message}`);
                 break;
 
             case 'status':
-                if (data.message) setRunLog(prev => [...prev, `ℹ ${data.message}`]);
+                if (data.message) setRunLog(prev => [...prev, line('info', data.message)]);
                 break;
 
             case 'step_warning':
-                setRunLog(prev => [...prev, `⚠ ${data.message || 'Step warning'}`]);
+                setRunLog(prev => [...prev, line('warn', data.message || 'Step warning')]);
                 break;
 
             case 'context_compact':
                 setRunLog(prev => [...prev,
-                    `⇲ Context compacted (${data.chars_before ?? '?'} → ${data.chars_after ?? '?'} chars)`]);
+                    line('compact', `Context compacted (${data.chars_before ?? '?'} → ${data.chars_after ?? '?'} chars)`)]);
                 break;
 
             case 'final': {
@@ -950,39 +974,39 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
             }
 
             case 'routing_decision':
-                setRunLog(prev => [...prev, `🔀 Evaluator routed → ${data.decision} (${data.reasoning || ''})`]);
+                setRunLog(prev => [...prev, line('flow', `Evaluator routed → ${data.decision}${data.reasoning ? ` (${data.reasoning})` : ''}`)]);
                 break;
 
             case 'if_decision':
-                setRunLog(prev => [...prev, `🔀 If/Else: ${data.condition || ''} → ${data.result}`]);
+                setRunLog(prev => [...prev, line('flow', `If/Else: ${data.condition || ''} → ${data.result}`)]);
                 break;
 
             case 'switch_decision':
-                setRunLog(prev => [...prev, `🔀 Switch: ${data.expression || ''} = "${data.value}" → ${data.matched_case ?? 'default'}`]);
+                setRunLog(prev => [...prev, line('flow', `Switch: ${data.expression || ''} = "${data.value}" → ${data.matched_case ?? 'default'}`)]);
                 break;
 
             case 'parallel_start':
-                setRunLog(prev => [...prev, `⫘ Parallel: running ${data.branch_count} branches`]);
+                setRunLog(prev => [...prev, line('parallel', `Parallel: running ${data.branch_count} branches`)]);
                 break;
 
             case 'branch_start':
-                setRunLog(prev => [...prev, `  ↳ Branch ${(data.branch_index ?? 0) + 1}/${data.branch_count}`]);
+                setRunLog(prev => [...prev, line('branch', `Branch ${(data.branch_index ?? 0) + 1}/${data.branch_count}`)]);
                 break;
 
             case 'parallel_complete':
-                setRunLog(prev => [...prev, `⫘ Parallel: all ${data.branch_count} branches done`]);
+                setRunLog(prev => [...prev, line('parallel', `Parallel: all ${data.branch_count} branches done`)]);
                 break;
 
             case 'loop_iteration':
-                setRunLog(prev => [...prev, `⟳ Loop iteration ${data.iteration}/${data.total}`]);
+                setRunLog(prev => [...prev, line('loop', `Loop iteration ${data.iteration}/${data.total}`)]);
                 break;
 
             case 'merge_complete':
-                setRunLog(prev => [...prev, `⊕ Merged ${data.input_count} inputs (${data.strategy})`]);
+                setRunLog(prev => [...prev, line('merge', `Merged ${data.input_count} inputs (${data.strategy})`)]);
                 break;
 
             case 'orchestration_end':
-                setRunLog(prev => [...prev, `■ End node reached`]);
+                setRunLog(prev => [...prev, line('end', 'End node reached')]);
                 break;
 
             case 'human_input_required':
@@ -991,11 +1015,11 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 if (data.orch_step_id) setRunStepStatuses(prev => ({ ...prev, [data.orch_step_id]: 'paused' }));
                 setHumanPrompt(data.prompt || 'Please provide input:');
                 setHumanContext(data.agent_context || null);
-                setRunLog(prev => [...prev, `⏸ Waiting for human input...`]);
+                setRunLog(prev => [...prev, line('pause', 'Waiting for human input…')]);
                 break;
 
             case 'loop_limit_reached':
-                setRunLog(prev => [...prev, `⟳ Loop limit reached for step ${data.orch_step_id} (${data.iterations} iterations)`]);
+                setRunLog(prev => [...prev, line('loop', `Loop limit reached for step ${data.orch_step_id} (${data.iterations} iterations)`)]);
                 break;
 
             case 'orchestration_complete':
@@ -1003,7 +1027,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 setHumanPrompt(null);
                 setHumanContext(null);
                 setRunStatus(data.status === 'completed' ? 'completed' : 'failed');
-                setRunLog(prev => [...prev, `Done — status: ${data.status}`]);
+                setRunLog(prev => [...prev, line(data.status === 'completed' ? 'ok' : 'error', `Done — status: ${data.status}`)]);
                 if (!fromJournal) {
                     abortRef.current?.abort();
                     abortRef.current = null;
@@ -1015,7 +1039,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 setHumanPrompt(null);
                 setHumanContext(null);
                 setRunStatus('failed');
-                setRunLog(prev => [...prev, `Error: ${data.error}`]);
+                setRunLog(prev => [...prev, line('error', `Error: ${data.error}`)]);
                 if (!fromJournal) {
                     abortRef.current?.abort();
                     abortRef.current = null;
@@ -1023,7 +1047,7 @@ export function OrchestrationTab({ initialRunId }: { initialRunId?: string } = {
                 break;
 
             case 'tool_execution':
-                setLiveActivity(`🔧 ${data.tool_name}`);
+                setLiveActivity(`tool · ${data.tool_name}`);
                 setRunLog(prev => [...prev, {
                     kind: 'tool_call',
                     tool_name: data.tool_name,
@@ -1984,12 +2008,31 @@ function BottomPanel({
                             ) : (
                                 runLog.map((entry, i) => {
                                     if (typeof entry !== 'string') {
+                                        if (entry.kind === 'line') {
+                                            const meta = LINE_META[entry.tone];
+                                            const LineIcon = meta.icon;
+                                            return (
+                                                <div key={i} className={`flex items-start gap-1.5 ${meta.cls}`}>
+                                                    <LineIcon size={11} className="mt-[3px] shrink-0" aria-hidden />
+                                                    <span className="min-w-0 flex-1">
+                                                        <ReactMarkdown
+                                                            remarkPlugins={[remarkGfm]}
+                                                            components={{
+                                                                p: ({ children }) => <span>{children}</span>,
+                                                                code: ({ children }) => <code className="font-code bg-zinc-800 px-1 rounded-md text-[10px]">{children}</code>,
+                                                            }}
+                                                        >{entry.text}</ReactMarkdown>
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
                                         if (entry.kind === 'tool_call') {
                                             return (
                                                 <div key={i} className="text-accent pl-2">
                                                     <details>
                                                         <summary className="cursor-pointer list-none">
-                                                            🔧 {entry.tool_name}
+                                                            <Wrench size={11} className="mr-1 inline-block align-[-1px]" aria-hidden />
+                                                            {entry.tool_name}
                                                             {entry.step_name && <span className="text-zinc-500 text-[10px]"> · {entry.step_name}</span>}
                                                         </summary>
                                                         <pre className="font-code bg-zinc-800/50 p-1 rounded-md mt-0.5 text-[10px] text-zinc-300 overflow-x-auto whitespace-pre-wrap">
@@ -2001,8 +2044,9 @@ function BottomPanel({
                                         }
                                         if (entry.kind === 'tool_result') {
                                             return (
-                                                <div key={i} className="text-zinc-500 pl-4 text-[10px]">
-                                                    ↳ {entry.preview.slice(0, 200)}{entry.preview.length > 200 ? '…' : ''}
+                                                <div key={i} className="flex items-start gap-1.5 pl-4 text-[10px] text-zinc-500">
+                                                    <CornerDownRight size={10} className="mt-[2px] shrink-0" aria-hidden />
+                                                    <span className="min-w-0 flex-1">{entry.preview.slice(0, 200)}{entry.preview.length > 200 ? '…' : ''}</span>
                                                 </div>
                                             );
                                         }
@@ -2051,7 +2095,10 @@ function BottomPanel({
                                                 <div key={i} className="pl-2 my-0.5">
                                                     <details>
                                                         <summary className={`cursor-pointer list-none text-[10px] ${isReasoning ? 'text-sky-400/80' : 'text-zinc-500'}`}>
-                                                            {isReasoning ? '🧠' : '💬'} {firstLine}{entry.content.length > firstLine.length ? '…' : ''}
+                                                            {isReasoning
+                                                                ? <Brain size={10} className="mr-1 inline-block align-[-1px]" aria-hidden />
+                                                                : <MessageSquare size={10} className="mr-1 inline-block align-[-1px]" aria-hidden />}
+                                                            {firstLine}{entry.content.length > firstLine.length ? '…' : ''}
                                                             {entry.step_name && <span className="text-zinc-600"> · {entry.step_name}</span>}
                                                         </summary>
                                                         <div className="mt-0.5 bg-zinc-800/40 border border-zinc-800 rounded-md p-2 text-[10px] text-zinc-400 whitespace-pre-wrap max-h-64 overflow-y-auto">

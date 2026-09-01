@@ -453,9 +453,6 @@ function HumanSection({ step, update, stateKeys }: StepSectionProps) {
             .catch(() => {});
     }, []);
 
-    const PLATFORM_EMOJI: Record<string, string> = {
-        telegram: '✈️', discord: '🎮', slack: '💬', teams: '📘', whatsapp: '📱',
-    };
     const NONE = '__browser__';
     const fields = step.human_fields || [];
 
@@ -547,8 +544,8 @@ function HumanSection({ step, update, stateKeys }: StepSectionProps) {
                         { value: NONE, label: 'Browser UI only' },
                         ...channels.map((ch: any) => ({
                             value: ch.id,
-                            label: `${PLATFORM_EMOJI[ch.platform] ?? '🤖'} ${ch.name}`,
-                            hint: ch.status ?? 'stopped',
+                            label: ch.name,
+                            hint: `${ch.platform} · ${ch.status ?? 'stopped'}`,
                         })),
                     ]}
                 />
