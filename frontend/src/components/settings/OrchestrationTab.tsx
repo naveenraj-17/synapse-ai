@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle, Pause, RefreshCw, GitFork, GitBranch, GitMerge, Info, Minimize2, CornerDownRight, Wrench, Brain, MessageSquare } from 'lucide-react';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle, Pause, RefreshCw, GitFork, GitBranch, GitMerge, Info, Minimize2, CornerDownRight, Wrench, Brain, MessageSquare, ChevronDown } from 'lucide-react';
 import { Button, Combobox, Hint, IconButton, SearchInput } from '@/components/ui';
 import { matchesQuery } from '@/lib/search';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
@@ -1740,6 +1740,16 @@ function BottomPanel({
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run' | 'recent'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
     const [humanContextHeight, setHumanContextHeight] = useState(200);
+    // Collapsed is a per-prompt choice: a fresh question re-opens the card,
+    // because a collapsed strip is how a paused run gets forgotten. Reset
+    // during render (the sanctioned "adjust state when a prop changes"
+    // pattern) rather than in an effect.
+    const [humanCollapsed, setHumanCollapsed] = useState(false);
+    const [collapsePrompt, setCollapsePrompt] = useState(humanPrompt);
+    if (collapsePrompt !== humanPrompt) {
+        setCollapsePrompt(humanPrompt);
+        setHumanCollapsed(false);
+    }
     const logRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
     const contextDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -1938,61 +1948,6 @@ function BottomPanel({
                             </div>
                         )}
 
-                        {/* Human input prompt */}
-                        {humanPrompt && (
-                            <div className="bg-amber-900/20 border border-amber-700/50 rounded-md p-3 space-y-2">
-                                {humanContext && (
-                                    <div>
-                                        <div
-                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t-md p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
-                                            style={{ height: humanContextHeight }}
-                                        >
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkGfm]}
-                                                components={{
-                                                    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-                                                    a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded-md">{children}</code>,
-                                                    strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
-                                                }}
-                                            >{humanContext}</ReactMarkdown>
-                                        </div>
-                                        <div
-                                            onMouseDown={onContextDragMouseDown}
-                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-blue-500/40 transition-colors rounded-b-md border border-zinc-700/50 flex items-center justify-center group"
-                                        >
-                                            <div className="w-8 h-0.5 rounded-md bg-zinc-600 group-hover:bg-blue-400 transition-colors" />
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="text-xs text-amber-300">
-                                    <ReactMarkdown
-                                        remarkPlugins={[remarkGfm]}
-                                        components={{
-                                            p: ({ children }) => <p className="mb-0">{children}</p>,
-                                            a: ({ href, children }) => <a href={href} className="text-amber-200 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                            strong: ({ children }) => <strong className="font-semibold text-amber-200">{children}</strong>,
-                                        }}
-                                    >{humanPrompt}</ReactMarkdown>
-                                </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-1.5 text-xs text-zinc-200 outline-none"
-                                        value={humanResponse}
-                                        onChange={(e) => setHumanResponse(e.target.value)}
-                                        placeholder="Your response..."
-                                        onKeyDown={(e) => { if (e.key === 'Enter') onSubmitHuman(); }}
-                                    />
-                                    <button
-                                        onClick={onSubmitHuman}
-                                        className="px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-500 text-white rounded-md"
-                                    >
-                                        Submit
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
                         {/* Live activity: what the model is doing right now */}
                         {runStatus === 'running' && liveActivity && (
                             <div className="flex items-center gap-2 text-[11px] text-sky-300/90 bg-sky-950/30 border border-sky-900/40 rounded-md px-2.5 py-1.5">
@@ -2071,20 +2026,22 @@ function BottomPanel({
                                                             {typeLabel}
                                                         </span>
                                                     </div>
-                                                    {/* Content bubble */}
-                                                    <div className="flex items-start gap-2 bg-zinc-800/70 border border-zinc-700/50 rounded-lg px-3 py-2 group ml-3">
-                                                        <div className="flex-1 min-w-0 text-zinc-300 leading-relaxed">
+                                                    {/* Content bubble \u2014 the whole card opens the full
+                                                        response; the hover hint is just the signpost. */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onOpenResponseModal({ step_name: entry.step_name, step_type: entry.step_type, content: entry.content })}
+                                                        title="View full response"
+                                                        className="group ml-3 flex w-[calc(100%-0.75rem)] items-start gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/70 px-3 py-2 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+                                                    >
+                                                        <span className="min-w-0 flex-1 leading-relaxed text-zinc-300">
                                                             {preview}{isTruncated ? '\u2026' : ''}
-                                                        </div>
-                                                        <button
-                                                            onClick={() => onOpenResponseModal({ step_name: entry.step_name, step_type: entry.step_type, content: entry.content })}
-                                                            className="shrink-0 flex items-center gap-1 text-[10px] text-zinc-500 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100 ml-1 whitespace-nowrap self-center"
-                                                            title="View full response"
-                                                        >
-                                                            <ExternalLink size={10} />
+                                                        </span>
+                                                        <span className="ml-1 flex shrink-0 items-center gap-1 self-center whitespace-nowrap text-[10px] text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
+                                                            <ExternalLink size={10} aria-hidden />
                                                             View full
-                                                        </button>
-                                                    </div>
+                                                        </span>
+                                                    </button>
                                                 </div>
                                             );
                                         }
@@ -2133,6 +2090,92 @@ function BottomPanel({
                                 })
                             )}
                         </div>
+
+                        {/* Human input — parked at the bottom of the tab and sticky,
+                            so it stays reachable while the log scrolls past it, and
+                            collapsible so it can get out of the way of reading. */}
+                        {humanPrompt && (
+                            <div className="sticky bottom-0 z-10 pt-2">
+                                <div className="overflow-hidden rounded-lg border border-amber-600/50 bg-zinc-900 shadow-[0_-12px_28px_-8px_rgba(0,0,0,0.55)]">
+                                    <div className="bg-amber-900/20">
+                                        <button
+                                            type="button"
+                                            onClick={() => setHumanCollapsed(c => !c)}
+                                            aria-expanded={!humanCollapsed}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left"
+                                        >
+                                            <Pause size={13} className="shrink-0 text-amber-400" aria-hidden />
+                                            <span className="shrink-0 text-xs font-semibold text-amber-300">Waiting for your input</span>
+                                            {humanCollapsed ? (
+                                                <span className="min-w-0 flex-1 truncate text-[11px] text-amber-200/70">{humanPrompt}</span>
+                                            ) : (
+                                                <span className="flex-1" />
+                                            )}
+                                            <ChevronDown
+                                                size={14}
+                                                className={`shrink-0 text-amber-400/80 transition-transform ${humanCollapsed ? 'rotate-180' : ''}`}
+                                                aria-hidden
+                                            />
+                                        </button>
+                                        {!humanCollapsed && (
+                                            <div className="space-y-2 px-3 pb-3">
+                                                {humanContext && (
+                                                    <div>
+                                                        <div
+                                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t-md p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
+                                                            style={{ height: humanContextHeight }}
+                                                        >
+                                                            <ReactMarkdown
+                                                                remarkPlugins={[remarkGfm]}
+                                                                components={{
+                                                                    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                                                                    a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
+                                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded-md">{children}</code>,
+                                                                    strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                                                                }}
+                                                            >{humanContext}</ReactMarkdown>
+                                                        </div>
+                                                        <div
+                                                            onMouseDown={onContextDragMouseDown}
+                                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-amber-500/40 transition-colors rounded-b-md border border-zinc-700/50 flex items-center justify-center group"
+                                                        >
+                                                            <div className="w-8 h-0.5 rounded-md bg-zinc-600 group-hover:bg-amber-400 transition-colors" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="text-xs leading-relaxed text-amber-200/90">
+                                                    <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm]}
+                                                        components={{
+                                                            p: ({ children }) => <p className="mb-0">{children}</p>,
+                                                            a: ({ href, children }) => <a href={href} className="text-amber-200 underline" target="_blank" rel="noreferrer">{children}</a>,
+                                                            strong: ({ children }) => <strong className="font-semibold text-amber-100">{children}</strong>,
+                                                        }}
+                                                    >{humanPrompt}</ReactMarkdown>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        autoFocus
+                                                        className="flex-1 rounded-md border border-amber-700/40 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-amber-500"
+                                                        value={humanResponse}
+                                                        onChange={(e) => setHumanResponse(e.target.value)}
+                                                        placeholder="Your response…"
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') onSubmitHuman(); }}
+                                                    />
+                                                    <button
+                                                        onClick={onSubmitHuman}
+                                                        disabled={!humanResponse.trim()}
+                                                        className="rounded-md bg-amber-500 px-4 py-2 text-xs font-medium text-zinc-950 transition-colors hover:bg-amber-400 disabled:opacity-50"
+                                                    >
+                                                        Submit
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                     </div>
                 )}
