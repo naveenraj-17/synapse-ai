@@ -2,8 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle, Pause, RefreshCw, GitFork, GitBranch, GitMerge, Info, Minimize2, CornerDownRight, Wrench, Brain, MessageSquare, ChevronDown } from 'lucide-react';
-import { Button, Combobox, Hint, IconButton, SearchInput } from '@/components/ui';
+import { Plus, Save, Play, Trash, Square, Loader2, Copy, Check, Radio, Bot, ExternalLink, X, Sparkles, ArrowLeft, Undo2, Redo2, AlertTriangle, Pause, RefreshCw, GitFork, GitBranch, GitMerge, Info, Minimize2, CornerDownRight, Wrench, Brain, MessageSquare } from 'lucide-react';
+import { Button, Combobox, Hint, IconButton, Modal, SearchInput } from '@/components/ui';
 import { matchesQuery } from '@/lib/search';
 import { BuilderPanel } from '../orchestration/BuilderPanel';
 import { cloneStep, generateStepId, removeStepFromGraph } from '../orchestration/graph';
@@ -1739,20 +1739,19 @@ function BottomPanel({
 }) {
     const [activeSection, setActiveSection] = useState<'state' | 'guardrails' | 'run' | 'recent'>('run');
     const [panelHeight, setPanelHeight] = useState(280);
-    const [humanContextHeight, setHumanContextHeight] = useState(200);
-    // Collapsed is a per-prompt choice: a fresh question re-opens the card,
-    // because a collapsed strip is how a paused run gets forgotten. Reset
-    // during render (the sanctioned "adjust state when a prop changes"
-    // pattern) rather than in an effect.
-    const [humanCollapsed, setHumanCollapsed] = useState(false);
-    const [collapsePrompt, setCollapsePrompt] = useState(humanPrompt);
-    if (collapsePrompt !== humanPrompt) {
-        setCollapsePrompt(humanPrompt);
-        setHumanCollapsed(false);
+    // The question opens in a modal (the agent-response pattern): on a short
+    // log area the inline card, context and all, swallowed the whole tab. The
+    // sticky strip below is the trigger and stays one line tall. A fresh
+    // prompt closes a stale modal — reset during render (the sanctioned
+    // "adjust state when a prop changes" pattern) rather than in an effect.
+    const [humanModalOpen, setHumanModalOpen] = useState(false);
+    const [seenPrompt, setSeenPrompt] = useState(humanPrompt);
+    if (seenPrompt !== humanPrompt) {
+        setSeenPrompt(humanPrompt);
+        setHumanModalOpen(false);
     }
     const logRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
-    const contextDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
     const onDragHandleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -1771,24 +1770,6 @@ function BottomPanel({
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
     }, [panelHeight]);
-
-    const onContextDragMouseDown = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        contextDragRef.current = { startY: e.clientY, startHeight: humanContextHeight };
-        const onMouseMove = (ev: MouseEvent) => {
-            if (!contextDragRef.current) return;
-            const delta = ev.clientY - contextDragRef.current.startY;
-            const newHeight = Math.max(80, Math.min(500, contextDragRef.current.startHeight + delta));
-            setHumanContextHeight(newHeight);
-        };
-        const onMouseUp = () => {
-            contextDragRef.current = null;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        };
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    }, [humanContextHeight]);
 
     useEffect(() => {
         if (logRef.current) {
@@ -2091,91 +2072,76 @@ function BottomPanel({
                             )}
                         </div>
 
-                        {/* Human input — parked at the bottom of the tab and sticky,
-                            so it stays reachable while the log scrolls past it, and
-                            collapsible so it can get out of the way of reading. */}
+                        {/* Human input — a slim sticky strip as the trigger, with the
+                            question, context and answer in a modal (the same pattern
+                            as the agent-response bubble). On a short log area the
+                            inline card swallowed the whole tab. */}
                         {humanPrompt && (
                             <div className="sticky bottom-0 z-10 pt-2">
-                                <div className="overflow-hidden rounded-lg border border-amber-600/50 bg-zinc-900 shadow-[0_-12px_28px_-8px_rgba(0,0,0,0.55)]">
-                                    <div className="bg-amber-900/20">
-                                        <button
-                                            type="button"
-                                            onClick={() => setHumanCollapsed(c => !c)}
-                                            aria-expanded={!humanCollapsed}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left"
-                                        >
-                                            <Pause size={13} className="shrink-0 text-amber-400" aria-hidden />
-                                            <span className="shrink-0 text-xs font-semibold text-amber-300">Waiting for your input</span>
-                                            {humanCollapsed ? (
-                                                <span className="min-w-0 flex-1 truncate text-[11px] text-amber-200/70">{humanPrompt}</span>
-                                            ) : (
-                                                <span className="flex-1" />
-                                            )}
-                                            <ChevronDown
-                                                size={14}
-                                                className={`shrink-0 text-amber-400/80 transition-transform ${humanCollapsed ? 'rotate-180' : ''}`}
-                                                aria-hidden
-                                            />
-                                        </button>
-                                        {!humanCollapsed && (
-                                            <div className="space-y-2 px-3 pb-3">
-                                                {humanContext && (
-                                                    <div>
-                                                        <div
-                                                            className="text-xs text-zinc-300 bg-zinc-800/60 rounded-t-md p-2 overflow-y-auto border border-zinc-700/50 border-b-0"
-                                                            style={{ height: humanContextHeight }}
-                                                        >
-                                                            <ReactMarkdown
-                                                                remarkPlugins={[remarkGfm]}
-                                                                components={{
-                                                                    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-                                                                    a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                                    code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded-md">{children}</code>,
-                                                                    strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
-                                                                }}
-                                                            >{humanContext}</ReactMarkdown>
-                                                        </div>
-                                                        <div
-                                                            onMouseDown={onContextDragMouseDown}
-                                                            className="h-1.5 w-full cursor-row-resize bg-zinc-700/60 hover:bg-amber-500/40 transition-colors rounded-b-md border border-zinc-700/50 flex items-center justify-center group"
-                                                        >
-                                                            <div className="w-8 h-0.5 rounded-md bg-zinc-600 group-hover:bg-amber-400 transition-colors" />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                <div className="text-xs leading-relaxed text-amber-200/90">
-                                                    <ReactMarkdown
-                                                        remarkPlugins={[remarkGfm]}
-                                                        components={{
-                                                            p: ({ children }) => <p className="mb-0">{children}</p>,
-                                                            a: ({ href, children }) => <a href={href} className="text-amber-200 underline" target="_blank" rel="noreferrer">{children}</a>,
-                                                            strong: ({ children }) => <strong className="font-semibold text-amber-100">{children}</strong>,
-                                                        }}
-                                                    >{humanPrompt}</ReactMarkdown>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        autoFocus
-                                                        className="flex-1 rounded-md border border-amber-700/40 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-amber-500"
-                                                        value={humanResponse}
-                                                        onChange={(e) => setHumanResponse(e.target.value)}
-                                                        placeholder="Your response…"
-                                                        onKeyDown={(e) => { if (e.key === 'Enter') onSubmitHuman(); }}
-                                                    />
-                                                    <button
-                                                        onClick={onSubmitHuman}
-                                                        disabled={!humanResponse.trim()}
-                                                        className="rounded-md bg-amber-500 px-4 py-2 text-xs font-medium text-zinc-950 transition-colors hover:bg-amber-400 disabled:opacity-50"
-                                                    >
-                                                        Submit
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setHumanModalOpen(true)}
+                                    className="group flex w-full items-center gap-2 rounded-lg border border-amber-600/50 bg-zinc-900 px-3 py-2 text-left shadow-[0_-12px_28px_-8px_rgba(0,0,0,0.55)] transition-colors hover:border-amber-500"
+                                >
+                                    <span className="relative flex size-2 shrink-0">
+                                        <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-60" aria-hidden />
+                                        <span className="relative inline-flex size-2 rounded-full bg-amber-400" aria-hidden />
+                                    </span>
+                                    <span className="shrink-0 text-xs font-semibold text-amber-300">Waiting for your input</span>
+                                    <span className="min-w-0 flex-1 truncate text-[11px] text-amber-200/70">{humanPrompt}</span>
+                                    <span className="shrink-0 rounded-md bg-amber-500 px-2.5 py-1 text-[11px] font-medium text-zinc-950 transition-colors group-hover:bg-amber-400">
+                                        Answer
+                                    </span>
+                                </button>
                             </div>
                         )}
+
+                        <Modal
+                            open={!!humanPrompt && humanModalOpen}
+                            onClose={() => setHumanModalOpen(false)}
+                            title="Human input required"
+                            size="lg"
+                            footer={
+                                <>
+                                    <Button variant="secondary" onClick={() => setHumanModalOpen(false)}>Later</Button>
+                                    <Button onClick={onSubmitHuman} disabled={!humanResponse.trim()}>Submit</Button>
+                                </>
+                            }
+                        >
+                            <div className="space-y-3">
+                                {humanContext && (
+                                    <div className="max-h-[45vh] overflow-y-auto rounded-md border border-zinc-700/50 bg-zinc-800/60 p-3 text-xs text-zinc-300">
+                                        <ReactMarkdown
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                                                a: ({ href, children }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
+                                                code: ({ children }) => <code className="font-code bg-zinc-700 px-1 rounded-md">{children}</code>,
+                                                strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                                            }}
+                                        >{humanContext}</ReactMarkdown>
+                                    </div>
+                                )}
+                                <div className="text-sm leading-relaxed text-amber-300">
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            p: ({ children }) => <p className="mb-0">{children}</p>,
+                                            a: ({ href, children }) => <a href={href} className="text-amber-200 underline" target="_blank" rel="noreferrer">{children}</a>,
+                                            strong: ({ children }) => <strong className="font-semibold text-amber-200">{children}</strong>,
+                                        }}
+                                    >{humanPrompt}</ReactMarkdown>
+                                </div>
+                                <input
+                                    autoFocus
+                                    className="w-full rounded-md border border-amber-700/40 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-amber-500"
+                                    value={humanResponse}
+                                    onChange={(e) => setHumanResponse(e.target.value)}
+                                    placeholder="Your response…"
+                                    onKeyDown={(e) => { if (e.key === 'Enter') onSubmitHuman(); }}
+                                />
+                            </div>
+                        </Modal>
 
                     </div>
                 )}
