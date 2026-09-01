@@ -1011,12 +1011,27 @@ def _convert_tools_for_gemini(ollama_tools: list[dict] | None):
             continue
         # Clean up the parameters schema — Gemini doesn't accept 'default' in properties
         params = func.get("parameters", {})
-        cleaned_params = _clean_schema_for_gemini(params) if params else None
-        declarations.append(types.FunctionDeclaration(
-            name=name,
-            description=func.get("description", ""),
-            parameters=cleaned_params,
-        ))
+        # Building the declaration is where validation lives, and it is validation
+        # of the *whole list*: one tool the cleaner failed to tame used to raise
+        # here and cost the agent every other tool it had, on every turn. The
+        # cleaner has been rewritten four times by MCP servers declaring keywords
+        # nobody had listed — `oneOf`, non-string `enum`, `exclusiveMinimum`, then
+        # type unions — so there will be a fifth. Losing one capability quietly
+        # beats losing all of them loudly.
+        try:
+            cleaned_params = _clean_schema_for_gemini(params) if params else None
+            declarations.append(types.FunctionDeclaration(
+                name=name,
+                description=func.get("description", ""),
+                parameters=cleaned_params,
+            ))
+        except Exception as e:
+            print(
+                f"DEBUG: ⚠️ Gemini: dropping tool {name!r} — its schema could not be "
+                f"converted: {str(e)[:300]}",
+                flush=True,
+            )
+            continue
 
     if not declarations:
         return None
@@ -1105,6 +1120,86 @@ _GEMINI_EXCLUSIVE_BOUNDS = {
     "exclusiveMinimum": "greater than",
     "exclusiveMaximum": "less than",
 }
+
+#: The type names `types.Type` has, lowercased. Mirrors
+#: `[m.value.lower() for m in types.Type]`, kept as a literal so cleaning a
+#: schema does not have to import the SDK.
+#:
+#: Needed because `type` is the one whitelisted keyword whose *value* is also
+#: constrained, and the two ways it goes wrong fail differently:
+#:
+#: * A name off this list — `"bool"`, `"int"`, `"any"` — is *accepted* by
+#:   pydantic with only a `UserWarning`, then shipped as `{"type": "bool"}` and
+#:   refused by the API. A warning nobody reads, then a 400 on every call.
+#: * A JSON Schema type *union*, `{"type": ["boolean", "string"]}`, is refused
+#:   locally, which takes the whole tool list down with it.
+_GEMINI_TYPE_NAMES = {
+    "type_unspecified", "string", "number", "integer",
+    "boolean", "array", "object", "null",
+}
+
+
+def _gemini_normalise_type(cleaned: dict) -> None:
+    """Force `cleaned["type"]` into the single name Gemini's `Schema` accepts.
+
+    `Schema.type` is a one-valued enum. JSON Schema's is a name *or a list of
+    names*, and MCP servers do use the list form: zod's `z.union([z.boolean(),
+    z.string()])` serialises to `{"type": ["boolean", "string"]}`. The official
+    sequential-thinking server declares three fields that way, and the whole
+    tool list came back as
+
+        3 validation errors for FunctionDeclaration
+        parameters.properties.nextThoughtNeeded.type
+          Input should be 'TYPE_UNSPECIFIED', 'STRING', ...
+
+    — which every agent with that server attached gave as its answer, on every
+    turn, because the tool list is declared up front and validated as a whole.
+
+    A union becomes, in order of preference:
+
+    * `null` dropped from the members and `nullable` set instead — `["string",
+      "null"]` is how JSON Schema spells optional, and `nullable` says it
+      exactly.
+    * one member left → that name, plainly.
+    * several left → `anyOf` branches, the same translation `oneOf` already
+      gets. The node's own `type` goes, because the branches carry it.
+    * nothing left (`["null"]`) → `null`, which `Type.NULL` accepts.
+
+    An unrecognised name is dropped rather than passed through, leaving the
+    caller's typeless-node fallback to supply one. A loose type beats a 400.
+    """
+    declared = cleaned.get("type")
+
+    if isinstance(declared, str):
+        if declared.lower() not in _GEMINI_TYPE_NAMES:
+            cleaned.pop("type")
+        return
+
+    if not isinstance(declared, list):
+        # A dict, a number, anything else: no field to land in.
+        if declared is not None:
+            cleaned.pop("type")
+        return
+
+    members = [t for t in declared if isinstance(t, str) and t.lower() in _GEMINI_TYPE_NAMES]
+    nullable = any(t.lower() == "null" for t in members)
+    members = [t for t in members if t.lower() != "null"]
+
+    if nullable and members:
+        cleaned["nullable"] = True
+
+    if len(members) == 1:
+        cleaned["type"] = members[0]
+    elif members:
+        # `anyOf` from a real `oneOf` already describes this node fully; a
+        # second opinion on the type would only contradict it.
+        if "anyOf" not in cleaned:
+            cleaned["anyOf"] = [{"type": t} for t in members]
+        cleaned.pop("type")
+    elif nullable:
+        cleaned["type"] = "null"
+    else:
+        cleaned.pop("type")
 
 
 def _clean_schema_for_gemini(schema: dict) -> dict:
@@ -1205,6 +1300,11 @@ def _clean_schema_for_gemini(schema: dict) -> dict:
         cleaned["description"] = (
             f"{cleaned.get('description', '')} (one of: {allowed})".strip()
         )
+
+    # After the `const` and numeric-`enum` branches above, which assign `type`
+    # themselves, and before the fallback below, which is what a dropped name
+    # falls back *to*.
+    _gemini_normalise_type(cleaned)
 
     if "type" not in cleaned and "anyOf" not in cleaned:
         cleaned["type"] = "object" if "properties" in cleaned else "string"

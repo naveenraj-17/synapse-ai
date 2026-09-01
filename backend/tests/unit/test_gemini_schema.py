@@ -87,6 +87,87 @@ class TestLiterals:
         assert list(d.parameters.properties["s"].enum) == ["a", "b"]
 
 
+class TestTypeUnions:
+    """`Schema.type` is one name. JSON Schema's is a name *or a list of names*.
+
+    zod's `z.union([z.boolean(), z.string()])` serialises to the list form, and
+    the official sequential-thinking server declares three fields through one,
+    so what every agent with it attached answered was:
+
+        3 validation errors for FunctionDeclaration
+        parameters.properties.nextThoughtNeeded.type
+          Input should be 'TYPE_UNSPECIFIED', 'STRING', ...
+    """
+
+    def test_the_sequentialthinking_schema_that_broke_it(self):
+        """Verbatim, including the three fields that made it three errors."""
+        d = declare({
+            "type": "object",
+            "properties": {
+                "thought": {"type": "string"},
+                "nextThoughtNeeded": {"type": ["boolean", "string"],
+                                      "description": "Whether another thought step is needed"},
+                "thoughtNumber": {"type": "integer", "minimum": 1},
+                "isRevision": {"type": ["boolean", "string"]},
+                "needsMoreThoughts": {"type": ["boolean", "string"]},
+            },
+            "required": ["thought", "nextThoughtNeeded", "thoughtNumber"],
+        })
+        assert sorted(d.parameters.properties) == [
+            "isRevision", "needsMoreThoughts", "nextThoughtNeeded",
+            "thought", "thoughtNumber",
+        ]
+
+    def test_a_two_type_union_becomes_any_of(self):
+        """The same translation `oneOf` gets — `Schema` has `anyOf` and no way
+        to hold two type names in one field."""
+        d = declare({"type": "object",
+                     "properties": {"x": {"type": ["boolean", "string"]}}})
+        prop = d.parameters.properties["x"]
+        assert [b.type for b in prop.any_of] == ["BOOLEAN", "STRING"]
+        assert prop.type is None
+
+    def test_null_in_a_union_becomes_nullable(self):
+        """`["string", "null"]` is how JSON Schema spells optional. Turning it
+        into two `anyOf` branches would lose that it is *a string*, which is
+        what the model needs to know to fill the argument in."""
+        d = declare({"type": "object",
+                     "properties": {"s": {"type": ["string", "null"]}}})
+        prop = d.parameters.properties["s"]
+        assert prop.type == "STRING"
+        assert prop.nullable is True
+        assert not prop.any_of
+
+    def test_a_union_of_only_null_still_has_a_type(self):
+        d = declare({"type": "object", "properties": {"n": {"type": ["null"]}}})
+        assert d.parameters.properties["n"].type == "NULL"
+
+    def test_a_union_does_not_overrule_a_real_one_of(self):
+        """The branches already say what the node accepts; a type list beside
+        them can only contradict it."""
+        d = declare({
+            "type": "object",
+            "properties": {
+                "x": {"type": ["string", "number"],
+                      "oneOf": [{"type": "object", "properties": {"a": {"type": "string"}}}]}
+            },
+        })
+        prop = d.parameters.properties["x"]
+        assert len(prop.any_of) == 1
+        assert prop.any_of[0].type == "OBJECT"
+
+    def test_an_unrecognised_type_name_is_dropped_not_passed_through(self):
+        """The quiet half of this bug. `types.Type` *accepts* an unknown name
+        with only a `UserWarning`, then ships `{"type": "bool"}` — a 400 on
+        every call the agent makes, with nothing raised locally to catch."""
+        d = declare({"type": "object", "properties": {"b": {"type": "bool"}}})
+        assert d.parameters.properties["b"].type == "STRING"
+
+    def test_an_unrecognised_name_inside_a_union_is_ignored(self):
+        d = declare({"type": "object", "properties": {"x": {"type": ["bool", "string"]}}})
+        assert d.parameters.properties["x"].type == "STRING"
+
+
 class TestTheWhitelist:
     def test_an_unknown_keyword_cannot_reach_the_declaration(self):
         """The property this whole approach has: a keyword nobody anticipated is
@@ -148,6 +229,26 @@ class TestNothingIsLost:
         built = _convert_tools_for_gemini(tools)
         assert len(built[0].function_declarations) == len(tools)
 
+    def test_one_unconvertible_tool_does_not_cost_the_agent_the_others(self):
+        """The cleaner has been rewritten four times by real MCP servers, so
+        there will be a fifth keyword. Until then, a tool that still fails to
+        build is dropped on its own — it used to raise, and the agent lost
+        every tool it had on every turn.
+
+        `object` is not a valid `description`, so the SDK refuses this one for a
+        reason the cleaner does not police.
+        """
+        tools = [
+            {"type": "function", "function": {"name": "good", "description": "",
+                                              "parameters": {"type": "object"}}},
+            {"type": "function", "function": {"name": "bad", "description": object(),
+                                              "parameters": {"type": "object"}}},
+            {"type": "function", "function": {"name": "also_good", "description": "",
+                                              "parameters": {"type": "object"}}},
+        ]
+        built = _convert_tools_for_gemini(tools)
+        assert [d.name for d in built[0].function_declarations] == ["good", "also_good"]
+
 
 class TestWhatReachesTheApi:
     """Local validation is not the bar — the API's is.
@@ -196,9 +297,48 @@ class TestWhatReachesTheApi:
                 "d": {"const": True},
                 "e": {"$ref": "#/$defs/thing"},
                 "f": {"type": "object", "minProperties": 1, "maxProperties": 3},
+                "g": {"type": ["boolean", "string"]},
+                "h": {"type": ["string", "null"]},
+                "i": {"type": "bool"},
             },
             "$defs": {"thing": {"type": "string"}},
         }
         decl = declare(gnarly)
         payload = jsonlib.loads(decl.model_dump_json(exclude_none=True, by_alias=True))
         assert self._keys(payload) == []
+
+    def test_no_type_in_the_payload_is_ever_a_list_or_an_unknown_name(self):
+        """`type` is the one whitelisted keyword whose *value* is constrained
+        too, and both ways it goes wrong end at the API: a list is refused
+        locally and takes the whole tool list with it, an unknown name is
+        accepted locally and 400s on every call."""
+        import json as jsonlib
+
+        decl = declare({
+            "type": "object",
+            "properties": {
+                "a": {"type": ["boolean", "string"]},
+                "b": {"type": ["string", "null"]},
+                "c": {"type": "bool"},
+                "d": {"type": "array", "items": {"type": ["number", "null"]}},
+            },
+        })
+        payload = jsonlib.loads(decl.model_dump_json(exclude_none=True, by_alias=True))
+
+        seen = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                if "type" in node:
+                    seen.append(node["type"])
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        walk(payload)
+        assert seen, "nothing was checked"
+        assert all(isinstance(t, str) for t in seen), seen
+        assert all(t in {"TYPE_UNSPECIFIED", "STRING", "NUMBER", "INTEGER",
+                         "BOOLEAN", "ARRAY", "OBJECT", "NULL"} for t in seen), seen
